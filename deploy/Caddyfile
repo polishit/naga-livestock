@@ -1,0 +1,32 @@
+# Caddy obtains and renews HTTPS certificates automatically when DOMAIN is a public hostname.
+# Use DOMAIN=localhost (default) for a local run over https://localhost.
+{
+	email {$ACME_EMAIL:admin@example.com}
+}
+
+{$DOMAIN:localhost} {
+	encode zstd gzip
+
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		root * /srv
+		# Service worker and manifest must always be revalidated so updates roll out.
+		@nocache path /sw.js /registerSW.js /manifest.webmanifest /index.html
+		header @nocache Cache-Control "no-cache"
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(self), camera=(self)"
+	}
+}

@@ -1,0 +1,13 @@
+node_modules
+dist
+dev-dist
+.env
+*.log
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep
+playwright-report
+test-results
+coverage
+apps/api/src/generated
+backups/
+apps/api/uploads-e2e

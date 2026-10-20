@@ -1,0 +1,396 @@
+// Naga City Livestock Monitoring System — MySQL 8 schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Connection URL lives in prisma.config.ts (Prisma 7). The runtime uses the MariaDB driver adapter.
+datasource db {
+  provider = "mysql"
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  READONLY
+}
+
+enum OwnerStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum AnimalStatus {
+  ACTIVE
+  SOLD
+  DECEASED
+  MISSING
+  SLAUGHTERED
+}
+
+enum CaseStatus {
+  SUSPECTED
+  SAMPLE_COLLECTED
+  SENT_TO_LAB
+  AWAITING_RESULT
+  POSITIVE
+  NEGATIVE
+}
+
+enum LabResult {
+  PENDING
+  POSITIVE
+  NEGATIVE
+  INCONCLUSIVE
+}
+
+enum StrayStatus {
+  REPORTED
+  IMPOUNDED
+  RELEASED
+  CLOSED
+}
+
+enum TransferType {
+  TRANSFER
+  REVERSAL
+}
+
+enum VaccinationTarget {
+  GROUP
+  ANIMAL
+}
+
+model User {
+  id            Int            @id @default(autoincrement())
+  email         String         @unique @db.VarChar(191)
+  name          String         @db.VarChar(120)
+  title         String?        @db.VarChar(120)
+  role          Role           @default(STAFF)
+  passwordHash  String         @db.VarChar(100)
+  active        Boolean        @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  refreshTokens RefreshToken[]
+  assignedCases DiseaseCase[]  @relation("AssignedInspector")
+}
+
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique @db.VarChar(128)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Owner {
+  id           Int           @id @default(autoincrement())
+  code         String        @unique @db.VarChar(20)
+  fullName     String        @db.VarChar(150)
+  barangay     String        @db.VarChar(60)
+  zone         String?       @db.VarChar(60)
+  street       String?       @db.VarChar(200)
+  contact      String?       @db.VarChar(40)
+  rsbsa        String?       @db.VarChar(60)
+  remarks      String?       @db.Text
+  status       OwnerStatus   @default(ACTIVE)
+  registeredAt DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  farms        Farm[]
+  cases        DiseaseCase[]
+  strays       StrayIncident[]
+  transfersOut OwnershipTransfer[] @relation("FromOwner")
+  transfersIn  OwnershipTransfer[] @relation("ToOwner")
+  pcicPolicies PcicPolicy[]
+
+  @@index([barangay])
+}
+
+model PcicPolicy {
+  id            Int      @id @default(autoincrement())
+  ownerId       Int
+  policyNo      String   @db.VarChar(60)
+  species       String   @db.VarChar(40)
+  heads         Int
+  amountCovered Decimal? @db.Decimal(12, 2)
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  status        String   @default("ACTIVE") @db.VarChar(20)
+  remarks       String?  @db.VarChar(500)
+  createdAt     DateTime @default(now())
+  owner         Owner    @relation(fields: [ownerId], references: [id])
+}
+
+model Farm {
+  id           Int               @id @default(autoincrement())
+  code         String            @unique @db.VarChar(20)
+  name         String            @db.VarChar(150)
+  ownerId      Int
+  type         String            @db.VarChar(20)
+  barangay     String            @db.VarChar(60)
+  zone         String?           @db.VarChar(60)
+  address      String?           @db.VarChar(250)
+  pastureArea  Float?
+  lat          Float?
+  lng          Float?
+  remarks      String?           @db.Text
+  archived     Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  owner        Owner             @relation(fields: [ownerId], references: [id])
+  groups       PopulationGroup[]
+  cases        DiseaseCase[]
+  vaccinations Vaccination[]
+
+  @@index([barangay])
+  @@index([ownerId])
+}
+
+model PopulationGroup {
+  id           Int                @id @default(autoincrement())
+  code         String             @unique @db.VarChar(20)
+  farmId       Int
+  species      String             @db.VarChar(40)
+  breed        String?            @db.VarChar(80)
+  sex          String             @default("Mixed") @db.VarChar(20)
+  lifeStage    String             @default("Mixed") @db.VarChar(30)
+  count        Int                @default(0)
+  healthStatus String             @default("Healthy") @db.VarChar(40)
+  remarks      String?            @db.VarChar(500)
+  lastVerified String?            @db.VarChar(7) // YYYY-MM of the latest verified update
+  archived     Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  farm         Farm               @relation(fields: [farmId], references: [id])
+  animals      Animal[]
+  updates      PopulationUpdate[]
+  vaccinations Vaccination[]
+
+  @@index([farmId])
+  @@index([species])
+}
+
+/// One row per group per reporting month. Re-saving a month marks the earlier row superseded.
+model PopulationUpdate {
+  id         Int             @id @default(autoincrement())
+  groupId    Int
+  month      String          @db.VarChar(7)
+  count      Int
+  previous   Int?
+  change     Int             @default(0)
+  reason     String?         @db.VarChar(200)
+  superseded Boolean         @default(false)
+  createdBy  String?         @db.VarChar(120)
+  createdAt  DateTime        @default(now())
+  group      PopulationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, month])
+}
+
+model Animal {
+  id           Int                 @id @default(autoincrement())
+  code         String              @unique @db.VarChar(20)
+  earTag       String?             @unique @db.VarChar(40)
+  groupId      Int
+  species      String              @db.VarChar(40)
+  breed        String?             @db.VarChar(80)
+  sex          String              @db.VarChar(10)
+  dob          DateTime?           @db.Date
+  estimatedAge String?             @db.VarChar(40)
+  lifeStage    String?             @db.VarChar(40)
+  markings     String?             @db.VarChar(200)
+  cowlick      String?             @db.VarChar(200)
+  health       String?             @db.VarChar(80)
+  photoKeys    Json?
+  remarks      String?             @db.VarChar(500)
+  status       AnimalStatus        @default(ACTIVE)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  group        PopulationGroup     @relation(fields: [groupId], references: [id])
+  transfers    OwnershipTransfer[]
+  vaccinations Vaccination[]
+
+  @@index([groupId])
+}
+
+model OwnershipTransfer {
+  id          Int          @id @default(autoincrement())
+  code        String       @unique @db.VarChar(20)
+  animalId    Int
+  fromOwnerId Int
+  fromFarmId  Int
+  toOwnerId   Int
+  toFarmId    Int
+  date        DateTime     @db.Date
+  type        TransferType @default(TRANSFER)
+  remarks     String?      @db.VarChar(300)
+  createdBy   String?      @db.VarChar(120)
+  createdAt   DateTime     @default(now())
+  animal      Animal       @relation(fields: [animalId], references: [id])
+  fromOwner   Owner        @relation("FromOwner", fields: [fromOwnerId], references: [id])
+  toOwner     Owner        @relation("ToOwner", fields: [toOwnerId], references: [id])
+}
+
+model StrayIncident {
+  id           Int         @id @default(autoincrement())
+  code         String      @unique @db.VarChar(20)
+  discoveredAt DateTime
+  species      String      @db.VarChar(40)
+  earTag       String?     @db.VarChar(40)
+  animalId     Int?
+  ownerId      Int?
+  barangay     String      @db.VarChar(60)
+  location     String      @db.VarChar(200)
+  description  String?     @db.Text
+  lat          Float?
+  lng          Float?
+  photoKeys    Json?
+  status       StrayStatus @default(REPORTED)
+  violations   Int         @default(0)
+  remarks      String?     @db.Text
+  createdBy    String?     @db.VarChar(120)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  owner        Owner?      @relation(fields: [ownerId], references: [id])
+}
+
+model DiseaseCase {
+  id             Int                 @id @default(autoincrement())
+  code           String              @unique @db.VarChar(20)
+  ownerId        Int
+  farmId         Int
+  barangay       String              @db.VarChar(60)
+  zone           String?             @db.VarChar(60)
+  species        String              @db.VarChar(40)
+  disease        String              @db.VarChar(150)
+  affected       Int
+  deaths         Int                 @default(0)
+  symptomsDate   DateTime?           @db.Date
+  reportedAt     DateTime            @db.Date
+  symptoms       String?             @db.Text
+  reportedBy     String?             @db.VarChar(120)
+  assignedToId   Int?
+  sampleInfo     String?             @db.VarChar(300)
+  remarks        String?             @db.Text
+  lat            Float?
+  lng            Float?
+  locationSource String?             @db.VarChar(40)
+  photoKeys      Json?
+  status         CaseStatus          @default(SUSPECTED)
+  closedAt       DateTime?
+  closedBy       String?             @db.VarChar(120)
+  closureNote    String?             @db.Text
+  relatedCaseId  Int?
+  relatedCase    DiseaseCase?        @relation("LinkedCases", fields: [relatedCaseId], references: [id])
+  linkedCases    DiseaseCase[]       @relation("LinkedCases")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  owner          Owner               @relation(fields: [ownerId], references: [id])
+  farm           Farm                @relation(fields: [farmId], references: [id])
+  assignedTo     User?               @relation("AssignedInspector", fields: [assignedToId], references: [id])
+  history        CaseStatusHistory[]
+  investigations Investigation[]
+  labRecords     LabRecord[]
+  responses      ResponseActivity[]
+
+  @@index([status])
+  @@index([barangay])
+}
+
+model CaseStatusHistory {
+  id     Int         @id @default(autoincrement())
+  caseId Int
+  status CaseStatus
+  note   String?     @db.VarChar(500)
+  byName String?     @db.VarChar(120)
+  at     DateTime    @default(now())
+  case   DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+}
+
+model Investigation {
+  id           Int         @id @default(autoincrement())
+  caseId       Int
+  date         DateTime    @db.Date
+  investigator String?     @db.VarChar(120)
+  notes        String      @db.Text
+  createdAt    DateTime    @default(now())
+  case         DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model LabRecord {
+  id          Int         @id @default(autoincrement())
+  caseId      Int
+  sampleId    String      @db.VarChar(60)
+  sampleType  String?     @db.VarChar(80)
+  collectedAt DateTime?   @db.Date
+  laboratory  String?     @db.VarChar(120)
+  sentAt      DateTime?   @db.Date
+  result      LabResult   @default(PENDING)
+  resultDate  DateTime?   @db.Date
+  remarks     String?     @db.VarChar(500)
+  createdAt   DateTime    @default(now())
+  case        DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model ResponseActivity {
+  id        Int         @id @default(autoincrement())
+  caseId    Int
+  type      String      @db.VarChar(40)
+  date      DateTime    @db.Date
+  personnel String?     @db.VarChar(200)
+  remarks   String?     @db.Text
+  createdAt DateTime    @default(now())
+  case      DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model Vaccination {
+  id             Int               @id @default(autoincrement())
+  code           String            @unique @db.VarChar(20)
+  farmId         Int
+  target         VaccinationTarget @default(GROUP)
+  groupId        Int?
+  animalId       Int?
+  species        String            @db.VarChar(40)
+  count          Int
+  vaccine        String            @db.VarChar(120)
+  date           DateTime          @db.Date
+  nextDate       DateTime?         @db.Date
+  doseNumber     Int               @default(1)
+  batch          String?           @db.VarChar(60)
+  administeredBy String?           @db.VarChar(120)
+  remarks        String?           @db.VarChar(500)
+  createdAt      DateTime          @default(now())
+  farm           Farm              @relation(fields: [farmId], references: [id])
+  group          PopulationGroup?  @relation(fields: [groupId], references: [id])
+  animal         Animal?           @relation(fields: [animalId], references: [id])
+
+  @@index([date])
+}
+
+/// Audit trail: powers "Recent activity", record history tabs and notifications.
+model ActivityLog {
+  id        Int      @id @default(autoincrement())
+  entity    String   @db.VarChar(40)
+  entityId  Int
+  action    String   @db.VarChar(40)
+  summary   String   @db.VarChar(300)
+  byName    String?  @db.VarChar(120)
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model Setting {
+  key   String @id @db.VarChar(60)
+  value String @db.Text
+}

@@ -1,0 +1,77 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "1. Install dependencies",
+      "type": "shell",
+      "command": "pnpm install",
+      "problemMatcher": []
+    },
+    {
+      "label": "2. Start database (Docker)",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.dev.yml up -d",
+      "problemMatcher": []
+    },
+    {
+      "label": "3. Create API .env (if missing)",
+      "type": "shell",
+      "command": "node -e \"const f=require('fs');if(f.existsSync('apps/api/.env')){console.log('apps/api/.env already exists - kept')}else{f.copyFileSync('apps/api/.env.example','apps/api/.env');console.log('Created apps/api/.env')}\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "4. Setup database (generate + migrate + seed)",
+      "type": "shell",
+      "command": "pnpm --filter @livestock/api generate && pnpm --filter @livestock/api exec prisma migrate deploy && pnpm db:seed",
+      "problemMatcher": []
+    },
+    {
+      "label": "Start app (API + Web)",
+      "type": "shell",
+      "command": "pnpm dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "panel": "dedicated", "reveal": "always" }
+    },
+    {
+      "label": "Reset demo data (erases data!)",
+      "type": "shell",
+      "command": "pnpm db:seed",
+      "problemMatcher": []
+    },
+    {
+      "label": "Open Prisma Studio (browse database)",
+      "type": "shell",
+      "command": "pnpm --filter @livestock/api exec prisma studio",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Stop database (Docker)",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.dev.yml down",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run unit tests",
+      "type": "shell",
+      "command": "pnpm test",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run end-to-end tests",
+      "type": "shell",
+      "command": "pnpm exec playwright install chromium && pnpm test:e2e",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint + typecheck",
+      "type": "shell",
+      "command": "pnpm lint && pnpm typecheck",
+      "problemMatcher": ["$tsc"]
+    }
+  ]
+}

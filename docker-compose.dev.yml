@@ -1,0 +1,20 @@
+# Local development database (run the API and PWA with `pnpm dev`).
+# Uploads are stored on disk in apps/api/uploads during development (STORAGE_DRIVER=local).
+#   docker compose -f docker-compose.dev.yml up -d
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: livestock
+      MYSQL_USER: livestock
+      MYSQL_PASSWORD: livestock
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+    ports:
+      - '3307:3306'
+    volumes:
+      - mysql_dev:/var/lib/mysql
+      - ./deploy/mysql-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+volumes:
+  mysql_dev:

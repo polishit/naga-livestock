@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/dev-dist
+**/.env
+**/*.log
+apps/api/uploads*
+apps/api/src/generated
+playwright-report
+test-results
+.git
+.github

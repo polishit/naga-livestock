@@ -1,0 +1,103 @@
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 105 31% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 106 40% 94%;
+    --accent-foreground: 142 64% 24%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 85%;
+    --ring: 105 31% 55%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+}
+
+@layer components {
+  .page-title {
+    @apply text-xl font-semibold tracking-tight text-slate-900 sm:text-[22px];
+  }
+  .page-sub {
+    @apply mt-1 text-sm text-slate-500 sm:text-[15px];
+  }
+  .card {
+    @apply rounded-lg border border-slate-200 bg-white shadow-card;
+  }
+  .card-header {
+    @apply flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-4;
+  }
+  .card-title {
+    @apply text-[15px] font-semibold text-slate-900;
+  }
+  .kv {
+    @apply grid grid-cols-[minmax(110px,40%)_1fr] gap-x-4 gap-y-[9px] text-[14.5px];
+  }
+  .kv dt {
+    @apply text-slate-500;
+  }
+  .kv dd {
+    @apply text-slate-900;
+  }
+  .link {
+    @apply text-brand-dark hover:underline;
+  }
+}
+
+/* Leaflet tweaks: soft background when tiles are unavailable (offline) */
+.leaflet-container {
+  background: #f6f3ee;
+  font-family: inherit;
+  z-index: 0;
+}
+.leaflet-div-icon-clear {
+  background: transparent;
+  border: none;
+}
+.leaflet-control-attribution {
+  font-size: 11px;
+}
+
+/* Printing: only the printable area */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
