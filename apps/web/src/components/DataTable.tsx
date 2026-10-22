@@ -154,7 +154,7 @@ export function DataTable<T>({
                 <li
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={cn('px-3 py-3', onRowClick && 'cursor-pointer active:bg-slate-50')}
+                  className={cn('px-4 py-3.5', onRowClick && 'cursor-pointer active:bg-slate-50')}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 text-[15px] font-medium text-slate-900">
@@ -163,11 +163,13 @@ export function DataTable<T>({
                     {second && <div className="shrink-0 text-[12.5px] text-slate-500">{render(first)}</div>}
                   </div>
                   {rest.length > 0 && (
-                    <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13.5px]">
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
                       {rest.map((c) => (
                         <div key={c.key} className="contents">
                           <dt className="text-slate-500">
-                            {typeof c.header === 'string' && c.header === c.header.toUpperCase()
+                            {typeof c.header === 'string' &&
+                            c.header === c.header.toUpperCase() &&
+                            c.header.length > 3
                               ? titleCase(c.header)
                               : c.header}
                           </dt>
@@ -185,12 +187,12 @@ export function DataTable<T>({
       <div className="hidden overflow-x-auto sm:block">
         <table className="w-full border-collapse text-left" style={{ minWidth }}>
           <thead>
-            <tr className="border-b border-slate-100 bg-white">
+            <tr className="border-b border-slate-200 bg-slate-50/80">
               {columns.map((c) => (
                 <th
                   key={c.key}
                   className={cn(
-                    'whitespace-nowrap px-3 py-2.5 text-[12.5px] font-medium text-slate-500',
+                    'whitespace-nowrap px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wide text-slate-500 first:pl-4 last:pr-4',
                     c.headerClassName,
                   )}
                 >
@@ -245,8 +247,8 @@ export function DataTable<T>({
                     <td
                       key={c.key}
                       className={cn(
-                        'px-3 text-[15px] text-slate-800',
-                        dense ? 'py-2' : 'py-2.5',
+                        'px-3 text-[14.5px] text-slate-800 first:pl-4 last:pr-4',
+                        dense ? 'py-2' : 'py-3',
                         ci === 0 && 'whitespace-nowrap',
                         c.className,
                       )}

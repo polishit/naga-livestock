@@ -47,7 +47,11 @@ export function PageHeader({
         <h1 className="page-title">{title}</h1>
         {subtitle && <div className="page-sub">{subtitle}</div>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2 sm:justify-end">{actions}</div>}
+      {actions && (
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end [&>button]:grow sm:[&>button]:grow-0">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }
@@ -74,17 +78,19 @@ export function StatCard({
     orange: 'bg-orange-50 text-orange-600',
   }[tone];
   return (
-    <div className={cn('card flex min-h-[96px] items-start justify-between gap-3 p-4', className)}>
-      <div className="min-w-0">
-        <div className="text-[13px] text-slate-600">{label}</div>
-        <div className="mt-1.5 text-[24px] font-semibold leading-tight text-slate-900">{value}</div>
-        {sub && <div className="mt-1 text-[12px] text-slate-500">{sub}</div>}
+    <div className={cn('card p-4', className)}>
+      <div className="flex items-start gap-2.5">
+        {Icon && (
+          <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', toneCls)}>
+            <Icon className="h-[17px] w-[17px]" strokeWidth={1.9} />
+          </span>
+        )}
+        <div className="min-w-0 pt-1.5 text-[13px] font-medium leading-snug text-slate-600">{label}</div>
       </div>
-      {Icon && (
-        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', toneCls)}>
-          <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
-        </span>
-      )}
+      <div className="mt-2.5 text-[26px] font-semibold leading-none tracking-tight text-slate-900">
+        {value}
+      </div>
+      {sub && <div className="mt-1.5 text-[12.5px] leading-snug text-slate-500">{sub}</div>}
     </div>
   );
 }

@@ -19,12 +19,12 @@ import { cn } from '@/lib/utils';
 /* ---------------- Button ---------------- */
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-55 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-55 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        default: 'bg-brand text-white shadow-sm hover:bg-[#6c9f5b]',
-        outline: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50',
+        default: 'bg-brand-strong text-white shadow-sm hover:bg-brand-dark',
+        outline: 'border border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50',
         ghost: 'text-slate-700 hover:bg-slate-100',
         destructive: 'bg-red-500 text-white hover:bg-red-600',
         link: 'text-brand-dark underline-offset-4 hover:underline px-0',
@@ -74,7 +74,7 @@ Button.displayName = 'Button';
 /* ---------------- Inputs ---------------- */
 
 const fieldBase =
-  'w-full rounded-md border border-slate-300 bg-white px-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:cursor-not-allowed disabled:bg-slate-50 aria-[invalid=true]:border-red-400';
+  'w-full rounded-lg border border-slate-300 bg-white px-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:cursor-not-allowed disabled:bg-slate-50 aria-[invalid=true]:border-red-400';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
@@ -210,7 +210,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium leading-5',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[12px] font-medium leading-5',
         toneClass[tone],
         className,
       )}
@@ -256,7 +256,8 @@ export function Dialog({
             width,
           )}
         >
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden />
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 sm:py-4">
             <DialogPrimitive.Title className="text-[17px] font-semibold text-slate-900">
               {title}
             </DialogPrimitive.Title>
@@ -269,7 +270,10 @@ export function Dialog({
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
           {footer && (
-            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-4">
+            <div
+              className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-white px-5 py-3.5 sm:py-4 [&>button]:flex-1 sm:[&>button]:flex-none"
+              style={{ paddingBottom: 'max(0.875rem, env(safe-area-inset-bottom))' }}
+            >
               {footer}
             </div>
           )}
@@ -303,7 +307,7 @@ export function Tabs<T extends string>({
             aria-selected={value === t.id}
             onClick={() => onChange(t.id)}
             className={cn(
-              '-mb-px border-b-2 px-3 py-2.5 text-[15px] transition-colors',
+              '-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-[15px] transition-colors',
               value === t.id
                 ? 'border-brand-dark font-medium text-brand-dark'
                 : 'border-transparent text-slate-500 hover:text-slate-800',
@@ -324,7 +328,7 @@ export function Spinner({ className }: { className?: string }) {
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="px-4 py-10 text-center text-sm text-slate-500">{children}</div>;
+  return <div className="px-4 py-12 text-center text-[14.5px] text-slate-500">{children}</div>;
 }
 
 export function Checkbox({

@@ -516,7 +516,7 @@ export function RadiusPage() {
                   className={cn(
                     'h-9 rounded-md border px-3 text-[13.5px]',
                     radius === r
-                      ? 'border-brand bg-brand text-white'
+                      ? 'border-brand-strong bg-brand-strong text-white'
                       : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
                   )}
                 >

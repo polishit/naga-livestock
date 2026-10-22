@@ -5,10 +5,13 @@ import {
   ChevronDown,
   ChevronRight,
   CloudOff,
+  LayoutGrid,
   LogOut,
   PanelLeft,
   RefreshCw,
   Search,
+  Settings,
+  UserCog,
   X,
 } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -20,17 +23,47 @@ import { useAuth } from '@/lib/auth';
 import { useApi, useOnline, usePendingCount } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
 import { Logo } from '../Logo';
-import { NAV, crumbsFor } from './nav';
+import { Dialog } from '../ui';
+import { NAV, crumbsFor, sectionFor, type NavSection } from './nav';
 
 function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const { isAdmin, logout } = useAuth();
-  const [closed, setClosed] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
+  const location = useLocation();
+  const current = sectionFor(location.pathname)?.id;
+  // Only the module you are working in is open; the others fold away to keep the menu short.
+  const [open, setOpen] = useState<Record<string, boolean>>(() => (current ? { [current]: true } : {}));
+  useEffect(() => {
+    if (current) setOpen((o) => (o[current] ? o : { ...o, [current]: true }));
+  }, [current]);
+
+  const link = (item: NavSection['items'][number], nested: boolean) => (
+    <NavLink
+      key={item.to}
+      to={item.to}
+      end={item.to === '/'}
+      onClick={onNavigate}
+      title={collapsed ? item.label : item.hint}
+      className={({ isActive }) =>
+        cn(
+          'flex items-center gap-3 rounded-lg py-2 text-[14.5px] transition-colors',
+          collapsed ? 'justify-center px-0' : nested ? 'pl-9 pr-2.5' : 'px-2.5',
+          isActive
+            ? 'bg-white font-semibold text-sidebar-active shadow-sm'
+            : 'text-white/85 hover:bg-white/10 hover:text-white',
+        )
+      }
+    >
+      <item.icon className={cn('shrink-0', nested ? 'h-4 w-4' : 'h-[18px] w-[18px]')} strokeWidth={1.9} />
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </NavLink>
+  );
+
   return (
     <div className="flex h-full flex-col bg-sidebar text-white">
       <div
         className={cn(
-          'flex h-16 shrink-0 items-center border-b border-white/15',
+          'flex h-16 shrink-0 items-center border-b border-white/10',
           collapsed ? 'justify-center px-2' : 'px-4',
         )}
       >
@@ -38,51 +71,44 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
           <Logo compact={collapsed} />
         </Link>
       </div>
-      <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="Main">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-2.5 py-3" aria-label="Main">
         {NAV.map((section) => {
           const items = section.items.filter((i) => !i.adminOnly || isAdmin);
           if (!items.length) return null;
-          const isClosed = closed[section.id];
+          if (!section.label) return <div key={section.id}>{items.map((i) => link(i, false))}</div>;
+          if (collapsed)
+            return (
+              <div key={section.id}>
+                <div className="mx-3 my-2 border-t border-white/10" />
+                {items.map((i) => link(i, false))}
+              </div>
+            );
+          const isOpen = !!open[section.id];
+          const Icon = section.icon;
+          const active = current === section.id;
           return (
-            <div key={section.id} className="mb-1">
-              {section.label && !collapsed && (
-                <button
-                  type="button"
-                  onClick={() => setClosed((c) => ({ ...c, [section.id]: !c[section.id] }))}
-                  className="mt-3 flex w-full items-center justify-between px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-[0.06em] text-sidebar-label"
-                >
-                  {section.label}
-                  <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', isClosed && '-rotate-90')} />
-                </button>
-              )}
-              {section.label && collapsed && <div className="mx-3 my-2 border-t border-white/15" />}
-              {!isClosed &&
-                items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === '/'}
-                    onClick={onNavigate}
-                    title={collapsed ? item.label : undefined}
-                    className={({ isActive }) =>
-                      cn(
-                        'flex items-center gap-3 rounded-md px-2.5 py-[7px] text-[14.5px] transition-colors',
-                        collapsed && 'justify-center px-0',
-                        isActive
-                          ? 'bg-white font-medium text-sidebar-active shadow-sm'
-                          : 'text-white hover:bg-white/10',
-                      )
-                    }
-                  >
-                    <item.icon className="h-[17px] w-[17px] shrink-0" strokeWidth={1.8} />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </NavLink>
-                ))}
+            <div key={section.id}>
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                onClick={() => setOpen((o) => ({ ...o, [section.id]: !o[section.id] }))}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[14px] font-semibold transition-colors hover:bg-white/10',
+                  active ? 'text-white' : 'text-white/80',
+                )}
+              >
+                {Icon && <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />}
+                <span className="flex-1 truncate">{section.label}</span>
+                <ChevronDown
+                  className={cn('h-4 w-4 shrink-0 opacity-70 transition-transform', !isOpen && '-rotate-90')}
+                />
+              </button>
+              {isOpen && <div className="mt-0.5 space-y-0.5 pb-1">{items.map((i) => link(i, true))}</div>}
             </div>
           );
         })}
       </nav>
-      <div className="border-t border-white/15 p-2">
+      <div className="border-t border-white/10 p-2.5">
         <button
           type="button"
           onClick={async () => {
@@ -90,15 +116,87 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
             navigate('/login');
           }}
           className={cn(
-            'flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-[14.5px] hover:bg-white/10',
+            'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-[14.5px] text-white/85 hover:bg-white/10 hover:text-white',
             collapsed && 'justify-center',
           )}
         >
-          <LogOut className="h-[17px] w-[17px]" strokeWidth={1.8} />
+          <LogOut className="h-[18px] w-[18px]" strokeWidth={1.9} />
           {!collapsed && 'Logout'}
         </button>
       </div>
     </div>
+  );
+}
+
+/** Phone navigation: Home plus the four modules. Tapping a module lists its pages. */
+function BottomNav() {
+  const location = useLocation();
+  const { isAdmin } = useAuth();
+  const current = sectionFor(location.pathname)?.id;
+  const [sheet, setSheet] = useState<NavSection | null>(null);
+  const modules = NAV.filter((s) => s.short);
+  useEffect(() => setSheet(null), [location.pathname]);
+  const tab =
+    'flex flex-col items-center justify-center gap-1 py-2 text-[11.5px] font-medium transition-colors';
+  return (
+    <>
+      <nav
+        aria-label="Modules"
+        className="fixed inset-x-0 bottom-0 z-[950] border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="mx-auto grid max-w-lg grid-cols-5">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) => cn(tab, isActive ? 'text-brand-strong' : 'text-slate-500')}
+          >
+            <LayoutGrid className="h-[22px] w-[22px]" strokeWidth={1.9} />
+            Home
+          </NavLink>
+          {modules.map((m) => {
+            const Icon = m.icon!;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setSheet(m)}
+                className={cn(tab, current === m.id ? 'text-brand-strong' : 'text-slate-500')}
+              >
+                <Icon className="h-[22px] w-[22px]" strokeWidth={1.9} />
+                {m.short}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+      <Dialog open={!!sheet} onOpenChange={(o) => !o && setSheet(null)} title={sheet?.label ?? ''} size="sm">
+        <div className="-mx-2 space-y-1">
+          {sheet?.items
+            .filter((i) => !i.adminOnly || isAdmin)
+            .map((i) => (
+              <NavLink
+                key={i.to}
+                to={i.to}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-3',
+                    isActive ? 'bg-brand-light' : 'hover:bg-slate-50 active:bg-slate-100',
+                  )
+                }
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-light text-brand-strong">
+                  <i.icon className="h-5 w-5" strokeWidth={1.9} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[15.5px] font-medium text-slate-900">{i.label}</span>
+                  <span className="block text-[13px] text-slate-500">{i.hint}</span>
+                </span>
+              </NavLink>
+            ))}
+        </div>
+      </Dialog>
+    </>
   );
 }
 
@@ -307,6 +405,21 @@ function UserMenu() {
             <div className="mt-1 text-xs text-slate-500">Role: {ROLE_LABELS[user.role]}</div>
           </div>
           <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+          {user.role === 'ADMIN' && (
+            <DropdownMenu.Item
+              onSelect={() => navigate('/users')}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
+            >
+              <UserCog className="h-4 w-4" /> User management
+            </DropdownMenu.Item>
+          )}
+          <DropdownMenu.Item
+            onSelect={() => navigate('/settings')}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
+          >
+            <Settings className="h-4 w-4" /> System settings
+          </DropdownMenu.Item>
+          <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
           <DropdownMenu.Item
             onSelect={async () => {
               await logout();
@@ -353,7 +466,7 @@ export function AppLayout() {
       <aside
         className={cn(
           'hidden shrink-0 transition-[width] duration-200 lg:block',
-          collapsed ? 'w-16' : 'w-64',
+          collapsed ? 'w-16' : 'w-[280px]',
         )}
       >
         <Sidebar collapsed={collapsed} />
@@ -428,11 +541,12 @@ export function AppLayout() {
           </div>
         )}
         <main ref={mainRef} className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1400px] px-4 pb-10 pt-6 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-[1400px] px-4 pb-28 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
             <Outlet />
           </div>
         </main>
       </div>
+      <BottomNav />
     </div>
   );
 }
