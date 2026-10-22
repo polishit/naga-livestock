@@ -51,7 +51,11 @@ async function handle<T>(res: Response): Promise<T> {
     return (await res.json()) as T;
   }
   const data = await res.json().catch(() => ({}));
-  throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`, data.fieldErrors);
+  const fallback =
+    res.status >= 502
+      ? "Can't reach the server. Make sure the app is running, then try again in a few seconds."
+      : `Request failed (${res.status})`;
+  throw new ApiError(res.status, data.error ?? fallback, data.fieldErrors);
 }
 
 export const api = {
@@ -104,7 +108,7 @@ export async function mutate<T>(
   if (!navigator.onLine && allowOffline) return queue();
   try {
     let payload = body as Record<string, unknown>;
-        if (opts.files?.length && opts.photoField) {
+    if (opts.files?.length && opts.photoField) {
       const keys: string[] = [];
       for (const f of opts.files) keys.push(await uploadFile(f, f.name));
       const current = (payload?.[opts.photoField] as string[] | undefined) ?? [];

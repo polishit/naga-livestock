@@ -18,7 +18,7 @@ import {
 } from '@livestock/shared';
 import { ApiError, isQueued, mutate } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { useApi } from '@/lib/hooks';
+import { offerFarmLocationForCases, useApi } from '@/lib/hooks';
 import { cn, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { ExportButtons } from '@/components/ExportButtons';
@@ -76,6 +76,10 @@ export function GeotaggingPage() {
             : 'Location cleared.',
       );
       qc.invalidateQueries();
+      if (value && !isQueued(r))
+        offerFarmLocationForCases(selected.id, (r as { unmappedCases?: number }).unmappedCases, () =>
+          qc.invalidateQueries(),
+        );
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'Could not save location');
     } finally {

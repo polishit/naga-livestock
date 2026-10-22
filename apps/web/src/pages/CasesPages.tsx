@@ -1,10 +1,12 @@
-import { Check, Link2, Lock, MapPin, Plus, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Check, Link2, Lock, MapPin, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
+  CASE_STAGE,
   CASE_STATUSES,
   CASE_STATUS_LABELS,
+  checkCaseStatus,
   MAX_PHOTOS,
   MAX_PHOTO_MB,
   SPECIES,
@@ -23,14 +25,19 @@ import { PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
 import { CaseStatusBadge, ClosedBadge, GeotagBadge, LabResultBadge } from '@/components/status';
-import { Button, Card, CardHeader, Field, Input, Select, Tabs, Textarea } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Field, Input, Select, Tabs, Textarea } from '@/components/ui';
+import { PopulationUpdateDialog, type GroupRow } from '@/dialogs/registry';
 import {
   CaseCloseDialog,
+  CaseEditDialog,
   CaseLocationDialog,
   CaseStatusDialog,
   InvestigationDialog,
   LabDialog,
   ResponseDialog,
+  VoidDialog,
+  type LabEditRecord,
+  type LabLite,
 } from '@/dialogs/surveillance';
 import type { CaseRow } from './types';
 
@@ -378,8 +385,14 @@ export function CaseNewPage() {
 
 /* ---------------- Case profile ---------------- */
 
+interface VoidInfo {
+  voided?: boolean;
+  voidedBy?: string | null;
+  voidReason?: string | null;
+}
+
 interface CaseDetail {
-  case: CaseRow;
+  case: CaseRow & { culled: number; pendingPopulation: number };
   history: {
     id: number;
     status: CaseStatus;
@@ -388,25 +401,17 @@ interface CaseDetail {
     byName: string | null;
     at: string;
   }[];
-  investigations: { id: number; date: string; investigator: string | null; notes: string }[];
-  labs: {
-    id: number;
-    sampleId: string;
-    sampleType: string | null;
-    collectedAt: string | null;
-    laboratory: string | null;
-    sentAt: string | null;
-    result: string;
-    resultDate: string | null;
-  }[];
-  responses: {
+  investigations: ({ id: number; date: string; investigator: string | null; notes: string } & VoidInfo)[];
+  labs: (LabEditRecord & VoidInfo)[];
+  responses: ({
     id: number;
     type: string;
     typeLabel: string;
     date: string;
     personnel: string | null;
     remarks: string | null;
-  }[];
+    heads: number | null;
+  } & VoidInfo)[];
   linkedCases: {
     id: number;
     code: string;
@@ -482,11 +487,24 @@ export function CaseDetailPage() {
   const navigate = useNavigate();
   const { canEdit: canWrite, isAdmin } = useAuth();
   const [tab, setTab] = useState<CaseTab>('overview');
-  const [dlg, setDlg] = useState<null | 'status' | 'location' | 'inv' | 'lab' | 'resp' | 'close'>(null);
+  const [dlg, setDlg] = useState<
+    null | 'status' | 'location' | 'inv' | 'lab' | 'resp' | 'close' | 'edit' | 'pop' | 'void'
+  >(null);
+  const [labEdit, setLabEdit] = useState<LabEditRecord | null>(null);
+  const [suggest, setSuggest] = useState<{ status: CaseStatus; lab: LabLite } | null>(null);
+  const [voidTarget, setVoidTarget] = useState<{ url: string; what: string } | null>(null);
+  const [popExtra, setPopExtra] = useState(0);
   const { data, isLoading, error } = useApi<CaseDetail>(`/api/cases/${id}`);
   const { data: lookups } = useLookups();
+  const { data: farmDetail } = useApi<{ groups: GroupRow[] }>(
+    dlg === 'pop' && data ? `/api/farms/${data.case.farmId}` : null,
+  );
   const reopen = useSave<Record<string, never>>('POST', `/api/cases/${id}/reopen`, {
     success: 'Case reopened.',
+  });
+  const reconcile = useSave<Record<string, never>>('POST', `/api/cases/${id}/population-reconciled`, {
+    success: 'Marked as reflected in the population.',
+    offline: false,
   });
   if (error) return <ErrorBox error={error} />;
   if (isLoading || !data) return <Loading />;
@@ -495,6 +513,41 @@ export function CaseDetailPage() {
   // A closed case is read-only.
   const canEdit = canWrite && !c.closed;
   const final = c.status === 'POSITIVE' || c.status === 'NEGATIVE';
+  const pending = c.pendingPopulation + popExtra;
+
+  // Suggested new counts for the affected species: take the deaths/culled heads off its groups,
+  // never below the group's tagged animals. Staff review the numbers before saving.
+  const popPrefill: Record<number, { count: number; reason: string }> = {};
+  let remaining = pending;
+  for (const g of [...(farmDetail?.groups ?? [])]
+    .filter((x) => x.species === c.species)
+    .sort((a, b) => b.count - a.count)) {
+    const take = Math.min(remaining, Math.max(0, g.count - g.tagged));
+    if (!take) continue;
+    popPrefill[g.id] = { count: g.count - take, reason: `${c.code}: −${take} (deaths/culling)` };
+    remaining -= take;
+  }
+
+  /** After a lab record is saved, offer the status that matches it. */
+  const afterLabSaved = (v: { result: string; sentAt?: string }) => {
+    const lab = { result: v.result, sentAt: v.sentAt ?? null };
+    const target: CaseStatus | null =
+      v.result === 'POSITIVE' || v.result === 'NEGATIVE'
+        ? (v.result as CaseStatus)
+        : v.sentAt && CASE_STAGE[c.status] < 2
+          ? 'SENT_TO_LAB'
+          : CASE_STAGE[c.status] < 1
+            ? 'SAMPLE_COLLECTED'
+            : null;
+    const labsAfter = [...data.labs.filter((l) => !l.voided && l.id !== labEdit?.id), lab] as LabLite[];
+    if (target && target !== c.status) {
+      const check = checkCaseStatus(c.status, target, labsAfter);
+      if (check.allowed && !check.correction) {
+        setSuggest({ status: target, lab });
+        setDlg('status');
+      }
+    }
+  };
 
   return (
     <div>
@@ -511,6 +564,9 @@ export function CaseDetailPage() {
           <>
             {canEdit && (
               <>
+                <Button variant="outline" onClick={() => setDlg('edit')}>
+                  <Pencil /> Edit details
+                </Button>
                 <Button variant="outline" onClick={() => setDlg('location')}>
                   <MapPin /> {c.mapped ? 'Edit location' : 'Add location'}
                 </Button>
@@ -541,6 +597,31 @@ export function CaseDetailPage() {
               {c.closedBy ? ` by ${c.closedBy}` : ''}. This case is read-only.
             </div>
             {c.closureNote && <div className="mt-0.5 text-slate-600">{c.closureNote}</div>}
+          </div>
+        </div>
+      )}
+      {canEdit && pending > 0 && (
+        <div className="mb-4 flex flex-col gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14.5px] text-slate-700 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <span>
+              <b className="font-medium">{pending}</b> animal(s) died or were culled in this case
+              {c.culled ? ` (${c.deaths} death(s), ${c.culled} culled)` : ''}, but {c.farmName}'s population
+              has not been updated yet.
+            </span>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" onClick={() => setDlg('pop')}>
+              Update population
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              loading={reconcile.isPending}
+              onClick={() => reconcile.mutate({})}
+            >
+              Already counted
+            </Button>
           </div>
         </div>
       )}
@@ -674,17 +755,84 @@ export function CaseDetailPage() {
               columns={[
                 { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date) },
                 { key: 'investigator', header: 'Investigator' },
-                { key: 'notes', header: 'Notes', className: 'whitespace-pre-wrap' },
+                {
+                  key: 'notes',
+                  header: 'Notes',
+                  className: 'whitespace-pre-wrap',
+                  cell: (r) => <VoidAware r={r}>{r.notes}</VoidAware>,
+                },
+                ...(isAdmin
+                  ? [
+                      {
+                        key: 'actions',
+                        header: '',
+                        sort: false as const,
+                        cell: (r: CaseDetail['investigations'][number]) =>
+                          !r.voided && (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => {
+                                setVoidTarget({
+                                  url: `/api/investigations/${r.id}/void`,
+                                  what: `investigation of ${fmtDate(r.date)}`,
+                                });
+                                setDlg('void');
+                              }}
+                            >
+                              Void
+                            </Button>
+                          ),
+                      },
+                    ]
+                  : []),
               ]}
               empty="No investigations recorded yet."
             />
           </Card>
         )}
         {tab === 'laboratory' && (
-          <LabTable labs={data.labs} onAdd={canEdit ? () => setDlg('lab') : undefined} />
+          <LabTable
+            labs={data.labs}
+            onAdd={
+              canEdit
+                ? () => {
+                    setLabEdit(null);
+                    setDlg('lab');
+                  }
+                : undefined
+            }
+            onEdit={
+              canEdit
+                ? (l) => {
+                    setLabEdit(l);
+                    setDlg('lab');
+                  }
+                : undefined
+            }
+            onVoid={
+              isAdmin
+                ? (l) => {
+                    setVoidTarget({ url: `/api/labs/${l.id}/void`, what: `lab record ${l.sampleId}` });
+                    setDlg('void');
+                  }
+                : undefined
+            }
+          />
         )}
         {tab === 'response' && (
-          <ResponsePanel detail={data} onLog={canEdit ? () => setDlg('resp') : undefined} />
+          <ResponsePanel
+            detail={data}
+            onLog={canEdit ? () => setDlg('resp') : undefined}
+            onVoid={
+              isAdmin
+                ? (r) => {
+                    setVoidTarget({ url: `/api/responses/${r.id}/void`, what: `${r.typeLabel} record` });
+                    setDlg('void');
+                  }
+                : undefined
+            }
+          />
         )}
         {tab === 'map' &&
           (c.mapped ? (
@@ -725,11 +873,42 @@ export function CaseDetailPage() {
       </div>
       <CaseStatusDialog
         open={dlg === 'status'}
-        onOpenChange={(o) => setDlg(o ? 'status' : null)}
+        onOpenChange={(o) => {
+          setDlg(o ? 'status' : null);
+          if (!o) setSuggest(null);
+        }}
         caseId={c.id}
         code={c.code}
         status={c.status}
+        labs={[...data.labs, ...(suggest ? [suggest.lab] : [])]}
+        suggest={suggest?.status}
       />
+      <CaseEditDialog open={dlg === 'edit'} onOpenChange={(o) => setDlg(o ? 'edit' : null)} c={c} />
+      {farmDetail && dlg === 'pop' && (
+        <PopulationUpdateDialog
+          open
+          onOpenChange={(o) => {
+            setDlg(o ? 'pop' : null);
+            if (!o) setPopExtra(0);
+          }}
+          farm={{ id: c.farmId, name: c.farmName ?? '' }}
+          groups={farmDetail.groups}
+          prefill={popPrefill}
+          note={`Suggested counts take ${pending} ${c.species.toLowerCase()} off for ${c.code}. Check the numbers before saving.`}
+          onSaved={() => {
+            setPopExtra(0);
+            reconcile.mutate({});
+          }}
+        />
+      )}
+      {voidTarget && (
+        <VoidDialog
+          open={dlg === 'void'}
+          onOpenChange={(o) => setDlg(o ? 'void' : null)}
+          url={voidTarget.url}
+          what={voidTarget.what}
+        />
+      )}
       {dlg === 'location' && (
         <CaseLocationDialog
           open
@@ -753,15 +932,24 @@ export function CaseDetailPage() {
       />
       <LabDialog
         open={dlg === 'lab'}
-        onOpenChange={(o) => setDlg(o ? 'lab' : null)}
+        onOpenChange={(o) => setDlg((d) => (o ? 'lab' : d === 'lab' ? null : d))}
         caseId={c.id}
         code={c.code}
+        lab={labEdit}
+        onSaved={afterLabSaved}
       />
       <ResponseDialog
         open={dlg === 'resp'}
-        onOpenChange={(o) => setDlg(o ? 'resp' : null)}
+        onOpenChange={(o) => setDlg((d) => (o ? 'resp' : d === 'resp' ? null : d))}
         caseId={c.id}
         code={c.code}
+        onSaved={(v) => {
+          // Culling removes animals: offer the population update straight away.
+          if (v.type === 'CULLING_DEPOPULATION' && Number(v.heads) > 0) {
+            setPopExtra(Number(v.heads));
+            setDlg('pop');
+          }
+        }}
       />
       <CaseCloseDialog
         open={dlg === 'close'}
@@ -773,7 +961,31 @@ export function CaseDetailPage() {
   );
 }
 
-export function LabTable({ labs, onAdd }: { labs: CaseDetail['labs']; onAdd?: () => void }) {
+/** Shows a voided record struck through with who voided it and why. */
+function VoidAware({ r, children }: { r: VoidInfo; children: React.ReactNode }) {
+  if (!r.voided) return <>{children}</>;
+  return (
+    <div>
+      <span className="text-slate-400 line-through">{children}</span> <Badge tone="slate">Voided</Badge>
+      <div className="text-[12.5px] text-slate-500">
+        {r.voidReason}
+        {r.voidedBy ? ` — ${r.voidedBy}` : ''}
+      </div>
+    </div>
+  );
+}
+
+export function LabTable({
+  labs,
+  onAdd,
+  onEdit,
+  onVoid,
+}: {
+  labs: CaseDetail['labs'];
+  onAdd?: () => void;
+  onEdit?: (l: CaseDetail['labs'][number]) => void;
+  onVoid?: (l: CaseDetail['labs'][number]) => void;
+}) {
   return (
     <Card>
       <CardHeader
@@ -792,13 +1004,37 @@ export function LabTable({ labs, onAdd }: { labs: CaseDetail['labs']; onAdd?: ()
         pageSize={0}
         hideFooter
         columns={[
-          { key: 'sampleId', header: 'Sample ID' },
+          { key: 'sampleId', header: 'Sample ID', cell: (r) => <VoidAware r={r}>{r.sampleId}</VoidAware> },
           { key: 'sampleType', header: 'Type' },
           { key: 'collectedAt', header: 'Collected', cell: (r) => fmtDate(r.collectedAt) },
           { key: 'laboratory', header: 'Laboratory' },
           { key: 'sentAt', header: 'Sent', cell: (r) => fmtDate(r.sentAt) },
           { key: 'result', header: 'Result', cell: (r) => <LabResultBadge result={r.result} /> },
           { key: 'resultDate', header: 'Result date', cell: (r) => fmtDate(r.resultDate) },
+          ...(onEdit || onVoid
+            ? [
+                {
+                  key: 'actions',
+                  header: '',
+                  sort: false as const,
+                  cell: (r: CaseDetail['labs'][number]) =>
+                    !r.voided && (
+                      <div className="flex gap-1">
+                        {onEdit && (
+                          <Button size="xs" variant="outline" onClick={() => onEdit(r)}>
+                            {r.result === 'PENDING' ? 'Enter result' : 'Edit'}
+                          </Button>
+                        )}
+                        {onVoid && (
+                          <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
+                            Void
+                          </Button>
+                        )}
+                      </div>
+                    ),
+                },
+              ]
+            : []),
         ]}
         empty="No laboratory records yet."
       />
@@ -806,7 +1042,15 @@ export function LabTable({ labs, onAdd }: { labs: CaseDetail['labs']; onAdd?: ()
   );
 }
 
-export function ResponsePanel({ detail, onLog }: { detail: CaseDetail; onLog?: () => void }) {
+export function ResponsePanel({
+  detail,
+  onLog,
+  onVoid,
+}: {
+  detail: CaseDetail;
+  onLog?: () => void;
+  onVoid?: (r: CaseDetail['responses'][number]) => void;
+}) {
   const c = detail.case;
   const navigate = useNavigate();
   return (
@@ -887,7 +1131,19 @@ export function ResponsePanel({ detail, onLog }: { detail: CaseDetail; onLog?: (
             items={detail.responses.map((r) => ({
               key: r.id,
               meta: fmtDate(r.date),
-              title: r.typeLabel,
+              title: r.voided ? (
+                <VoidAware r={r}>{r.typeLabel}</VoidAware>
+              ) : (
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {r.typeLabel}
+                  {r.heads ? <Badge tone="red">{r.heads} culled</Badge> : null}
+                  {onVoid && (
+                    <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
+                      Void
+                    </Button>
+                  )}
+                </span>
+              ),
               tag: r.personnel,
               body: r.remarks,
             }))}

@@ -1,11 +1,41 @@
 import { Router } from 'express';
-import { groupCreateSchema, isoMonth, populationUpdateSchema } from '@livestock/shared';
-import { prisma } from '../db';
+import { groupCreateSchema, groupUpdateSchema, isoMonth, populationUpdateSchema } from '@livestock/shared';
+import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
-import { ah, badRequest, parse, qstr } from '../lib/http';
+import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { loadFarms, populationTotals } from '../services/metrics';
 
 export const populationRouter = Router();
+
+/**
+ * Automatic change to a group's head count (transfer, death, sale…). It is written to the farm's
+ * update history as a "System adjustment" so every change is explained, but it does not count as
+ * the monthly verification (lastVerified is untouched).
+ */
+export async function adjustGroupCount(
+  tx: Prisma.TransactionClient,
+  groupId: number,
+  delta: number,
+  reason: string,
+  by?: string | null,
+) {
+  const g = await tx.populationGroup.findUnique({ where: { id: groupId } });
+  if (!g || delta === 0) return;
+  const next = Math.max(0, g.count + delta);
+  await tx.populationGroup.update({ where: { id: groupId }, data: { count: next } });
+  await tx.populationUpdate.create({
+    data: {
+      groupId,
+      month: isoMonth(),
+      count: next,
+      previous: g.count,
+      change: next - g.count,
+      reason: reason.slice(0, 200),
+      kind: 'ADJUSTMENT',
+      createdBy: by ?? null,
+    },
+  });
+}
 
 populationRouter.get(
   '/groups',
@@ -57,6 +87,10 @@ populationRouter.post(
     const farm = await prisma.farm.findUnique({ where: { id: d.farmId } });
     if (!farm || farm.archived) throw badRequest('Select an active farm');
     const month = d.reportingMonth ?? isoMonth();
+    if (month > isoMonth())
+      throw badRequest('Validation failed', {
+        fieldErrors: { reportingMonth: ['Cannot use a future month'] },
+      });
     const group = await prisma.$transaction(async (tx) => {
       const created = await tx.populationGroup.create({
         data: {
@@ -132,7 +166,8 @@ populationRouter.post(
           .filter((u) => !u.superseded)
           .sort((a, b) => (a.month === b.month ? a.id - b.id : a.month < b.month ? -1 : 1));
         const prev = active.filter((u) => u.month < d.month).at(-1);
-        const sameMonth = active.filter((u) => u.month === d.month);
+        // Only earlier *verified* counts for this month are superseded; system adjustments stay as history.
+        const sameMonth = active.filter((u) => u.month === d.month && u.kind === 'VERIFIED');
         if (sameMonth.length)
           await tx.populationUpdate.updateMany({
             where: { id: { in: sameMonth.map((u) => u.id) } },
@@ -150,6 +185,13 @@ populationRouter.post(
             createdBy: req.user?.name,
           },
         });
+        // Correcting an older month: the next entry's "previous" and "change" must follow the new count.
+        const following = active.find((x) => x.month > d.month);
+        if (following)
+          await tx.populationUpdate.update({
+            where: { id: following.id },
+            data: { previous: e.count, change: following.count - e.count },
+          });
         const isLatest = !g.lastVerified || d.month >= g.lastVerified;
         if (isLatest)
           await tx.populationGroup.update({
@@ -170,5 +212,46 @@ populationRouter.post(
       return out;
     });
     res.status(201).json({ saved: result.length });
+  }),
+);
+
+populationRouter.patch(
+  '/groups/:id',
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const d = parse(groupUpdateSchema, req.body);
+    const g = await prisma.populationGroup.findUnique({ where: { id } });
+    if (!g || g.archived) throw notFound('Group');
+    const updated = await prisma.populationGroup.update({
+      where: { id },
+      data: {
+        breed: d.breed ?? null,
+        sex: d.sex,
+        lifeStage: d.lifeStage,
+        healthStatus: d.healthStatus,
+        remarks: d.remarks ?? null,
+      },
+    });
+    await logActivity('farm', g.farmId, 'group-updated', `Group ${g.code} details updated`, req.user?.name);
+    res.json(updated);
+  }),
+);
+
+populationRouter.post(
+  '/groups/:id/archive',
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const g = await prisma.populationGroup.findUnique({
+      where: { id },
+      include: { animals: { where: { status: 'ACTIVE' }, select: { id: true } } },
+    });
+    if (!g || g.archived) throw notFound('Group');
+    if (g.count > 0 || g.animals.length > 0)
+      throw badRequest(
+        `Group ${g.code} still has ${g.count} head. Update its count to 0 first (e.g. all sold), then archive it.`,
+      );
+    await prisma.populationGroup.update({ where: { id }, data: { archived: true } });
+    await logActivity('farm', g.farmId, 'group-archived', `Group ${g.code} archived`, req.user?.name);
+    res.json({ ok: true });
   }),
 );

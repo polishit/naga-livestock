@@ -154,8 +154,11 @@ export function monthlyTrend(farms: LoadedFarm[], months: string[]) {
         const active = g.updates.filter((u) => !u.superseded);
         const inMonth = active.filter((u) => u.month === m).at(-1);
         if (inMonth) {
+          // A month counts as verified only if staff entered a count; system adjustments alone don't.
+          const wasVerified = active.some((u) => u.month === m && u.kind === 'VERIFIED');
           const amended = g.updates.some((u) => u.superseded && u.month === m);
-          if (amended) adjusted += inMonth.count;
+          if (!wasVerified) carried += inMonth.count;
+          else if (amended) adjusted += inMonth.count;
           else verified += inMonth.count;
           continue;
         }
@@ -186,9 +189,12 @@ export async function vaccinationCoverage(
   const vax = await prisma.vaccination.findMany({
     where: {
       farmId: { in: farmIds },
+      voidedAt: null,
       date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) },
     },
+    include: { animal: { select: { groupId: true, status: true } } },
   });
+  const allGroups = farms.flatMap((f) => f.groups);
   const pop = populationTotals(farms);
   const species = SPECIES.filter((s) => s !== 'Other' || pop.bySpecies.some((p) => p.species === 'Other'));
   const rows = species
@@ -197,12 +203,24 @@ export async function vaccinationCoverage(
       const population = pop.bySpecies.find((p) => p.species === s)?.population ?? 0;
       const tagged = pop.bySpecies.find((p) => p.species === s)?.tagged ?? 0;
       const sv = vax.filter((v) => v.species === s);
-      const groupFirstDoses = sv
-        .filter((v) => v.target === 'GROUP' && v.doseNumber === 1)
-        .reduce((a, v) => a + v.count, 0);
-      const animalIds = new Set(sv.filter((v) => v.target === 'ANIMAL' && v.animalId).map((v) => v.animalId));
-      const estimatedHeads = Math.min(population, groupFirstDoses + animalIds.size);
-      const exactVaccinated = Math.min(tagged, animalIds.size);
+      // Count each group at most up to its real size, so repeated first-dose records or an animal
+      // vaccinated both on its own and with its group are not counted twice.
+      let estimatedHeads = 0;
+      let exactVaccinated = 0;
+      for (const g of allGroups.filter((x) => x.species === s)) {
+        const groupDoses = sv
+          .filter((v) => v.target === 'GROUP' && v.doseNumber === 1 && v.groupId === g.id)
+          .reduce((a, v) => a + v.count, 0);
+        const animals = new Set(
+          sv
+            .filter(
+              (v) => v.target === 'ANIMAL' && v.animal?.groupId === g.id && v.animal.status === 'ACTIVE',
+            )
+            .map((v) => v.animalId),
+        ).size;
+        estimatedHeads += Math.min(g.count, groupDoses + animals);
+        exactVaccinated += Math.min(g.animals.length, animals);
+      }
       return {
         species: s,
         population,
@@ -264,7 +282,11 @@ export async function overview(f: Filters & { months?: number }) {
   });
 
   const vaxRecords = await prisma.vaccination.findMany({
-    where: { farmId: { in: farms.map((x) => x.id) }, date: { gte: new Date(`${months[0]}-01T00:00:00Z`) } },
+    where: {
+      farmId: { in: farms.map((x) => x.id) },
+      voidedAt: null,
+      date: { gte: new Date(`${months[0]}-01T00:00:00Z`) },
+    },
   });
   const vaccinationActivity = months.map((m) => {
     const inMonth = vaxRecords.filter((v) => ymd(v.date)!.startsWith(m));

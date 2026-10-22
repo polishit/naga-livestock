@@ -26,7 +26,7 @@ export default {
         brand: { DEFAULT: '#7aad69', strong: '#3a7d2f', dark: '#166534', mid: '#16a34a', light: '#eef7ea' },
       },
       borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
-      boxShadow: { card: '0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.08)' },
+      boxShadow: { card: '0 1px 2px rgba(15,23,42,.04), 0 2px 6px rgba(15,23,42,.05)' },
     },
   },
   plugins: [animate],

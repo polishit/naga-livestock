@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { vaccinationCreateSchema } from '@livestock/shared';
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
-import { dateOnly, today } from '../lib/dates';
+import { assertNotFuture, dateOnly, today } from '../lib/dates';
 import { ah, badRequest, parse, qstr } from '../lib/http';
 import { vaccinationCoverage } from '../services/metrics';
 import { getSettings } from '../services/settings';
@@ -36,6 +36,8 @@ vaccinationsRouter.get(
     end.setUTCDate(end.getUTCDate() + days);
     const rows = await prisma.vaccination.findMany({
       where: {
+        voidedAt: null,
+        reminderDone: false,
         nextDate: { gte: new Date(`${start}T00:00:00Z`), lte: end },
         ...(barangay ? { farm: { barangay } } : {}),
       },
@@ -64,13 +66,16 @@ vaccinationsRouter.post(
   '/',
   ah(async (req, res) => {
     const d = parse(vaccinationCreateSchema, req.body);
+    assertNotFuture({ date: d.date });
     const farm = await prisma.farm.findUnique({ where: { id: d.farmId } });
     if (!farm) throw badRequest('Validation failed', { fieldErrors: { farmId: ['Select a farm'] } });
+    if (farm.archived)
+      throw badRequest('Validation failed', { fieldErrors: { farmId: ['This farm is archived'] } });
     let species: string;
     let count = d.count;
     if (d.target === 'GROUP') {
       const g = await prisma.populationGroup.findUnique({ where: { id: d.groupId! } });
-      if (!g || g.farmId !== farm.id)
+      if (!g || g.farmId !== farm.id || g.archived)
         throw badRequest('Validation failed', { fieldErrors: { groupId: ['Group is not on this farm'] } });
       if (count > g.count)
         throw badRequest('Validation failed', {
@@ -81,6 +86,10 @@ vaccinationsRouter.post(
       const a = await prisma.animal.findUnique({ where: { id: d.animalId! }, include: { group: true } });
       if (!a || a.group.farmId !== farm.id)
         throw badRequest('Validation failed', { fieldErrors: { groupId: ['Animal is not on this farm'] } });
+      if (a.status !== 'ACTIVE')
+        throw badRequest('Validation failed', {
+          fieldErrors: { animalId: [`${a.code} is ${a.status.toLowerCase()} and cannot be vaccinated`] },
+        });
       species = a.species;
       count = 1;
     }
@@ -112,6 +121,24 @@ vaccinationsRouter.post(
         where: { id: created.id },
         data: { code: displayCode('VAX', created.id) },
       });
+      // This dose fulfils earlier "next dose" reminders for the same group/animal and vaccine.
+      const earlier = await tx.vaccination.findMany({
+        where: {
+          id: { not: vv.id },
+          voidedAt: null,
+          reminderDone: false,
+          nextDate: { not: null },
+          date: { lte: vv.date },
+          ...(d.target === 'GROUP' ? { groupId: d.groupId! } : { animalId: d.animalId! }),
+        },
+        select: { id: true, vaccine: true },
+      });
+      const same = earlier.filter((e) => e.vaccine.trim().toLowerCase() === vv.vaccine.trim().toLowerCase());
+      if (same.length)
+        await tx.vaccination.updateMany({
+          where: { id: { in: same.map((e) => e.id) } },
+          data: { reminderDone: true },
+        });
       await logActivity(
         'farm',
         farm.id,

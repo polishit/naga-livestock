@@ -11,7 +11,7 @@ import { prisma } from './db';
 import { env } from './env';
 import { HttpError } from './lib/http';
 import { animalsRouter, straysRouter, transfersRouter } from './routes/animals';
-import { casesRouter, labsRouter, radiusRouter } from './routes/cases';
+import { casesRouter, labsRouter, radiusRouter, recordsRouter } from './routes/cases';
 import { farmsRouter } from './routes/farms';
 import {
   authRouter,
@@ -65,6 +65,7 @@ export function createApp() {
   api.use('/cases', casesRouter);
   api.use('/labs', labsRouter);
   api.use('/radius', radiusRouter);
+  api.use('/', recordsRouter);
   api.use('/vaccinations', vaccinationsRouter);
   api.use('/users', requireRole('ADMIN'), usersRouter);
   api.use('/settings', settingsRouter);
@@ -84,7 +85,7 @@ export function createApp() {
         .json({ error: err.message, ...(err.details ? (err.details as object) : {}) });
     }
     if (err instanceof MulterError) {
-       return res.status(400).json({
+      return res.status(400).json({
         error: err.code === 'LIMIT_FILE_SIZE' ? `Each photo must be ${MAX_PHOTO_MB} MB or smaller` : err.message,
       });
     }

@@ -14,7 +14,7 @@ import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/com
 import { ActiveBadge, CaseStatusBadge, RecordStatusBadge, SpeciesChip } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Tabs } from '@/components/ui';
 import { AnimalDialog } from '@/dialogs/animals';
-import { FarmDialog, GroupDialog, PopulationUpdateDialog } from '@/dialogs/registry';
+import { FarmDialog, GroupDialog, GroupEditDialog, PopulationUpdateDialog } from '@/dialogs/registry';
 import { VaccinationDialog } from '@/dialogs/surveillance';
 import type { CaseRow, FarmSummary, VaccinationRow } from './types';
 
@@ -166,6 +166,7 @@ interface FarmDetail {
     previous: number | null;
     change: number;
     reason: string | null;
+    kind: 'VERIFIED' | 'ADJUSTMENT';
     superseded: boolean;
     createdBy: string | null;
   }[];
@@ -179,14 +180,26 @@ export function FarmDetailPage() {
   const { canEdit } = useAuth();
   const qc = useQueryClient();
   const [tab, setTab] = useState<FarmTab>('overview');
-  const [dlg, setDlg] = useState<null | 'edit' | 'group' | 'update' | 'animal' | 'vax'>(null);
+  const [dlg, setDlg] = useState<null | 'edit' | 'group' | 'update' | 'animal' | 'vax' | 'group-edit'>(null);
+  const [editGroup, setEditGroup] = useState<FarmDetail['groups'][number] | null>(null);
   const { data, isLoading, error } = useApi<FarmDetail>(`/api/farms/${id}`);
   if (error) return <ErrorBox error={error} />;
   if (isLoading || !data) return <Loading />;
   const f = data.farm;
 
+  const archiveGroup = async (g: FarmDetail['groups'][number]) => {
+    if (!confirm(`Archive group ${g.code} (${g.species})? It has 0 head.`)) return;
+    try {
+      await api.post(`/api/population/groups/${g.id}/archive`);
+      toast.success(`Group ${g.code} archived.`);
+      qc.invalidateQueries();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'Could not archive group');
+    }
+  };
+
   const archive = async () => {
-    if (!confirm(`Archive ${f.name}? The farm must have no animals.`)) return;
+    if (!confirm(`Archive ${f.name}? The farm must have no animals and no open disease cases.`)) return;
     try {
       await api.post(`/api/farms/${f.id}/archive`);
       toast.success('Farm archived.');
@@ -339,6 +352,34 @@ export function FarmDetailPage() {
                 { key: 'tagged', header: 'Tagged' },
                 { key: 'healthStatus', header: 'Health' },
                 { key: 'lastVerified', header: 'Last verified', cell: (r) => fmtMonth(r.lastVerified) },
+                ...(canEdit && !f.archived
+                  ? [
+                      {
+                        key: 'actions',
+                        header: '',
+                        sort: false as const,
+                        cell: (r: FarmDetail['groups'][number]) => (
+                          <div className="flex gap-1">
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={() => {
+                                setEditGroup(r);
+                                setDlg('group-edit');
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            {r.count === 0 && r.tagged === 0 && (
+                              <Button size="xs" variant="ghost" onClick={() => archiveGroup(r)}>
+                                Archive
+                              </Button>
+                            )}
+                          </div>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
               empty="No population groups yet."
             />
@@ -388,7 +429,13 @@ export function FarmDetailPage() {
                   key: 'superseded',
                   header: 'Entry',
                   cell: (r) =>
-                    r.superseded ? <Badge>Superseded</Badge> : <Badge tone="green">Current</Badge>,
+                    r.superseded ? (
+                      <Badge>Superseded</Badge>
+                    ) : r.kind === 'ADJUSTMENT' ? (
+                      <Badge tone="blue">System adjustment</Badge>
+                    ) : (
+                      <Badge tone="green">Verified count</Badge>
+                    ),
                 },
                 { key: 'createdBy', header: 'By' },
               ]}
@@ -402,11 +449,33 @@ export function FarmDetailPage() {
               rowKey={(r) => r.id}
               columns={[
                 { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date) },
-                { key: 'vaccine', header: 'Vaccine' },
+                {
+                  key: 'vaccine',
+                  header: 'Vaccine',
+                  cell: (r) =>
+                    r.voided ? (
+                      <span>
+                        <span className="text-slate-400 line-through">{r.vaccine}</span> <Badge>Voided</Badge>
+                      </span>
+                    ) : (
+                      r.vaccine
+                    ),
+                },
                 { key: 'species', header: 'Species' },
                 { key: 'targetLabel', header: 'Target' },
                 { key: 'doseNumber', header: 'Dose' },
-                { key: 'nextDate', header: 'Next', cell: (r) => (r.nextDate ? fmtDate(r.nextDate) : '—') },
+                {
+                  key: 'nextDate',
+                  header: 'Next',
+                  cell: (r) =>
+                    r.nextDate ? (
+                      <span>
+                        {fmtDate(r.nextDate)} {r.reminderDone && <Badge tone="green">Given</Badge>}
+                      </span>
+                    ) : (
+                      '—'
+                    ),
+                },
                 { key: 'administeredBy', header: 'By' },
               ]}
               empty="No vaccinations recorded."
@@ -434,6 +503,11 @@ export function FarmDetailPage() {
       </div>
       <FarmDialog open={dlg === 'edit'} onOpenChange={(o) => setDlg(o ? 'edit' : null)} farm={f} />
       <GroupDialog open={dlg === 'group'} onOpenChange={(o) => setDlg(o ? 'group' : null)} farmId={f.id} />
+      <GroupEditDialog
+        open={dlg === 'group-edit'}
+        onOpenChange={(o) => setDlg(o ? 'group-edit' : null)}
+        group={editGroup}
+      />
       <PopulationUpdateDialog
         open={dlg === 'update'}
         onOpenChange={(o) => setDlg(o ? 'update' : null)}

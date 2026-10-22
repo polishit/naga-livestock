@@ -361,12 +361,16 @@ metricsRouter.get(
   ah(async (_req, res) => {
     const settings = await getSettings();
     const farms = (await loadFarms()).map(summarizeFarm);
-    const cases = await loadCases();
+    // Closed cases no longer need attention.
+    const cases = (await loadCases()).filter((c) => c.closedAt == null);
     const start = today();
     const end = new Date(`${start}T00:00:00Z`);
     end.setUTCDate(end.getUTCDate() + settings.vaccinationUpcomingDays);
     const due = await prisma.vaccination.findMany({
       where: {
+        voidedAt: null,
+        reminderDone: false,
+        farm: { archived: false },
         nextDate: { lte: end, gte: new Date(new Date(`${start}T00:00:00Z`).getTime() - 30 * 86400_000) },
       },
       include: { farm: true, group: true, animal: true },
@@ -490,6 +494,44 @@ settingsRouter.put(
     await saveSettings(d);
     await logActivity('settings', 0, 'updated', 'System settings updated', req.user?.name);
     res.json(await getSettings());
+  }),
+);
+
+/** Admin: download every record as one JSON file (passwords and login tokens are left out). */
+settingsRouter.get(
+  '/backup',
+  requireRole('ADMIN'),
+  ah(async (req, res) => {
+    const users = await prisma.user.findMany({
+      select: { id: true, email: true, name: true, title: true, role: true, active: true, createdAt: true },
+    });
+    const data = {
+      exportedAt: new Date().toISOString(),
+      exportedBy: req.user?.name ?? null,
+      users,
+      owners: await prisma.owner.findMany(),
+      pcicPolicies: await prisma.pcicPolicy.findMany(),
+      farms: await prisma.farm.findMany(),
+      populationGroups: await prisma.populationGroup.findMany(),
+      populationUpdates: await prisma.populationUpdate.findMany(),
+      animals: await prisma.animal.findMany(),
+      ownershipTransfers: await prisma.ownershipTransfer.findMany(),
+      strayIncidents: await prisma.strayIncident.findMany(),
+      diseaseCases: await prisma.diseaseCase.findMany(),
+      caseStatusHistory: await prisma.caseStatusHistory.findMany(),
+      investigations: await prisma.investigation.findMany(),
+      labRecords: await prisma.labRecord.findMany(),
+      responseActivities: await prisma.responseActivity.findMany(),
+      vaccinations: await prisma.vaccination.findMany(),
+      activityLog: await prisma.activityLog.findMany(),
+      settings: await prisma.setting.findMany(),
+    };
+    await logActivity('settings', 0, 'backup', 'Data backup downloaded', req.user?.name);
+    // Decimal values (PCIC amounts) serialise as strings.
+    const json = JSON.stringify(data, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="naga-livestock-backup-${today()}.json"`);
+    res.send(json);
   }),
 );
 

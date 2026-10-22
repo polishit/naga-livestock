@@ -4,6 +4,8 @@
 services:
   mysql:
     image: mysql:8.4
+    # Starts again automatically whenever Docker Desktop starts.
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: livestock

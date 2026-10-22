@@ -360,6 +360,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
     case 'lab-results': {
       const labs = await prisma.labRecord.findMany({
         where: {
+          voidedAt: null,
           case: {
             ...(p.barangay ? { barangay: p.barangay } : {}),
             ...(p.species ? { species: p.species } : {}),
@@ -401,6 +402,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
     case 'investigations': {
       const inv = await prisma.investigation.findMany({
         where: {
+          voidedAt: null,
           case: {
             ...(p.barangay ? { barangay: p.barangay } : {}),
             ...(p.species ? { species: p.species } : {}),
@@ -458,6 +460,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
     case 'response-activities': {
       const acts = await prisma.responseActivity.findMany({
         where: {
+          voidedAt: null,
           case: {
             ...(p.barangay ? { barangay: p.barangay } : {}),
             ...(p.species ? { species: p.species } : {}),
@@ -492,6 +495,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
     case 'vaccination-records': {
       const v = await prisma.vaccination.findMany({
         where: {
+          voidedAt: null,
           ...(p.species ? { species: p.species } : {}),
           ...(p.barangay ? { farm: { barangay: p.barangay } } : {}),
         },
@@ -563,6 +567,8 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
       const end = p.to ?? isoDate(new Date(endD.getTime() + endD.getTimezoneOffset() * 60000));
       const v = await prisma.vaccination.findMany({
         where: {
+          voidedAt: null,
+          reminderDone: false,
           nextDate: { gte: dateOnly(start), lte: dateOnly(end) },
           ...(p.species ? { species: p.species } : {}),
           ...(p.barangay ? { farm: { barangay: p.barangay } } : {}),
@@ -599,7 +605,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
     }
     case 'vaccination-by-barangay': {
       const v = await prisma.vaccination.findMany({
-        where: p.species ? { species: p.species } : {},
+        where: { voidedAt: null, ...(p.species ? { species: p.species } : {}) },
         include: { farm: true },
       });
       const rows = v.filter((x) => inRange(x.date, p) && (!p.barangay || x.farm.barangay === p.barangay));

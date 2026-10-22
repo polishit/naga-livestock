@@ -74,6 +74,10 @@ export interface VaccinationRow {
   farmId: number;
   farmName: string | null;
   barangay: string | null;
+  reminderDone: boolean;
+  voided: boolean;
+  voidedBy: string | null;
+  voidReason: string | null;
 }
 
 export interface TransferRow {

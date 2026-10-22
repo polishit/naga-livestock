@@ -4,7 +4,7 @@ import {
   BARANGAYS,
   CASE_STATUSES,
   FARM_TYPES,
-    LAB_RESULTS,
+  LAB_RESULTS,
   MAX_PHOTOS,
   OWNER_STATUSES,
   PCIC_STATUSES,
@@ -122,6 +122,8 @@ export const ownerCreateSchema = z.object({
   contact: optText(40),
   rsbsa: optText(60),
   remarks: optText(1000),
+  /** Set after the user confirms a possible duplicate (same name in the same barangay) is a different person. */
+  confirmDuplicate: z.boolean().optional(),
 });
 export type OwnerCreateInput = z.infer<typeof ownerCreateSchema>;
 export const ownerUpdateSchema = ownerCreateSchema.extend({ status: z.enum(OWNER_STATUSES).optional() });
@@ -173,6 +175,14 @@ export const groupCreateSchema = z.object({
   remarks: optText(500),
 });
 export type GroupCreateInput = z.infer<typeof groupCreateSchema>;
+/** Species and counts are not edited here: counts change through monthly updates. */
+export const groupUpdateSchema = z.object({
+  breed: optText(80),
+  sex: z.string().min(1).max(20),
+  lifeStage: z.string().min(1).max(30),
+  healthStatus: z.string().min(1).max(40),
+  remarks: optText(500),
+});
 
 export const populationUpdateSchema = z.object({
   farmId: idField(),
@@ -272,6 +282,24 @@ export const caseCreateSchema = z
 export type CaseCreateInput = z.infer<typeof caseCreateSchema>;
 
 export const caseStatusSchema = z.object({ status: z.enum(CASE_STATUSES), note: optText(500) });
+/** Details that can change while a case is open (species, farm and dates reported stay fixed). */
+export const caseUpdateSchema = z
+  .object({
+    disease: reqText(150),
+    zone: optText(60),
+    affected: intField(1),
+    deaths: intField(0),
+    symptomsDate: optDate,
+    symptoms: optText(1000),
+    reportedBy: optText(120),
+    assignedToId: optId,
+    sampleInfo: optText(300),
+    remarks: optText(1000),
+  })
+  .refine((v) => v.deaths <= v.affected, {
+    path: ['deaths'],
+    message: 'Deaths cannot exceed animals affected',
+  });
 export const caseCloseSchema = z.object({ note: reqText(1000, 'Write the closing remarks / outcome') });
 export const caseLocationSchema = z.object({
   lat: z.number().min(-90).max(90),
@@ -283,22 +311,49 @@ export const investigationCreateSchema = z.object({
   investigator: optText(120),
   notes: reqText(2000),
 });
-export const labCreateSchema = z.object({
-  sampleId: reqText(60),
-  sampleType: optText(80),
-  collectedAt: optDate,
-  laboratory: optText(120),
-  sentAt: optDate,
-  result: z.enum(LAB_RESULTS).default('PENDING'),
-  resultDate: optDate,
-  remarks: optText(500),
-});
-export const responseCreateSchema = z.object({
-  type: z.enum(RESPONSE_TYPES),
-  date: optDate,
-  personnel: optText(200),
-  remarks: optText(1000),
-});
+export const labCreateSchema = z
+  .object({
+    sampleId: reqText(60),
+    sampleType: optText(80),
+    collectedAt: optDate,
+    laboratory: optText(120),
+    sentAt: optDate,
+    result: z.enum(LAB_RESULTS).default('PENDING'),
+    resultDate: optDate,
+    remarks: optText(500),
+  })
+  .refine((v) => !v.collectedAt || !v.sentAt || v.sentAt >= v.collectedAt, {
+    path: ['sentAt'],
+    message: 'Sent date cannot be before the collection date',
+  })
+  .refine((v) => !v.resultDate || !v.sentAt || v.resultDate >= v.sentAt, {
+    path: ['resultDate'],
+    message: 'Result date cannot be before the sent date',
+  })
+  .refine((v) => !v.resultDate || !v.collectedAt || v.resultDate >= v.collectedAt, {
+    path: ['resultDate'],
+    message: 'Result date cannot be before the collection date',
+  })
+  .refine((v) => v.result === 'PENDING' || !!v.resultDate, {
+    path: ['resultDate'],
+    message: 'Enter the date the result was released',
+  });
+export const responseCreateSchema = z
+  .object({
+    type: z.enum(RESPONSE_TYPES),
+    date: optDate,
+    personnel: optText(200),
+    remarks: optText(1000),
+    /** Number of animals culled (Culling / depopulation only). */
+    heads: optInt(1),
+  })
+  .refine((v) => v.type !== 'CULLING_DEPOPULATION' || !!v.heads, {
+    path: ['heads'],
+    message: 'Enter how many animals were culled',
+  });
+
+/** Voiding keeps a wrong record (struck through) and excludes it from all figures. */
+export const voidSchema = z.object({ reason: reqText(300, 'Write why this record is being voided') });
 
 /* ---------- vaccination ---------- */
 

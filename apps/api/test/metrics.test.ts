@@ -23,7 +23,7 @@ describe('recordStatus', () => {
 describe('monthlyTrend', () => {
   const g = (updates: { month: string; count: number; superseded?: boolean }[]) =>
     ({
-      updates: updates.map((u, i) => ({ id: i + 1, superseded: false, ...u })),
+      updates: updates.map((u, i) => ({ id: i + 1, superseded: false, kind: 'VERIFIED', ...u })),
       count: 0,
       animals: [],
     }) as any;

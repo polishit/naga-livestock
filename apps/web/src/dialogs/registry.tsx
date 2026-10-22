@@ -17,6 +17,7 @@ import {
   farmCreateSchema,
   farmUpdateSchema,
   groupCreateSchema,
+  groupUpdateSchema,
   ownerCreateSchema,
   ownerUpdateSchema,
   pcicCreateSchema,
@@ -24,10 +25,17 @@ import {
   titleCase,
 } from '@livestock/shared';
 import { ApiError, api, isQueued } from '@/lib/api';
-import { useAddressLookup, useApi, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
+import {
+  offerFarmLocationForCases,
+  useAddressLookup,
+  useApi,
+  useLookups,
+  useResetOnOpen,
+  useSave,
+} from '@/lib/hooks';
 import { MapView } from '@/components/MapView';
 import { AddressLookupHint, err, useZodForm } from '@/components/forms';
-import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
+import { Button, Checkbox, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface DialogProps {
@@ -62,9 +70,10 @@ export function OwnerDialog({ open, onOpenChange, owner }: DialogProps & { owner
     contact: owner?.contact ?? '',
     rsbsa: owner?.rsbsa ?? '',
     remarks: owner?.remarks ?? '',
+    confirmDuplicate: false,
     ...(editing ? { status: owner!.status } : {}),
   };
-  useResetOnOpen(open, form, values);
+  useResetOnOpen(open, form, values as any);
   const save = useSave<any, { id: number }>(
     editing ? 'PATCH' : 'POST',
     editing ? `/api/owners/${owner!.id}` : '/api/owners',
@@ -104,6 +113,19 @@ export function OwnerDialog({ open, onOpenChange, owner }: DialogProps & { owner
         <Field label="Full name *" error={err(e, 'fullName')} className="sm:col-span-2">
           <Input {...form.register('fullName')} aria-invalid={!!e.fullName} autoFocus />
         </Field>
+        {(String(err(e, 'fullName') ?? '').startsWith('Possible duplicate') ||
+          form.watch('confirmDuplicate')) && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 sm:col-span-2">
+            <Checkbox
+              label="This is a different person — save anyway"
+              checked={!!form.watch('confirmDuplicate')}
+              onChange={(v) => {
+                form.setValue('confirmDuplicate', v as any);
+                if (v) form.clearErrors('fullName');
+              }}
+            />
+          </div>
+        )}
         <Field label="Barangay *" error={err(e, 'barangay')}>
           <Select {...form.register('barangay')} aria-invalid={!!e.barangay} wrapperClassName="sm:w-[195px]">
             <option value="">Select...</option>
@@ -399,6 +421,7 @@ export function FarmDialog({
   const { data: lookups } = useLookups();
   const [ownerQ, setOwnerQ] = useState('');
   const editing = !!farm;
+  const qc = useQueryClient();
   const form = useZodForm(editing ? farmUpdateSchema : farmCreateSchema, {});
   useResetOnOpen(open, form, {
     ...(editing ? {} : { ownerId: ownerId ? String(ownerId) : '' }),
@@ -427,6 +450,10 @@ export function FarmDialog({
       onDone: (res) => {
         onOpenChange(false);
         if (!editing && !isQueued(res)) navigate(`/farms/${(res as { id: number }).id}`);
+        if (editing && !isQueued(res))
+          offerFarmLocationForCases(farm!.id, (res as { unmappedCases?: number }).unmappedCases, () =>
+            qc.invalidateQueries(),
+          );
       },
     },
   );
@@ -685,18 +712,35 @@ export function PopulationUpdateDialog({
   onOpenChange,
   farm,
   groups,
-}: DialogProps & { farm: { id: number; name: string }; groups: GroupRow[] }) {
+  prefill,
+  note,
+  onSaved,
+}: DialogProps & {
+  farm: { id: number; name: string };
+  groups: GroupRow[];
+  /** Suggested new counts (e.g. after deaths in a disease case); staff review before saving. */
+  prefill?: Record<number, { count: number; reason: string }>;
+  note?: string;
+  onSaved?: () => void;
+}) {
   const form = useZodForm(populationUpdateSchema, {});
   useResetOnOpen(open, form, {
     farmId: String(farm.id),
     month: isoMonth(),
-    entries: groups.map((g) => ({ groupId: String(g.id), count: String(g.count), reason: '' })),
+    entries: groups.map((g) => ({
+      groupId: String(g.id),
+      count: String(prefill?.[g.id]?.count ?? g.count),
+      reason: prefill?.[g.id]?.reason ?? '',
+    })),
   } as any);
   const save = useSave<any>('POST', '/api/population/updates', {
     success: `Population for ${farm.name} saved.`,
     label: () => `Population update — ${farm.name}`,
     form,
-    onDone: () => onOpenChange(false),
+    onDone: () => {
+      onOpenChange(false);
+      onSaved?.();
+    },
   });
   const e = form.formState.errors as any;
   const entries = form.watch('entries') ?? [];
@@ -724,6 +768,11 @@ export function PopulationUpdateDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="space-y-3"
       >
+        {note && (
+          <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[14px] text-slate-700">
+            {note}
+          </p>
+        )}
         <Field label="Reporting month" error={e.month?.message} className="w-full sm:w-48">
           <Input type="month" max={isoMonth()} {...form.register('month')} />
         </Field>
@@ -775,6 +824,97 @@ export function PopulationUpdateDialog({
           amends it (the earlier entry is kept as "superseded" and never added again). Reasons use signed
           quantities (e.g. births +3, deaths −1). Animals registered with ID tags are counted within their
           group.{month ? ` Reporting for ${fmtMonth(month)}.` : ''}
+        </p>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Fix a group's details. Species and head count are not edited here (counts change through monthly updates). */
+export function GroupEditDialog({
+  open,
+  onOpenChange,
+  group,
+}: DialogProps & {
+  group: {
+    id: number;
+    code: string;
+    species: string;
+    breed: string | null;
+    sex: string;
+    lifeStage: string;
+    healthStatus: string;
+  } | null;
+}) {
+  const form = useZodForm(groupUpdateSchema, {});
+  useResetOnOpen(open, form, {
+    breed: group?.breed ?? '',
+    sex: group?.sex ?? 'Mixed',
+    lifeStage: group?.lifeStage ?? 'Mixed',
+    healthStatus: group?.healthStatus ?? 'Healthy',
+    remarks: '',
+  } as any);
+  const save = useSave<any>('PATCH', `/api/population/groups/${group?.id}`, {
+    success: 'Group updated.',
+    label: () => `Update group ${group?.code}`,
+    form,
+    onDone: () => onOpenChange(false),
+  });
+  const e = form.formState.errors;
+  if (!group) return null;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Edit ${group.code} · ${group.species}`}
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button form="group-edit-form" type="submit" loading={save.isPending}>
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="group-edit-form"
+        noValidate
+        onSubmit={form.handleSubmit((v) => save.mutate(v))}
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+      >
+        <Field label="Breed" error={err(e, 'breed')}>
+          <Input {...form.register('breed')} />
+        </Field>
+        <Field label="Sex" error={err(e, 'sex')}>
+          <Select {...form.register('sex')}>
+            {SEXES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Life stage" error={err(e, 'lifeStage')}>
+          <Select {...form.register('lifeStage')}>
+            {LIFE_STAGES.map((s) => (
+              <option key={s} value={s}>
+                {titleCase(s)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Health status" error={err(e, 'healthStatus')}>
+          <Select {...form.register('healthStatus')}>
+            {HEALTH_STATUSES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
+          <Input {...form.register('remarks')} />
+        </Field>
+        <p className="text-[12.5px] text-slate-400 sm:col-span-2">
+          To change the head count, use Update population. A group can be archived once its count is 0.
         </p>
       </form>
     </Dialog>

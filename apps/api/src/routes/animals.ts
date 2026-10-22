@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   SPECIES_ID_LETTER,
+  isoMonth,
   animalCreateSchema,
   animalUpdateSchema,
   strayCreateSchema,
@@ -10,8 +11,9 @@ import {
 } from '@livestock/shared';
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
-import { dateOnly, dateTime, ymd } from '../lib/dates';
+import { assertNotFuture, dateOnly, dateTime, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
+import { adjustGroupCount } from './population';
 import { serializeCase, serializeTransfer, serializeVaccination } from './serializers';
 
 export const animalsRouter = Router();
@@ -123,6 +125,7 @@ animalsRouter.post(
   '/',
   ah(async (req, res) => {
     const d = parse(animalCreateSchema, req.body);
+    assertNotFuture({ dob: d.dob });
     const group = await prisma.populationGroup.findUnique({
       where: { id: d.groupId },
       include: { animals: { where: { status: 'ACTIVE' } }, farm: true },
@@ -184,6 +187,7 @@ animalsRouter.patch(
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(animalUpdateSchema, req.body);
+    assertNotFuture({ dob: d.dob });
     if (d.earTag) {
       const dup = await prisma.animal.findFirst({ where: { earTag: d.earTag, NOT: { id } } });
       if (dup)
@@ -191,24 +195,45 @@ animalsRouter.patch(
           fieldErrors: { earTag: [`Ear tag already used by ${dup.code}`] },
         });
     }
-    const before = await prisma.animal.findUnique({ where: { id } });
+    const before = await prisma.animal.findUnique({ where: { id }, include: { group: true } });
     if (!before) throw notFound('Animal');
-    const a = await prisma.animal.update({
-      where: { id },
-      data: {
-        earTag: d.earTag ?? null,
-        breed: d.breed ?? null,
-        sex: d.sex,
-        dob: d.dob ? dateOnly(d.dob) : null,
-        estimatedAge: d.estimatedAge ?? null,
-        lifeStage: d.lifeStage ?? null,
-        markings: d.markings ?? null,
-        cowlick: d.cowlick ?? null,
-        health: d.health ?? null,
-        photoKeys: d.photoKeys ?? (before.photoKeys as string[] | null) ?? [],
-        remarks: d.remarks ?? null,
-        ...(d.status ? { status: d.status } : {}),
-      },
+    // A tagged animal is counted inside its group: leaving (sold, deceased…) removes one head,
+    // coming back to Active adds it again.
+    const wasActive = before.status === 'ACTIVE';
+    const nowActive = (d.status ?? before.status) === 'ACTIVE';
+    const delta = wasActive === nowActive ? 0 : nowActive ? 1 : -1;
+    if (delta === 1 && before.group.archived)
+      throw badRequest("This animal's group is archived. Transfer it to an active farm instead.");
+    const a = await prisma.$transaction(async (tx) => {
+      const updated = await tx.animal.update({
+        where: { id },
+        data: {
+          earTag: d.earTag ?? null,
+          breed: d.breed ?? null,
+          sex: d.sex,
+          dob: d.dob ? dateOnly(d.dob) : null,
+          estimatedAge: d.estimatedAge ?? null,
+          lifeStage: d.lifeStage ?? null,
+          markings: d.markings ?? null,
+          cowlick: d.cowlick ?? null,
+          health: d.health ?? null,
+          photoKeys: d.photoKeys ?? (before.photoKeys as string[] | null) ?? [],
+          remarks: d.remarks ?? null,
+          ...(d.status ? { status: d.status } : {}),
+        },
+      });
+      if (delta !== 0) {
+        await adjustGroupCount(
+          tx,
+          before.groupId,
+          delta,
+          delta < 0
+            ? `${before.code} marked ${d.status!.toLowerCase()}`
+            : `${before.code} returned to active`,
+          req.user?.name,
+        );
+      }
+      return updated;
     });
     const changed =
       d.status && d.status !== before.status
@@ -239,6 +264,7 @@ transfersRouter.post(
   '/',
   ah(async (req, res) => {
     const d = parse(transferCreateSchema, req.body);
+    assertNotFuture({ date: d.date });
     const animal = await prisma.animal.findUnique({ where: { id: d.animalId }, include: animalInclude });
     if (!animal) throw notFound('Animal');
     if (animal.status !== 'ACTIVE') throw badRequest('Only active animals can be transferred');
@@ -263,7 +289,8 @@ transfersRouter.post(
             species: animal.species,
             breed: animal.breed,
             count: 0,
-            lastVerified: null,
+            // The system knows this new group's exact size (the animal moving in).
+            lastVerified: isoMonth(),
           },
         });
         dest = await tx.populationGroup.update({
@@ -271,9 +298,6 @@ transfersRouter.post(
           data: { code: displayCode('GRP', created.id) },
         });
       }
-      // The animal is counted within its group: move one head between the groups.
-      await tx.populationGroup.update({ where: { id: animal.groupId }, data: { count: { decrement: 1 } } });
-      await tx.populationGroup.update({ where: { id: dest.id }, data: { count: { increment: 1 } } });
       await tx.animal.update({ where: { id: animal.id }, data: { groupId: dest.id } });
       const created = await tx.ownershipTransfer.create({
         data: {
@@ -293,6 +317,21 @@ transfersRouter.post(
         where: { id: created.id },
         data: { code: displayCode('TRF', created.id) },
       });
+      // The animal is counted within its group: move one head between the groups, with history lines.
+      await adjustGroupCount(
+        tx,
+        animal.groupId,
+        -1,
+        `${tr.code}: ${animal.code} transferred out to ${toFarm.name}`,
+        req.user?.name,
+      );
+      await adjustGroupCount(
+        tx,
+        dest.id,
+        1,
+        `${tr.code}: ${animal.code} transferred in from ${animal.group.farm.name}`,
+        req.user?.name,
+      );
       await logActivity(
         'animal',
         animal.id,
@@ -362,6 +401,7 @@ straysRouter.post(
   '/',
   ah(async (req, res) => {
     const d = parse(strayCreateSchema, req.body);
+    assertNotFuture({ discoveredAt: d.discoveredAt });
     let animalId: number | null = null;
     let ownerId = d.ownerId ?? null;
     if (d.earTag) {

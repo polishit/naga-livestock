@@ -3,11 +3,48 @@ import { ownerCreateSchema, ownerUpdateSchema, pcicCreateSchema } from '@livesto
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { dateOnly, ymd } from '../lib/dates';
-import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
+import { HttpError, ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { loadFarms, summarizeFarm } from '../services/metrics';
 import { serializeCase, serializeTransfer, serializeVaccination } from './serializers';
 
 export const ownersRouter = Router();
+
+/**
+ * Duplicate protection: an RSBSA number belongs to one person (blocked), and the same name in the
+ * same barangay is probably the same person (warning — the user can confirm it is someone else).
+ */
+async function checkDuplicates(
+  d: { fullName: string; barangay: string; rsbsa?: string; confirmDuplicate?: boolean },
+  exceptId?: number,
+) {
+  if (d.rsbsa) {
+    const r = await prisma.owner.findFirst({
+      where: { rsbsa: d.rsbsa, ...(exceptId ? { NOT: { id: exceptId } } : {}) },
+    });
+    if (r)
+      throw badRequest('Validation failed', {
+        fieldErrors: { rsbsa: [`RSBSA number already used by ${r.code} (${r.fullName})`] },
+      });
+  }
+  if (d.confirmDuplicate) return;
+  const name = d.fullName.replace(/\s+/g, ' ').trim();
+  const same = await prisma.owner.findFirst({
+    where: {
+      fullName: name,
+      barangay: d.barangay,
+      status: { not: 'ARCHIVED' },
+      ...(exceptId ? { NOT: { id: exceptId } } : {}),
+    },
+  });
+  if (same)
+    throw new HttpError(409, 'Possible duplicate owner', {
+      fieldErrors: {
+        fullName: [
+          `Possible duplicate: ${same.code} ${same.fullName} is already registered in ${same.barangay}.`,
+        ],
+      },
+    });
+}
 
 ownersRouter.get(
   '/',
@@ -148,7 +185,8 @@ ownersRouter.get(
 ownersRouter.post(
   '/',
   ah(async (req, res) => {
-    const data = parse(ownerCreateSchema, req.body);
+    const { confirmDuplicate, ...data } = parse(ownerCreateSchema, req.body);
+    await checkDuplicates({ ...data, confirmDuplicate });
     const owner = await prisma.$transaction(async (tx) => {
       const created = await tx.owner.create({ data: { ...data, code: tempCode() } });
       const o = await tx.owner.update({
@@ -176,6 +214,8 @@ ownersRouter.patch(
     const data = parse(ownerUpdateSchema, req.body);
     const existing = await prisma.owner.findUnique({ where: { id } });
     if (!existing) throw notFound('Owner');
+    const nameChanged = data.fullName !== existing.fullName || data.barangay !== existing.barangay;
+    await checkDuplicates({ ...data, confirmDuplicate: data.confirmDuplicate || !nameChanged }, id);
     if (data.status === 'ARCHIVED' && existing.status !== 'ARCHIVED') {
       const active = await prisma.farm.count({ where: { ownerId: id, archived: false } });
       if (active > 0)
@@ -208,6 +248,7 @@ ownersRouter.get(
       where: { ownerId: id, archived: false },
       include: {
         groups: { where: { archived: false }, include: { animals: { where: { status: 'ACTIVE' } } } },
+        cases: { where: { closedAt: null }, select: { id: true } },
       },
       orderBy: { id: 'asc' },
     });
@@ -218,6 +259,7 @@ ownersRouter.get(
         const blockers: string[] = [];
         if (head > 0) blockers.push('Farm has population groups with animals');
         if (tagged > 0) blockers.push('Farm has active tagged animals');
+        if (f.cases.length) blockers.push(`Farm has ${f.cases.length} open disease case(s)`);
         return { id: f.id, code: f.code, name: f.name, barangay: f.barangay, head, tagged, blockers };
       }),
     });

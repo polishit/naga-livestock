@@ -1,7 +1,22 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type ProxyOptions } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+/** Proxy to the API. While the API is still starting, answer with a clear message instead of a blank 500. */
+const apiProxy: ProxyOptions = {
+  target: process.env.VITE_API_PROXY ?? 'http://localhost:4000',
+  changeOrigin: true,
+  configure: (proxy) => {
+    proxy.on('error', (_err, _req, res) => {
+      const r = res as import('node:http').ServerResponse;
+      if (r && typeof r.writeHead === 'function' && !r.headersSent) {
+        r.writeHead(503, { 'Content-Type': 'application/json' });
+        r.end(JSON.stringify({ error: 'The server is still starting. Wait a few seconds and try again.' }));
+      }
+    });
+  },
+};
 
 export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
@@ -68,14 +83,14 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
-      '/api': { target: process.env.VITE_API_PROXY ?? 'http://localhost:4000', changeOrigin: true },
-      '/health': { target: process.env.VITE_API_PROXY ?? 'http://localhost:4000', changeOrigin: true },
+      '/api': apiProxy,
+      '/health': apiProxy,
     },
   },
   preview: {
     port: 4173,
     proxy: {
-      '/api': { target: process.env.VITE_API_PROXY ?? 'http://localhost:4000', changeOrigin: true },
+      '/api': apiProxy,
     },
   },
   build: {

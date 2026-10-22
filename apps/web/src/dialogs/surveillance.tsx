@@ -9,6 +9,8 @@ import {
   ROLE_LABELS,
   caseCloseSchema,
   caseStatusSchema,
+  caseUpdateSchema,
+  checkCaseStatus,
   investigationCreateSchema,
   isoDate,
   labCreateSchema,
@@ -17,6 +19,7 @@ import {
   userCreateSchema,
   userUpdateSchema,
   vaccinationCreateSchema,
+  voidSchema,
   type CaseStatus,
 } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
@@ -30,18 +33,44 @@ interface DialogProps {
   onOpenChange: (o: boolean) => void;
 }
 
+export interface LabLite {
+  result: string;
+  sentAt?: string | null;
+  voided?: boolean;
+}
+
+/**
+ * Status options follow the workflow: next stage only, Positive/Negative only with a matching lab
+ * result, and corrections (going back) for administrators with a reason.
+ */
 export function CaseStatusDialog({
   open,
   onOpenChange,
   caseId,
   code,
   status,
-}: DialogProps & { caseId: number; code: string; status: CaseStatus }) {
-  const idx = CASE_STATUSES.indexOf(status);
-  const next =
-    status === 'AWAITING_RESULT' ? 'POSITIVE' : (CASE_STATUSES[Math.min(idx + 1, 3)] ?? 'SAMPLE_COLLECTED');
+  labs,
+  suggest,
+}: DialogProps & {
+  caseId: number;
+  code: string;
+  status: CaseStatus;
+  labs: LabLite[];
+  suggest?: CaseStatus;
+}) {
+  const { isAdmin } = useAuth();
+  const live = labs.filter((l) => !l.voided);
+  const options = CASE_STATUSES.filter((s) => s !== status)
+    .map((s) => ({ s, ...checkCaseStatus(status, s, live) }))
+    .filter((o) => o.allowed && (!o.correction || isAdmin));
+  const firstNormal = options.find((o) => !o.correction)?.s;
+  const initial = suggest && options.some((o) => o.s === suggest) ? suggest : (firstNormal ?? '');
+  const finalBlocked =
+    status !== 'POSITIVE' &&
+    status !== 'NEGATIVE' &&
+    !options.some((o) => o.s === 'POSITIVE' || o.s === 'NEGATIVE');
   const form = useZodForm(caseStatusSchema, {});
-  useResetOnOpen(open, form, { status: next === status ? '' : next, note: '' } as any);
+  useResetOnOpen(open, form, { status: initial, note: '' } as any);
   const save = useSave<any>('POST', `/api/cases/${caseId}/status`, {
     success: 'Case status updated.',
     label: (b) => `${code} → ${CASE_STATUS_LABELS[b.status as CaseStatus]}`,
@@ -49,6 +78,8 @@ export function CaseStatusDialog({
     onDone: () => onOpenChange(false),
   });
   const e = form.formState.errors;
+  const selected = form.watch('status');
+  const isCorrection = options.find((o) => o.s === selected)?.correction;
   return (
     <Dialog
       open={open}
@@ -59,7 +90,7 @@ export function CaseStatusDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button form="status-form" type="submit" loading={save.isPending}>
+          <Button form="status-form" type="submit" loading={save.isPending} disabled={!options.length}>
             Confirm
           </Button>
         </>
@@ -71,21 +102,188 @@ export function CaseStatusDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="space-y-4"
       >
-        <Field label="New status" error={err(e, 'status')}>
-          <Select {...form.register('status')}>
-            {CASE_STATUSES.filter((s) => s !== status).map((s) => (
-              <option key={s} value={s}>
-                {CASE_STATUS_LABELS[s]}
+        {options.length ? (
+          <Field label="New status" error={err(e, 'status')}>
+            <Select {...form.register('status')}>
+              {options.map((o) => (
+                <option key={o.s} value={o.s}>
+                  {CASE_STATUS_LABELS[o.s]}
+                  {o.correction ? ' (correction)' : ''}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <p className="rounded-md bg-slate-50 px-3 py-2.5 text-[14.5px] text-slate-600">
+            No status change is available for this case.
+          </p>
+        )}
+        {finalBlocked && (
+          <p className="text-[13px] text-slate-500">
+            To mark this case Positive or Negative, add a laboratory record with that result first (Laboratory
+            tab).
+          </p>
+        )}
+        <Field label={isCorrection ? 'Reason for correction *' : 'Note'} error={err(e, 'note')}>
+          <Textarea rows={3} {...form.register('note')} />
+        </Field>
+        <p className="text-[12.5px] text-slate-400">
+          A case moves forward one stage at a time; laboratory results decide Positive or Negative. Going back
+          is a correction that only an administrator can make.
+        </p>
+      </form>
+    </Dialog>
+  );
+}
+
+export interface CaseEditRecord {
+  id: number;
+  code: string;
+  disease: string;
+  zone: string | null;
+  affected: number;
+  deaths: number;
+  symptomsDate: string | null;
+  symptoms: string | null;
+  reportedBy: string | null;
+  assignedToId: number | null;
+  sampleInfo: string | null;
+  remarks: string | null;
+  reportedAt: string;
+}
+
+/** Update a case while the outbreak develops (more animals affected, more deaths, new inspector…). */
+export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: CaseEditRecord }) {
+  const { data: lookups } = useLookups();
+  const form = useZodForm(caseUpdateSchema, {});
+  useResetOnOpen(open, form, {
+    disease: c.disease,
+    zone: c.zone ?? '',
+    affected: String(c.affected),
+    deaths: String(c.deaths),
+    symptomsDate: c.symptomsDate ?? '',
+    symptoms: c.symptoms ?? '',
+    reportedBy: c.reportedBy ?? '',
+    assignedToId: c.assignedToId ? String(c.assignedToId) : '',
+    sampleInfo: c.sampleInfo ?? '',
+    remarks: c.remarks ?? '',
+  } as any);
+  const save = useSave<any>('PATCH', `/api/cases/${c.id}`, {
+    success: `${c.code} updated.`,
+    label: () => `Update ${c.code}`,
+    form,
+    onDone: () => onOpenChange(false),
+  });
+  const e = form.formState.errors;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Edit case details — ${c.code}`}
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button form="case-edit-form" type="submit" loading={save.isPending}>
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="case-edit-form"
+        noValidate
+        onSubmit={form.handleSubmit((v) => save.mutate(v))}
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+      >
+        <Field label="Suspected disease *" error={err(e, 'disease')} className="sm:col-span-2">
+          <Input {...form.register('disease')} aria-invalid={!!e.disease} />
+        </Field>
+        <Field label="Animals affected *" error={err(e, 'affected')}>
+          <Input type="number" min={1} {...form.register('affected')} />
+        </Field>
+        <Field label="Deaths" error={err(e, 'deaths')}>
+          <Input type="number" min={0} {...form.register('deaths')} />
+        </Field>
+        <Field label="Zone / Purok" error={err(e, 'zone')}>
+          <Input {...form.register('zone')} />
+        </Field>
+        <Field label="Date symptoms observed" error={err(e, 'symptomsDate')}>
+          <Input type="date" max={c.reportedAt} {...form.register('symptomsDate')} />
+        </Field>
+        <Field label="Assigned inspector" error={err(e, 'assignedToId')}>
+          <Select {...form.register('assignedToId')}>
+            <option value="">Unassigned</option>
+            {lookups?.inspectors.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Note" error={err(e, 'note')}>
-          <Textarea rows={3} {...form.register('note')} />
+        <Field label="Reported by" error={err(e, 'reportedBy')}>
+          <Input {...form.register('reportedBy')} />
         </Field>
-        <p className="text-[12.5px] text-slate-400">
-          Status is set by staff based on investigation and laboratory results. No automated diagnosis is
-          performed.
+        <Field label="Observed symptoms" error={err(e, 'symptoms')} className="sm:col-span-2">
+          <Textarea rows={3} {...form.register('symptoms')} />
+        </Field>
+        <Field label="Sample information" error={err(e, 'sampleInfo')}>
+          <Input {...form.register('sampleInfo')} />
+        </Field>
+        <Field label="Remarks" error={err(e, 'remarks')}>
+          <Input {...form.register('remarks')} />
+        </Field>
+        <p className="text-[12.5px] text-slate-400 sm:col-span-2">
+          Every change is written to the case History. Species, farm and report date cannot be changed —
+          report a new incident instead.
+        </p>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Void a wrong record (admin): it stays visible, struck through with the reason, and leaves all figures. */
+export function VoidDialog({ open, onOpenChange, url, what }: DialogProps & { url: string; what: string }) {
+  const form = useZodForm(voidSchema, {});
+  useResetOnOpen(open, form, { reason: '' } as any);
+  const save = useSave<any>('POST', url, {
+    success: `${what} voided.`,
+    label: () => `Void ${what}`,
+    form,
+    offline: false,
+    onDone: () => onOpenChange(false),
+  });
+  const e = form.formState.errors;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Void ${what}`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" form="void-form" type="submit" loading={save.isPending}>
+            Void record
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="void-form"
+        noValidate
+        onSubmit={form.handleSubmit((v) => save.mutate(v))}
+        className="space-y-3"
+      >
+        <Field label="Reason *" error={err(e, 'reason')}>
+          <Textarea rows={3} placeholder="e.g. Entered on the wrong farm" {...form.register('reason')} />
+        </Field>
+        <p className="text-[12.5px] text-slate-500">
+          The record is kept (struck through) for the audit trail, but no longer counts in any figure,
+          reminder or report.
         </p>
       </form>
     </Dialog>
@@ -268,35 +466,62 @@ export function InvestigationDialog({
   );
 }
 
+export interface LabEditRecord {
+  id: number;
+  sampleId: string;
+  sampleType: string | null;
+  collectedAt: string | null;
+  laboratory: string | null;
+  sentAt: string | null;
+  result: string;
+  resultDate: string | null;
+  remarks?: string | null;
+}
+
 export function LabDialog({
   open,
   onOpenChange,
   caseId,
   code,
-}: DialogProps & { caseId: number; code: string }) {
+  lab,
+  onSaved,
+}: DialogProps & {
+  caseId: number;
+  code: string;
+  /** Edit this record (e.g. enter the result when it comes back) instead of adding a new one. */
+  lab?: LabEditRecord | null;
+  onSaved?: (values: { result: string; sentAt?: string }) => void;
+}) {
   const form = useZodForm(labCreateSchema, {});
   useResetOnOpen(open, form, {
-    sampleId: '',
-    sampleType: 'Whole blood',
-    collectedAt: isoDate(),
-    laboratory: 'RADDL Region V, Pili',
-    sentAt: '',
-    result: 'PENDING',
-    resultDate: '',
-    remarks: '',
+    sampleId: lab?.sampleId ?? '',
+    sampleType: lab ? (lab.sampleType ?? '') : 'Whole blood',
+    collectedAt: lab ? (lab.collectedAt ?? '') : isoDate(),
+    laboratory: lab ? (lab.laboratory ?? '') : 'RADDL Region V, Pili',
+    sentAt: lab?.sentAt ?? '',
+    result: lab?.result ?? 'PENDING',
+    resultDate: lab?.resultDate ?? '',
+    remarks: lab?.remarks ?? '',
   } as any);
-  const save = useSave<any>('POST', `/api/cases/${caseId}/labs`, {
-    success: 'Laboratory record added.',
-    label: (b) => `Lab record ${b.sampleId} (${code})`,
-    form,
-    onDone: () => onOpenChange(false),
-  });
+  const save = useSave<any>(
+    lab ? 'PATCH' : 'POST',
+    lab ? `/api/labs/${lab.id}` : `/api/cases/${caseId}/labs`,
+    {
+      success: lab ? 'Laboratory record updated.' : 'Laboratory record added.',
+      label: (b) => `Lab record ${b.sampleId} (${code})`,
+      form,
+      onDone: () => {
+        onOpenChange(false);
+        onSaved?.({ result: form.getValues('result'), sentAt: form.getValues('sentAt') || undefined });
+      },
+    },
+  );
   const e = form.formState.errors;
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Add lab record"
+      title={lab ? `Update lab record ${lab.sampleId}` : 'Add lab record'}
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -321,13 +546,13 @@ export function LabDialog({
           <Input {...form.register('sampleType')} />
         </Field>
         <Field label="Collection date" error={err(e, 'collectedAt')}>
-          <Input type="date" {...form.register('collectedAt')} />
+          <Input type="date" max={isoDate()} {...form.register('collectedAt')} />
         </Field>
         <Field label="Laboratory" error={err(e, 'laboratory')}>
           <Input {...form.register('laboratory')} />
         </Field>
         <Field label="Date sent" error={err(e, 'sentAt')}>
-          <Input type="date" {...form.register('sentAt')} />
+          <Input type="date" max={isoDate()} {...form.register('sentAt')} />
         </Field>
         <Field label="Result" error={err(e, 'result')}>
           <Select {...form.register('result')}>
@@ -339,7 +564,7 @@ export function LabDialog({
           </Select>
         </Field>
         <Field label="Result date" error={err(e, 'resultDate')}>
-          <Input type="date" {...form.register('resultDate')} />
+          <Input type="date" max={isoDate()} {...form.register('resultDate')} />
         </Field>
         <Field label="Remarks" error={err(e, 'remarks')}>
           <Input {...form.register('remarks')} />
@@ -354,21 +579,31 @@ export function ResponseDialog({
   onOpenChange,
   caseId,
   code,
-}: DialogProps & { caseId: number; code: string }) {
+  onSaved,
+}: DialogProps & {
+  caseId: number;
+  code: string;
+  onSaved?: (values: { type: string; heads?: string }) => void;
+}) {
   const form = useZodForm(responseCreateSchema, {});
   useResetOnOpen(open, form, {
     type: 'OWNER_NOTIFICATION',
     date: isoDate(),
     personnel: '',
     remarks: '',
+    heads: '',
   } as any);
   const save = useSave<any>('POST', `/api/cases/${caseId}/responses`, {
     success: 'Response activity logged.',
     label: () => `Response activity (${code})`,
     form,
-    onDone: () => onOpenChange(false),
+    onDone: () => {
+      onOpenChange(false);
+      onSaved?.({ type: form.getValues('type'), heads: form.getValues('heads') as any });
+    },
   });
   const e = form.formState.errors;
+  const type = form.watch('type');
   return (
     <Dialog
       open={open}
@@ -403,6 +638,16 @@ export function ResponseDialog({
         <Field label="Date" error={err(e, 'date')}>
           <Input type="date" max={isoDate()} {...form.register('date')} />
         </Field>
+        {type === 'CULLING_DEPOPULATION' && (
+          <Field
+            label="Number of animals culled *"
+            error={err(e, 'heads')}
+            hint="Used to remind you to update the farm's population."
+            className="sm:col-span-2"
+          >
+            <Input type="number" min={1} {...form.register('heads')} aria-invalid={!!e.heads} />
+          </Field>
+        )}
         <Field label="Personnel involved" error={err(e, 'personnel')} className="sm:col-span-2">
           <Input {...form.register('personnel')} />
         </Field>

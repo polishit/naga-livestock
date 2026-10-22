@@ -91,18 +91,18 @@ model RefreshToken {
 }
 
 model Owner {
-  id           Int           @id @default(autoincrement())
-  code         String        @unique @db.VarChar(20)
-  fullName     String        @db.VarChar(150)
-  barangay     String        @db.VarChar(60)
-  zone         String?       @db.VarChar(60)
-  street       String?       @db.VarChar(200)
-  contact      String?       @db.VarChar(40)
-  rsbsa        String?       @db.VarChar(60)
-  remarks      String?       @db.Text
-  status       OwnerStatus   @default(ACTIVE)
-  registeredAt DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id           Int                 @id @default(autoincrement())
+  code         String              @unique @db.VarChar(20)
+  fullName     String              @db.VarChar(150)
+  barangay     String              @db.VarChar(60)
+  zone         String?             @db.VarChar(60)
+  street       String?             @db.VarChar(200)
+  contact      String?             @db.VarChar(40)
+  rsbsa        String?             @db.VarChar(60)
+  remarks      String?             @db.Text
+  status       OwnerStatus         @default(ACTIVE)
+  registeredAt DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
   farms        Farm[]
   cases        DiseaseCase[]
   strays       StrayIncident[]
@@ -186,6 +186,8 @@ model PopulationUpdate {
   previous   Int?
   change     Int             @default(0)
   reason     String?         @db.VarChar(200)
+  /// VERIFIED = monthly count by staff; ADJUSTMENT = automatic change (transfer, death, sale)
+  kind       String          @default("VERIFIED") @db.VarChar(20)
   superseded Boolean         @default(false)
   createdBy  String?         @db.VarChar(120)
   createdAt  DateTime        @default(now())
@@ -262,43 +264,45 @@ model StrayIncident {
 }
 
 model DiseaseCase {
-  id             Int                 @id @default(autoincrement())
-  code           String              @unique @db.VarChar(20)
-  ownerId        Int
-  farmId         Int
-  barangay       String              @db.VarChar(60)
-  zone           String?             @db.VarChar(60)
-  species        String              @db.VarChar(40)
-  disease        String              @db.VarChar(150)
-  affected       Int
-  deaths         Int                 @default(0)
-  symptomsDate   DateTime?           @db.Date
-  reportedAt     DateTime            @db.Date
-  symptoms       String?             @db.Text
-  reportedBy     String?             @db.VarChar(120)
-  assignedToId   Int?
-  sampleInfo     String?             @db.VarChar(300)
-  remarks        String?             @db.Text
-  lat            Float?
-  lng            Float?
-  locationSource String?             @db.VarChar(40)
-  photoKeys      Json?
-  status         CaseStatus          @default(SUSPECTED)
-  closedAt       DateTime?
-  closedBy       String?             @db.VarChar(120)
-  closureNote    String?             @db.Text
-  relatedCaseId  Int?
-  relatedCase    DiseaseCase?        @relation("LinkedCases", fields: [relatedCaseId], references: [id])
-  linkedCases    DiseaseCase[]       @relation("LinkedCases")
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  owner          Owner               @relation(fields: [ownerId], references: [id])
-  farm           Farm                @relation(fields: [farmId], references: [id])
-  assignedTo     User?               @relation("AssignedInspector", fields: [assignedToId], references: [id])
-  history        CaseStatusHistory[]
-  investigations Investigation[]
-  labRecords     LabRecord[]
-  responses      ResponseActivity[]
+  id                   Int                 @id @default(autoincrement())
+  code                 String              @unique @db.VarChar(20)
+  ownerId              Int
+  farmId               Int
+  barangay             String              @db.VarChar(60)
+  zone                 String?             @db.VarChar(60)
+  species              String              @db.VarChar(40)
+  disease              String              @db.VarChar(150)
+  affected             Int
+  deaths               Int                 @default(0)
+  symptomsDate         DateTime?           @db.Date
+  reportedAt           DateTime            @db.Date
+  symptoms             String?             @db.Text
+  reportedBy           String?             @db.VarChar(120)
+  assignedToId         Int?
+  sampleInfo           String?             @db.VarChar(300)
+  remarks              String?             @db.Text
+  lat                  Float?
+  lng                  Float?
+  locationSource       String?             @db.VarChar(40)
+  photoKeys            Json?
+  status               CaseStatus          @default(SUSPECTED)
+  closedAt             DateTime?
+  closedBy             String?             @db.VarChar(120)
+  closureNote          String?             @db.Text
+  relatedCaseId        Int?
+  /// Deaths + culled heads already reflected in the farm's population
+  populationReconciled Int                 @default(0)
+  relatedCase          DiseaseCase?        @relation("LinkedCases", fields: [relatedCaseId], references: [id])
+  linkedCases          DiseaseCase[]       @relation("LinkedCases")
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  owner                Owner               @relation(fields: [ownerId], references: [id])
+  farm                 Farm                @relation(fields: [farmId], references: [id])
+  assignedTo           User?               @relation("AssignedInspector", fields: [assignedToId], references: [id])
+  history              CaseStatusHistory[]
+  investigations       Investigation[]
+  labRecords           LabRecord[]
+  responses            ResponseActivity[]
 
   @@index([status])
   @@index([barangay])
@@ -322,6 +326,9 @@ model Investigation {
   date         DateTime    @db.Date
   investigator String?     @db.VarChar(120)
   notes        String      @db.Text
+  voidedAt     DateTime?
+  voidedBy     String?     @db.VarChar(120)
+  voidReason   String?     @db.VarChar(300)
   createdAt    DateTime    @default(now())
   case         DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
@@ -337,19 +344,27 @@ model LabRecord {
   result      LabResult   @default(PENDING)
   resultDate  DateTime?   @db.Date
   remarks     String?     @db.VarChar(500)
+  voidedAt    DateTime?
+  voidedBy    String?     @db.VarChar(120)
+  voidReason  String?     @db.VarChar(300)
   createdAt   DateTime    @default(now())
   case        DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 model ResponseActivity {
-  id        Int         @id @default(autoincrement())
-  caseId    Int
-  type      String      @db.VarChar(40)
-  date      DateTime    @db.Date
-  personnel String?     @db.VarChar(200)
-  remarks   String?     @db.Text
-  createdAt DateTime    @default(now())
-  case      DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  id         Int         @id @default(autoincrement())
+  caseId     Int
+  type       String      @db.VarChar(40)
+  date       DateTime    @db.Date
+  personnel  String?     @db.VarChar(200)
+  remarks    String?     @db.Text
+  /// Number of animals culled (CULLING responses)
+  heads      Int?
+  voidedAt   DateTime?
+  voidedBy   String?     @db.VarChar(120)
+  voidReason String?     @db.VarChar(300)
+  createdAt  DateTime    @default(now())
+  case       DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 model Vaccination {
@@ -368,6 +383,11 @@ model Vaccination {
   batch          String?           @db.VarChar(60)
   administeredBy String?           @db.VarChar(120)
   remarks        String?           @db.VarChar(500)
+  /// The next-dose reminder was fulfilled by a later vaccination
+  reminderDone   Boolean           @default(false)
+  voidedAt       DateTime?
+  voidedBy       String?           @db.VarChar(120)
+  voidReason     String?           @db.VarChar(300)
   createdAt      DateTime          @default(now())
   farm           Farm              @relation(fields: [farmId], references: [id])
   group          PopulationGroup?  @relation(fields: [groupId], references: [id])

@@ -7,12 +7,16 @@ import {
 } from '@livestock/shared';
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
-import { ymd } from '../lib/dates';
+import { dateOnly, today, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { loadFarms, summarizeFarm } from '../services/metrics';
 import { serializeCase, serializeVaccination } from './serializers';
 
 export const farmsRouter = Router();
+
+/** Open cases on this farm that still have no map location. */
+const unmappedCaseCount = (farmId: number) =>
+  prisma.diseaseCase.count({ where: { farmId, closedAt: null, OR: [{ lat: null }, { lng: null }] } });
 
 farmsRouter.get(
   '/',
@@ -117,6 +121,7 @@ farmsRouter.get(
         previous: u.previous,
         change: u.change,
         reason: u.reason,
+        kind: u.kind,
         superseded: u.superseded,
         createdBy: u.createdBy,
         createdAt: u.createdAt,
@@ -167,7 +172,7 @@ farmsRouter.patch(
   '/:id',
   ah(async (req, res) => {
     const id = idParam(req);
-      const d = parse(farmUpdateSchema, req.body);
+    const d = parse(farmUpdateSchema, req.body);
     if ((d.lat == null) !== (d.lng == null)) {
       throw badRequest('Validation failed', { fieldErrors: { lng: ['Provide both latitude and longitude'] } });
     }
@@ -186,7 +191,7 @@ farmsRouter.patch(
       },
     });
     await logActivity('farm', id, 'updated', `Farm ${f.code} updated`, req.user?.name);
-    res.json(f);
+    res.json({ ...f, unmappedCases: f.lat != null ? await unmappedCaseCount(id) : 0 });
   }),
 );
 
@@ -205,7 +210,7 @@ farmsRouter.patch(
         : `Farm ${f.code} geotagged at ${d.lat.toFixed(6)}, ${d.lng!.toFixed(6)}`,
       req.user?.name,
     );
-    res.json(f);
+    res.json({ ...f, unmappedCases: f.lat != null ? await unmappedCaseCount(id) : 0 });
   }),
 );
 
@@ -219,15 +224,52 @@ farmsRouter.post(
     if (farm.ownerId === ownerId) throw badRequest('Farm already belongs to that owner');
     const owner = await prisma.owner.findUnique({ where: { id: ownerId } });
     if (!owner || owner.status === 'ARCHIVED') throw badRequest('Select an active owner');
-    const f = await prisma.farm.update({ where: { id }, data: { ownerId } });
-    await logActivity(
-      'farm',
-      id,
-      'reassigned',
-      `Farm ${f.code} reassigned to ${owner.fullName}`,
-      req.user?.name,
-    );
-    res.json(f);
+    const animals = await prisma.animal.findMany({
+      where: { status: 'ACTIVE', group: { farmId: id } },
+      select: { id: true, code: true },
+    });
+    const f = await prisma.$transaction(async (tx) => {
+      const updated = await tx.farm.update({ where: { id }, data: { ownerId } });
+      // The tagged animals change owner with the farm: give each one an ownership record.
+      for (const a of animals) {
+        const created = await tx.ownershipTransfer.create({
+          data: {
+            code: tempCode(),
+            animalId: a.id,
+            fromOwnerId: farm.ownerId,
+            fromFarmId: id,
+            toOwnerId: ownerId,
+            toFarmId: id,
+            date: dateOnly(today())!,
+            type: 'TRANSFER',
+            remarks: `Farm ${farm.code} reassigned to ${owner.fullName}`,
+            createdBy: req.user?.name,
+          },
+        });
+        const tr = await tx.ownershipTransfer.update({
+          where: { id: created.id },
+          data: { code: displayCode('TRF', created.id) },
+        });
+        await logActivity(
+          'animal',
+          a.id,
+          'transfer',
+          `${tr.code}: owner changed to ${owner.fullName} (farm ${farm.code} reassigned)`,
+          req.user?.name,
+          tx,
+        );
+      }
+      await logActivity(
+        'farm',
+        id,
+        'reassigned',
+        `Farm ${updated.code} reassigned to ${owner.fullName}${animals.length ? ` (${animals.length} tagged animal(s) transferred)` : ''}`,
+        req.user?.name,
+        tx,
+      );
+      return updated;
+    });
+    res.json({ ...f, transferredAnimals: animals.length });
   }),
 );
 
@@ -242,6 +284,8 @@ farmsRouter.post(
     const blockers: string[] = [];
     if (groups.some((g) => g.count > 0)) blockers.push('Farm has population groups with animals');
     if (groups.some((g) => g.animals.length > 0)) blockers.push('Farm has active tagged animals');
+    const openCases = await prisma.diseaseCase.count({ where: { farmId: id, closedAt: null } });
+    if (openCases) blockers.push(`Farm has ${openCases} open disease case(s) — close them first`);
     if (blockers.length) throw badRequest(`Cannot archive farm: ${blockers.join('; ')}.`);
     const f = await prisma.$transaction(async (tx) => {
       await tx.populationGroup.updateMany({ where: { farmId: id }, data: { archived: true } });
@@ -249,5 +293,29 @@ farmsRouter.post(
     });
     await logActivity('farm', id, 'archived', `Farm ${f.code} archived`, req.user?.name);
     res.json({ ...f, createdAt: ymd(f.createdAt) });
+  }),
+);
+
+/** Give the farm's open, unmapped cases the farm's coordinates. */
+farmsRouter.post(
+  '/:id/locate-cases',
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const farm = await prisma.farm.findUnique({ where: { id } });
+    if (!farm) throw notFound('Farm');
+    if (farm.lat == null || farm.lng == null) throw badRequest('This farm has no location yet');
+    const r = await prisma.diseaseCase.updateMany({
+      where: { farmId: id, closedAt: null, OR: [{ lat: null }, { lng: null }] },
+      data: { lat: farm.lat, lng: farm.lng, locationSource: 'Farm Coordinates' },
+    });
+    if (r.count)
+      await logActivity(
+        'farm',
+        id,
+        'geotagged',
+        `Farm ${farm.code} location applied to ${r.count} case(s)`,
+        req.user?.name,
+      );
+    res.json({ updated: r.count });
   }),
 );

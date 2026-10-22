@@ -63,6 +63,10 @@ export function serializeVaccination(v: any) {
     farmId: v.farmId,
     farmName: v.farm?.name ?? null,
     barangay: v.farm?.barangay ?? null,
+    reminderDone: !!v.reminderDone,
+    voided: v.voidedAt != null,
+    voidedBy: v.voidedBy ?? null,
+    voidReason: v.voidReason ?? null,
   };
 }
 

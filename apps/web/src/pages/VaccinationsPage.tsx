@@ -9,22 +9,65 @@ import { qs } from '@/lib/utils';
 import { DataTable, type Column } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { ErrorBox, FilterSelect, Loading, PageHeader } from '@/components/page';
-import { Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
-import { VaccinationDialog } from '@/dialogs/surveillance';
+import { Badge, Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
+import { VaccinationDialog, VoidDialog } from '@/dialogs/surveillance';
 import type { CoverageRow, VaccinationRow } from './types';
 
 const columns: Column<VaccinationRow>[] = [
   { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date) },
-  { key: 'vaccine', header: 'Vaccine' },
-  { key: 'species', header: 'Species' },
+  {
+    key: 'vaccine',
+    header: 'Vaccine',
+    cell: (r) =>
+      r.voided ? (
+        <div>
+          <span className="text-slate-400 line-through">{r.vaccine}</span> <Badge>Voided</Badge>
+          <div className="text-[12.5px] text-slate-500">
+            {r.voidReason}
+            {r.voidedBy ? ` — ${r.voidedBy}` : ''}
+          </div>
+        </div>
+      ) : (
+        r.vaccine
+      ),
+  },
+  { key: 'farmName', header: 'Farm' },
   { key: 'targetLabel', header: 'Target' },
   { key: 'doseNumber', header: 'Dose' },
-  { key: 'nextDate', header: 'Next', cell: (r) => (r.nextDate ? fmtDate(r.nextDate) : '—') },
+  {
+    key: 'nextDate',
+    header: 'Next',
+    cell: (r) =>
+      r.nextDate ? (
+        <span className="whitespace-nowrap">
+          {fmtDate(r.nextDate)} {r.reminderDone && <Badge tone="green">Given</Badge>}
+        </span>
+      ) : (
+        '—'
+      ),
+  },
   { key: 'administeredBy', header: 'By' },
 ];
 
 export default function VaccinationsPage() {
-  const { canEdit } = useAuth();
+  const { canEdit, isAdmin } = useAuth();
+  const [voiding, setVoiding] = useState<VaccinationRow | null>(null);
+  const recordColumns: Column<VaccinationRow>[] = isAdmin
+    ? [
+        ...columns,
+        {
+          key: 'actions',
+          header: '',
+          sort: false,
+          cell: (r) =>
+            !r.voided && (
+              <Button size="xs" variant="ghost" onClick={() => setVoiding(r)}>
+                Void
+              </Button>
+            ),
+        },
+      ]
+    : columns;
   const lh = useLetterhead();
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as 'records' | 'upcoming' | 'coverage') ?? 'records';
@@ -167,7 +210,7 @@ export default function VaccinationsPage() {
                 rows={records.data}
                 loading={records.isLoading}
                 rowKey={(r) => r.id}
-                columns={columns}
+                columns={recordColumns}
                 defaultSort={{ key: 'date', dir: 'desc' }}
               />
             </Card>
@@ -237,6 +280,14 @@ export default function VaccinationsPage() {
           ))}
       </div>
       <VaccinationDialog open={open} onOpenChange={setOpen} />
+      {voiding && (
+        <VoidDialog
+          open
+          onOpenChange={(o) => !o && setVoiding(null)}
+          url={`/api/vaccinations/${voiding.id}/void`}
+          what={`vaccination ${voiding.code}`}
+        />
+      )}
     </div>
   );
 }

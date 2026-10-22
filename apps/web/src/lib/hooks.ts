@@ -57,7 +57,7 @@ export function useSave<TBody, TRes = unknown>(
     success: string;
     label?: (body: TBody) => string;
     form?: UseFormReturn<any>;
-      files?: () => File[];
+    files?: () => File[];
     photoField?: string;
     offline?: boolean;
     onDone?: (res: TRes | { queued: true }) => void;
@@ -187,6 +187,26 @@ export function useAddressLookup(form: UseFormReturn<any>, fields: { address: st
   };
 
   return { state, lookup, applySuggestion, reset };
+}
+
+/** After a farm gets a map pin, offer to give its open cases that have no location the same pin. */
+export function offerFarmLocationForCases(farmId: number, count: number | undefined, onDone: () => void) {
+  if (!count) return;
+  toast(`${count} open case(s) on this farm are awaiting geotagging.`, {
+    duration: 15000,
+    action: {
+      label: 'Use farm location',
+      onClick: async () => {
+        try {
+          const r = await api.post<{ updated: number }>(`/api/farms/${farmId}/locate-cases`);
+          toast.success(`Farm location applied to ${r.updated} case(s).`);
+          onDone();
+        } catch (e) {
+          toast.error(e instanceof ApiError ? e.message : 'Could not update the cases');
+        }
+      },
+    },
+  });
 }
 
 /** Shorthand to reset a react-hook-form when a dialog opens. */

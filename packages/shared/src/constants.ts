@@ -117,6 +117,58 @@ export const CASE_STATUS_LABELS: Record<CaseStatus, string> = {
   NEGATIVE: 'Negative',
 };
 
+/** Position of each status in the surveillance workflow (Positive and Negative are both final). */
+export const CASE_STAGE: Record<CaseStatus, number> = {
+  SUSPECTED: 0,
+  SAMPLE_COLLECTED: 1,
+  SENT_TO_LAB: 2,
+  AWAITING_RESULT: 3,
+  POSITIVE: 4,
+  NEGATIVE: 4,
+};
+
+export interface StatusCheck {
+  allowed: boolean;
+  /** Going backwards or switching Positive/Negative: admin only, with a written reason. */
+  correction: boolean;
+  reason?: string;
+}
+
+/**
+ * Workflow rule shared by the API and the status dialog:
+ * - a case moves forward one stage at a time;
+ * - it may skip ahead only when a laboratory record proves the step (sample collected / sent);
+ * - Positive or Negative needs a laboratory record with that result;
+ * - going backwards (or Positive ↔ Negative) is a correction for administrators.
+ */
+export function checkCaseStatus(
+  current: CaseStatus,
+  target: CaseStatus,
+  labs: { result: string; sentAt?: string | null }[],
+): StatusCheck {
+  if (current === target)
+    return { allowed: false, correction: false, reason: 'Case already has this status' };
+  const from = CASE_STAGE[current];
+  const to = CASE_STAGE[target];
+  if (to < from || (from === 4 && to === 4)) {
+    return { allowed: true, correction: true, reason: 'Correction: administrators only, with a reason' };
+  }
+  if (to === 4) {
+    return labs.some((l) => l.result === target)
+      ? { allowed: true, correction: false }
+      : {
+          allowed: false,
+          correction: false,
+          reason: `Record a ${target.toLowerCase()} laboratory result first`,
+        };
+  }
+  if (to === from + 1) return { allowed: true, correction: false };
+  const proven = target === 'SAMPLE_COLLECTED' ? labs.length > 0 : labs.some((l) => !!l.sentAt);
+  return proven
+    ? { allowed: true, correction: false }
+    : { allowed: false, correction: false, reason: 'Move one stage at a time' };
+}
+
 /** Snake-case codes used in status history notes ("Advanced to sent_to_lab"). */
 export const CASE_STATUS_CODES: Record<CaseStatus, string> = {
   SUSPECTED: 'suspected',
