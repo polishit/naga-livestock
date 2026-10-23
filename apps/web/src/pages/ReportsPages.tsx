@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
+  MIN_DATE,
   REPORT_CATEGORIES,
   REPORT_TYPES,
   SPECIES,
@@ -201,10 +202,21 @@ function ReportFilters({
           />
         </Field>
         <Field label="From">
-          <Input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} />
+          <Input
+            type="date"
+            min={MIN_DATE}
+            max={f.to || undefined}
+            value={f.from}
+            onChange={(e) => setF({ ...f, from: e.target.value })}
+          />
         </Field>
         <Field label="To">
-          <Input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} />
+          <Input
+            type="date"
+            min={f.from || MIN_DATE}
+            value={f.to}
+            onChange={(e) => setF({ ...f, to: e.target.value })}
+          />
         </Field>
       </div>
     </Card>

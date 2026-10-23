@@ -37,6 +37,7 @@ export interface Lookups {
     breed: string | null;
     sex: string;
     count: number;
+    tagged: number;
   }[];
   animals: { id: number; code: string; earTag: string | null; species: string; farmId: number }[];
   inspectors: { id: number; name: string }[];
@@ -44,6 +45,26 @@ export interface Lookups {
 
 export function useLookups() {
   return useApi<Lookups>('/api/lookups', { staleTime: 30_000 });
+}
+
+export interface FarmSpecies {
+  species: string;
+  /** Head count of this species on the farm (all its active groups). */
+  head: number;
+  groups: number;
+}
+
+/** Species a farm actually keeps, from its population groups, with head counts. */
+export function speciesOnFarm(lookups: Lookups | undefined, farmId: number | string | null | undefined) {
+  const map = new Map<string, FarmSpecies>();
+  for (const g of lookups?.groups ?? []) {
+    if (String(g.farmId) !== String(farmId ?? '')) continue;
+    const s = map.get(g.species) ?? { species: g.species, head: 0, groups: 0 };
+    s.head += g.count;
+    s.groups += 1;
+    map.set(g.species, s);
+  }
+  return [...map.values()].sort((a, b) => b.head - a.head);
 }
 
 /**

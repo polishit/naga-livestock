@@ -10,11 +10,13 @@ import {
   MAX_PHOTO_MB,
   OFFICE_NAME,
   REPORT_TYPES,
+  RESPONSE_TYPE_LABELS,
   fmtDate,
   loginSchema,
   settingsSchema,
   userCreateSchema,
   userUpdateSchema,
+  type ResponseType,
 } from '@livestock/shared';
 import {
   REFRESH_COOKIE,
@@ -376,7 +378,47 @@ metricsRouter.get(
       include: { farm: true, group: true, animal: true },
       orderBy: { nextDate: 'asc' },
     });
+    // Follow-up visits that are due (the latest visit on an open case asked for another one).
+    const visits = await prisma.investigation.findMany({
+      where: { voidedAt: null, case: { closedAt: null } },
+      include: { case: true },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    });
+    const latestVisit = new Map<number, (typeof visits)[number]>();
+    for (const v of visits) if (!latestVisit.has(v.caseId)) latestVisit.set(v.caseId, v);
+    const followUps = [...latestVisit.values()].filter((v) => v.nextVisit && v.nextVisit <= end);
+    // Planned or ongoing response measures that should have started or are due to end.
+    const measures = await prisma.responseActivity.findMany({
+      where: {
+        voidedAt: null,
+        case: { closedAt: null },
+        OR: [
+          { status: 'PLANNED', date: { lte: end } },
+          { status: 'ONGOING', endDate: { lte: end } },
+        ],
+      },
+      include: { case: true },
+      orderBy: { date: 'asc' },
+    });
     const items = [
+      ...followUps.map((v) => {
+        const nd = ymd(v.nextVisit)!;
+        return {
+          kind: 'case',
+          title: `${v.case.code}: follow-up visit ${nd < start ? 'overdue' : 'due'} ${fmtDate(nd)}`,
+          sub: `${v.case.disease} · ${v.case.barangay}`,
+          href: `/cases/${v.caseId}`,
+        };
+      }),
+      ...measures.map((m) => ({
+        kind: 'case',
+        title:
+          m.status === 'PLANNED'
+            ? `${m.case.code}: ${RESPONSE_TYPE_LABELS[m.type as ResponseType] ?? m.type} planned ${fmtDate(ymd(m.date))}`
+            : `${m.case.code}: ${RESPONSE_TYPE_LABELS[m.type as ResponseType] ?? m.type} ends ${fmtDate(ymd(m.endDate))}`,
+        sub: `${m.case.disease} · ${m.case.barangay} — update its status`,
+        href: `/cases/${m.caseId}`,
+      })),
       ...cases
         .filter((c) => c.lat == null)
         .map((c) => ({
@@ -423,7 +465,7 @@ metricsRouter.get(
       prisma.farm.findMany({ where: { archived: false }, orderBy: { id: 'asc' } }),
       prisma.populationGroup.findMany({
         where: { archived: false, farm: { archived: false } },
-        include: { farm: true },
+        include: { farm: true, animals: { where: { status: 'ACTIVE' }, select: { id: true } } },
         orderBy: { id: 'asc' },
       }),
       prisma.animal.findMany({
@@ -464,6 +506,7 @@ metricsRouter.get(
         breed: g.breed,
         sex: g.sex,
         count: g.count,
+        tagged: g.animals.length,
       })),
       animals: animals.map((a) => ({
         id: a.id,

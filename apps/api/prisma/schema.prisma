@@ -289,6 +289,8 @@ model DiseaseCase {
   closedAt             DateTime?
   closedBy             String?             @db.VarChar(120)
   closureNote          String?             @db.Text
+  /// How the case ended (RESOLVED, CONTAINED, DEPOPULATED, NOT_CONFIRMED, OTHER)
+  closureOutcome       String?             @db.VarChar(40)
   relatedCaseId        Int?
   /// Deaths + culled heads already reflected in the farm's population
   populationReconciled Int                 @default(0)
@@ -321,50 +323,72 @@ model CaseStatusHistory {
 }
 
 model Investigation {
+  id               Int         @id @default(autoincrement())
+  caseId           Int
+  date             DateTime    @db.Date
+  investigator     String?     @db.VarChar(120)
+  /// INITIAL, FOLLOW_UP, TRACING, FINAL
+  visitType        String      @default("INITIAL") @db.VarChar(30)
+  animalsExamined  Int?
+  sickCount        Int?
+  deadCount        Int?
+  clinicalSigns    String?     @db.Text
+  biosecurity      String?     @db.Text
+  actionsTaken     String?     @db.Text
+  samplesCollected Boolean     @default(false)
+  nextVisit        DateTime?   @db.Date
+  notes            String      @db.Text
+  voidedAt         DateTime?
+  voidedBy         String?     @db.VarChar(120)
+  voidReason       String?     @db.VarChar(300)
+  createdAt        DateTime    @default(now())
+  case             DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model LabRecord {
   id           Int         @id @default(autoincrement())
   caseId       Int
-  date         DateTime    @db.Date
-  investigator String?     @db.VarChar(120)
-  notes        String      @db.Text
+  sampleId     String      @db.VarChar(60)
+  sampleType   String?     @db.VarChar(80)
+  sampleCount  Int?
+  testMethod   String?     @db.VarChar(80)
+  collectedAt  DateTime?   @db.Date
+  laboratory   String?     @db.VarChar(120)
+  labReference String?     @db.VarChar(60)
+  submittedBy  String?     @db.VarChar(120)
+  sentAt       DateTime?   @db.Date
+  result       LabResult   @default(PENDING)
+  resultDate   DateTime?   @db.Date
+  remarks      String?     @db.VarChar(500)
   voidedAt     DateTime?
   voidedBy     String?     @db.VarChar(120)
   voidReason   String?     @db.VarChar(300)
+  updatedAt    DateTime?
+  updatedBy    String?     @db.VarChar(120)
   createdAt    DateTime    @default(now())
   case         DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
-model LabRecord {
-  id          Int         @id @default(autoincrement())
-  caseId      Int
-  sampleId    String      @db.VarChar(60)
-  sampleType  String?     @db.VarChar(80)
-  collectedAt DateTime?   @db.Date
-  laboratory  String?     @db.VarChar(120)
-  sentAt      DateTime?   @db.Date
-  result      LabResult   @default(PENDING)
-  resultDate  DateTime?   @db.Date
-  remarks     String?     @db.VarChar(500)
-  voidedAt    DateTime?
-  voidedBy    String?     @db.VarChar(120)
-  voidReason  String?     @db.VarChar(300)
-  createdAt   DateTime    @default(now())
-  case        DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-}
-
 model ResponseActivity {
-  id         Int         @id @default(autoincrement())
-  caseId     Int
-  type       String      @db.VarChar(40)
-  date       DateTime    @db.Date
-  personnel  String?     @db.VarChar(200)
-  remarks    String?     @db.Text
+  id             Int         @id @default(autoincrement())
+  caseId         Int
+  type           String      @db.VarChar(40)
+  /// PLANNED, ONGOING, COMPLETED
+  status         String      @default("COMPLETED") @db.VarChar(20)
+  date           DateTime    @db.Date
+  /// When the measure ends or is lifted
+  endDate        DateTime?   @db.Date
+  location       String?     @db.VarChar(200)
+  personnel      String?     @db.VarChar(200)
+  remarks        String?     @db.Text
   /// Number of animals culled (CULLING responses)
-  heads      Int?
-  voidedAt   DateTime?
-  voidedBy   String?     @db.VarChar(120)
-  voidReason String?     @db.VarChar(300)
-  createdAt  DateTime    @default(now())
-  case       DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  heads          Int?
+  disposalMethod String?     @db.VarChar(80)
+  voidedAt       DateTime?
+  voidedBy       String?     @db.VarChar(120)
+  voidReason     String?     @db.VarChar(300)
+  createdAt      DateTime    @default(now())
+  case           DiseaseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 model Vaccination {

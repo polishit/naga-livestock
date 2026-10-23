@@ -1,24 +1,28 @@
 import { AlertTriangle, Check, Link2, Lock, MapPin, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
+  CASE_OUTCOME_LABELS,
   CASE_STAGE,
   CASE_STATUSES,
   CASE_STATUS_LABELS,
   checkCaseStatus,
   MAX_PHOTOS,
   MAX_PHOTO_MB,
-  SPECIES,
+  MIN_DATE,
   caseCreateSchema,
   fmtDate,
   fmtDateTime,
   isoDate,
+  titleCase,
+  type CaseOutcome,
   type CaseStatus,
 } from '@livestock/shared';
 import { isQueued } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { useApi, useLookups, useSave } from '@/lib/hooks';
+import { speciesOnFarm, useApi, useLookups, useSave } from '@/lib/hooks';
 import { cn, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
@@ -38,6 +42,7 @@ import {
   VoidDialog,
   type LabEditRecord,
   type LabLite,
+  type ResponseEditRecord,
 } from '@/dialogs/surveillance';
 import type { CaseRow } from './types';
 
@@ -175,6 +180,23 @@ export function CaseNewPage() {
   const lng = form.watch('lng');
   const farms = (lookups?.farms ?? []).filter((f) => String(f.ownerId) === String(ownerId));
   const farm = lookups?.farms.find((f) => String(f.id) === String(farmId));
+  // Only the species this farm keeps can be affected; the affected count starts at its head count.
+  const farmSpecies = speciesOnFarm(lookups, farmId);
+  const species = form.watch('species');
+  const affected = Number(form.watch('affected')) || 0;
+  const head = farmSpecies.find((s) => s.species === species)?.head;
+  const pickSpecies = (s: string) => {
+    const found = farmSpecies.find((x) => x.species === s);
+    form.setValue('species', s as any, { shouldValidate: !!s });
+    if (found) form.setValue('affected', String(found.head) as any, { shouldValidate: true });
+  };
+  useEffect(() => {
+    if (!farm) return;
+    const current = form.getValues('species');
+    if (farmSpecies.length === 1) pickSpecies(farmSpecies[0].species);
+    else if (current && !farmSpecies.some((s) => s.species === current)) form.setValue('species', '' as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [farm?.id, farmSpecies.length]);
   const point =
     lat !== '' && lng !== '' && lat != null && lng != null ? { lat: Number(lat), lng: Number(lng) } : null;
 
@@ -200,13 +222,14 @@ export function CaseNewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetFarm?.id, farms.length]);
 
-  // Copy the disease and species from the original case.
+  // Copy the disease (and the species, if this farm keeps it) from the original case.
   useEffect(() => {
     if (!parent) return;
     if (!form.getValues('disease')) form.setValue('disease', parent.case.disease as any);
-    if (!form.getValues('species')) form.setValue('species', parent.case.species as any);
+    if (!form.getValues('species') && farmSpecies.some((s) => s.species === parent.case.species))
+      pickSpecies(parent.case.species);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parent?.case.id]);
+  }, [parent?.case.id, farmSpecies.length]);
 
   const save = useSave<any, { id: number }>('POST', '/api/cases', {
     success: 'Disease incident reported.',
@@ -270,11 +293,27 @@ export function CaseNewPage() {
             <Field label="Zone / Purok" error={err(e, 'zone')}>
               <Input {...form.register('zone')} />
             </Field>
-            <Field label="Species affected *" error={err(e, 'species')}>
-              <Select {...form.register('species')} aria-invalid={!!e.species}>
-                <option value="">Select...</option>
-                {SPECIES.map((s) => (
-                  <option key={s}>{s}</option>
+            <Field
+              label="Species affected *"
+              error={err(e, 'species')}
+              hint={
+                farm && !farmSpecies.length
+                  ? 'This farm has no population groups. Add one on the farm page first.'
+                  : 'Only the species kept on this farm are listed.'
+              }
+            >
+              <Select
+                value={species ?? ''}
+                onChange={(ev) => pickSpecies(ev.target.value)}
+                disabled={!farm || !farmSpecies.length}
+                aria-invalid={!!e.species}
+                aria-label="Species affected"
+              >
+                <option value="">{farm ? 'Select...' : 'Select farm first'}</option>
+                {farmSpecies.map((s) => (
+                  <option key={s.species} value={s.species}>
+                    {s.species} — {s.head} head{s.groups > 1 ? ` (${s.groups} groups)` : ''}
+                  </option>
                 ))}
               </Select>
             </Field>
@@ -297,17 +336,34 @@ export function CaseNewPage() {
                 <option key={d} value={d} />
               ))}
             </datalist>
-            <Field label="Animals affected *" error={err(e, 'affected')}>
-              <Input type="number" min={1} {...form.register('affected')} />
+            <Field
+              label="Animals affected *"
+              error={err(e, 'affected')}
+              hint={
+                head != null
+                  ? `${head} ${species.toLowerCase()} on this farm — lower it if only some are affected.`
+                  : undefined
+              }
+            >
+              <Input type="number" min={1} max={head} {...form.register('affected')} />
             </Field>
-            <Field label="Deaths" error={err(e, 'deaths')}>
-              <Input type="number" min={0} {...form.register('deaths')} />
+            <Field
+              label="Deaths"
+              error={err(e, 'deaths')}
+              hint={affected ? `Up to ${affected} (animals affected)` : undefined}
+            >
+              <Input type="number" min={0} max={affected || undefined} {...form.register('deaths')} />
             </Field>
             <Field label="Date symptoms observed" error={err(e, 'symptomsDate')}>
-              <Input type="date" max={isoDate()} {...form.register('symptomsDate')} />
+              <Input
+                type="date"
+                min={MIN_DATE}
+                max={form.watch('reportedAt') || isoDate()}
+                {...form.register('symptomsDate')}
+              />
             </Field>
             <Field label="Date reported" error={err(e, 'reportedAt')}>
-              <Input type="date" max={isoDate()} {...form.register('reportedAt')} />
+              <Input type="date" min={MIN_DATE} max={isoDate()} {...form.register('reportedAt')} />
             </Field>
             <Field label="Observed symptoms" error={err(e, 'symptoms')} className="sm:col-span-2">
               <Textarea rows={3} {...form.register('symptoms')} />
@@ -384,11 +440,27 @@ export function CaseNewPage() {
 }
 
 /* ---------------- Case profile ---------------- */
-
 interface VoidInfo {
   voided?: boolean;
   voidedBy?: string | null;
   voidReason?: string | null;
+}
+
+interface InvestigationRow {
+  id: number;
+  date: string;
+  visitType: string;
+  visitLabel: string;
+  investigator: string | null;
+  animalsExamined: number | null;
+  sickCount: number | null;
+  deadCount: number | null;
+  clinicalSigns: string | null;
+  biosecurity: string | null;
+  actionsTaken: string | null;
+  samplesCollected: boolean;
+  nextVisit: string | null;
+  notes: string;
 }
 
 interface CaseDetail {
@@ -401,17 +473,9 @@ interface CaseDetail {
     byName: string | null;
     at: string;
   }[];
-  investigations: ({ id: number; date: string; investigator: string | null; notes: string } & VoidInfo)[];
+  investigations: (InvestigationRow & VoidInfo)[];
   labs: (LabEditRecord & VoidInfo)[];
-  responses: ({
-    id: number;
-    type: string;
-    typeLabel: string;
-    date: string;
-    personnel: string | null;
-    remarks: string | null;
-    heads: number | null;
-  } & VoidInfo)[];
+  responses: (ResponseEditRecord & { typeLabel: string; statusLabel: string } & VoidInfo)[];
   linkedCases: {
     id: number;
     code: string;
@@ -491,6 +555,7 @@ export function CaseDetailPage() {
     null | 'status' | 'location' | 'inv' | 'lab' | 'resp' | 'close' | 'edit' | 'pop' | 'void'
   >(null);
   const [labEdit, setLabEdit] = useState<LabEditRecord | null>(null);
+  const [respEdit, setRespEdit] = useState<ResponseEditRecord | null>(null);
   const [suggest, setSuggest] = useState<{ status: CaseStatus; lab: LabLite } | null>(null);
   const [voidTarget, setVoidTarget] = useState<{ url: string; what: string } | null>(null);
   const [popExtra, setPopExtra] = useState(0);
@@ -514,6 +579,14 @@ export function CaseDetailPage() {
   const canEdit = canWrite && !c.closed;
   const final = c.status === 'POSITIVE' || c.status === 'NEGATIVE';
   const pending = c.pendingPopulation + popExtra;
+  // Follow-up records cannot be dated before the case began.
+  const caseStart = c.symptomsDate ?? c.reportedAt;
+  const speciesHead = speciesOnFarm(lookups, c.farmId).find((s) => s.species === c.species)?.head;
+  const askMoreDeaths = (dead: number) =>
+    toast(`This visit found ${dead} dead, but the case records ${c.deaths}.`, {
+      duration: 15000,
+      action: { label: 'Update case details', onClick: () => setDlg('edit') },
+    });
 
   // Suggested new counts for the affected species: take the deaths/culled heads off its groups,
   // never below the group's tagged animals. Staff review the numbers before saving.
@@ -596,7 +669,20 @@ export function CaseDetailPage() {
               <b className="font-medium">Closed</b> on {fmtDateTime(c.closedAt!)}
               {c.closedBy ? ` by ${c.closedBy}` : ''}. This case is read-only.
             </div>
+            {c.closureOutcome && (
+              <div className="mt-0.5">
+                Outcome:{' '}
+                <b className="font-medium">
+                  {CASE_OUTCOME_LABELS[c.closureOutcome as CaseOutcome] ?? c.closureOutcome}
+                </b>
+              </div>
+            )}
             {c.closureNote && <div className="mt-0.5 text-slate-600">{c.closureNote}</div>}
+            {isAdmin && (
+              <div className="mt-0.5 text-[13px] text-slate-500">
+                To correct a record, reopen the case; the reopening and every change are kept in History.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -736,64 +822,27 @@ export function CaseDetailPage() {
           </Card>
         )}
         {tab === 'investigation' && (
-          <Card>
-            <CardHeader
-              title="Investigation records"
-              actions={
-                canEdit && (
-                  <Button variant="outline" size="xs" onClick={() => setDlg('inv')}>
-                    <Plus /> Add investigation
-                  </Button>
-                )
-              }
-            />
-            <DataTable
-              rows={data.investigations}
-              rowKey={(r) => r.id}
-              pageSize={0}
-              hideFooter
-              columns={[
-                { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date) },
-                { key: 'investigator', header: 'Investigator' },
-                {
-                  key: 'notes',
-                  header: 'Notes',
-                  className: 'whitespace-pre-wrap',
-                  cell: (r) => <VoidAware r={r}>{r.notes}</VoidAware>,
-                },
-                ...(isAdmin
-                  ? [
-                      {
-                        key: 'actions',
-                        header: '',
-                        sort: false as const,
-                        cell: (r: CaseDetail['investigations'][number]) =>
-                          !r.voided && (
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              onClick={() => {
-                                setVoidTarget({
-                                  url: `/api/investigations/${r.id}/void`,
-                                  what: `investigation of ${fmtDate(r.date)}`,
-                                });
-                                setDlg('void');
-                              }}
-                            >
-                              Void
-                            </Button>
-                          ),
-                      },
-                    ]
-                  : []),
-              ]}
-              empty="No investigations recorded yet."
-            />
-          </Card>
+          <InvestigationTable
+            rows={data.investigations}
+            closed={c.closed}
+            onAdd={canEdit ? () => setDlg('inv') : undefined}
+            onVoid={
+              isAdmin && !c.closed
+                ? (r) => {
+                    setVoidTarget({
+                      url: `/api/investigations/${r.id}/void`,
+                      what: `investigation of ${fmtDate(r.date)}`,
+                    });
+                    setDlg('void');
+                  }
+                : undefined
+            }
+          />
         )}
         {tab === 'laboratory' && (
           <LabTable
             labs={data.labs}
+            closed={c.closed}
             onAdd={
               canEdit
                 ? () => {
@@ -811,7 +860,7 @@ export function CaseDetailPage() {
                 : undefined
             }
             onVoid={
-              isAdmin
+              isAdmin && !c.closed
                 ? (l) => {
                     setVoidTarget({ url: `/api/labs/${l.id}/void`, what: `lab record ${l.sampleId}` });
                     setDlg('void');
@@ -823,9 +872,24 @@ export function CaseDetailPage() {
         {tab === 'response' && (
           <ResponsePanel
             detail={data}
-            onLog={canEdit ? () => setDlg('resp') : undefined}
+            onLog={
+              canEdit
+                ? () => {
+                    setRespEdit(null);
+                    setDlg('resp');
+                  }
+                : undefined
+            }
+            onEdit={
+              canEdit
+                ? (r) => {
+                    setRespEdit(r);
+                    setDlg('resp');
+                  }
+                : undefined
+            }
             onVoid={
-              isAdmin
+              isAdmin && !c.closed
                 ? (r) => {
                     setVoidTarget({ url: `/api/responses/${r.id}/void`, what: `${r.typeLabel} record` });
                     setDlg('void');
@@ -926,9 +990,12 @@ export function CaseDetailPage() {
       )}
       <InvestigationDialog
         open={dlg === 'inv'}
-        onOpenChange={(o) => setDlg(o ? 'inv' : null)}
+        onOpenChange={(o) => setDlg((d) => (o ? 'inv' : d === 'inv' ? null : d))}
         caseId={c.id}
         code={c.code}
+        minDate={caseStart}
+        caseDeaths={c.deaths}
+        onMoreDeaths={askMoreDeaths}
       />
       <LabDialog
         open={dlg === 'lab'}
@@ -936,6 +1003,7 @@ export function CaseDetailPage() {
         caseId={c.id}
         code={c.code}
         lab={labEdit}
+        minDate={caseStart}
         onSaved={afterLabSaved}
       />
       <ResponseDialog
@@ -943,10 +1011,13 @@ export function CaseDetailPage() {
         onOpenChange={(o) => setDlg((d) => (o ? 'resp' : d === 'resp' ? null : d))}
         caseId={c.id}
         code={c.code}
+        response={respEdit}
+        minDate={caseStart}
+        maxHeads={speciesHead}
         onSaved={(v) => {
           // Culling removes animals: offer the population update straight away.
-          if (v.type === 'CULLING_DEPOPULATION' && Number(v.heads) > 0) {
-            setPopExtra(Number(v.heads));
+          if (v.type === 'CULLING_DEPOPULATION' && v.status !== 'PLANNED' && v.added > 0) {
+            setPopExtra(v.added);
             setDlg('pop');
           }
         }}
@@ -975,13 +1046,116 @@ function VoidAware({ r, children }: { r: VoidInfo; children: React.ReactNode }) 
   );
 }
 
+/** Shown on a closed case's record tabs. */
+function ClosedNote() {
+  return (
+    <p className="border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-500">
+      <Lock className="mr-1 inline h-3.5 w-3.5" /> This case is closed: these records are kept for the audit
+      trail and reports, but cannot be changed unless an administrator reopens the case.
+    </p>
+  );
+}
+
+const show = (v: number | null | undefined) => (v == null ? '—' : v);
+
+export function InvestigationTable({
+  rows,
+  closed,
+  onAdd,
+  onVoid,
+}: {
+  rows: (InvestigationRow & VoidInfo)[];
+  closed?: boolean;
+  onAdd?: () => void;
+  onVoid?: (r: InvestigationRow & VoidInfo) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader
+        title="Investigation records"
+        actions={
+          onAdd && (
+            <Button variant="outline" size="xs" onClick={onAdd}>
+              <Plus /> Add investigation
+            </Button>
+          )
+        }
+      />
+      <DataTable
+        rows={rows}
+        rowKey={(r) => r.id}
+        pageSize={0}
+        hideFooter
+        minWidth={820}
+        columns={[
+          {
+            key: 'date',
+            header: 'Visit',
+            cell: (r) => (
+              <div className="whitespace-nowrap">
+                <div>{fmtDate(r.date)}</div>
+                <div className="text-[12.5px] text-slate-500">{r.visitLabel}</div>
+              </div>
+            ),
+          },
+          { key: 'investigator', header: 'Investigator' },
+          {
+            key: 'animalsExamined',
+            header: 'Examined / sick / dead',
+            sort: false,
+            cell: (r) => `${show(r.animalsExamined)} / ${show(r.sickCount)} / ${show(r.deadCount)}`,
+          },
+          {
+            key: 'notes',
+            header: 'Findings',
+            className: 'whitespace-pre-wrap',
+            cell: (r) => (
+              <VoidAware r={r}>
+                <div>{r.notes}</div>
+                <div className="mt-1 space-y-0.5 text-[13px] text-slate-500">
+                  {r.clinicalSigns && <div>Signs: {r.clinicalSigns}</div>}
+                  {r.biosecurity && <div>Biosecurity: {r.biosecurity}</div>}
+                  {r.actionsTaken && <div>Actions: {r.actionsTaken}</div>}
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {r.samplesCollected && <Badge tone="blue">Samples collected</Badge>}
+                    {r.nextVisit && <Badge tone="amber">Next visit {fmtDate(r.nextVisit)}</Badge>}
+                  </div>
+                </div>
+              </VoidAware>
+            ),
+          },
+          ...(onVoid
+            ? [
+                {
+                  key: 'actions',
+                  header: '',
+                  sort: false as const,
+                  cell: (r: InvestigationRow & VoidInfo) =>
+                    !r.voided && (
+                      <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
+                        Void
+                      </Button>
+                    ),
+                },
+              ]
+            : []),
+        ]}
+        empty="No investigations recorded yet."
+      />
+      {closed && <ClosedNote />}
+    </Card>
+  );
+}
+
 export function LabTable({
   labs,
+  closed,
   onAdd,
   onEdit,
   onVoid,
 }: {
   labs: CaseDetail['labs'];
+  closed?: boolean;
   onAdd?: () => void;
   onEdit?: (l: CaseDetail['labs'][number]) => void;
   onVoid?: (l: CaseDetail['labs'][number]) => void;
@@ -1003,14 +1177,47 @@ export function LabTable({
         rowKey={(r) => r.id}
         pageSize={0}
         hideFooter
+        minWidth={900}
         columns={[
-          { key: 'sampleId', header: 'Sample ID', cell: (r) => <VoidAware r={r}>{r.sampleId}</VoidAware> },
-          { key: 'sampleType', header: 'Type' },
+          {
+            key: 'sampleId',
+            header: 'Sample',
+            cell: (r) => (
+              <VoidAware r={r}>
+                <div>{r.sampleId}</div>
+                <div className="text-[12.5px] text-slate-500">
+                  {[r.sampleType, r.sampleCount ? `${r.sampleCount} sample(s)` : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </VoidAware>
+            ),
+          },
+          { key: 'testMethod', header: 'Test', cell: (r) => r.testMethod ?? '—' },
           { key: 'collectedAt', header: 'Collected', cell: (r) => fmtDate(r.collectedAt) },
-          { key: 'laboratory', header: 'Laboratory' },
+          {
+            key: 'laboratory',
+            header: 'Laboratory',
+            cell: (r) => (
+              <div>
+                <div>{r.laboratory ?? '—'}</div>
+                {r.labReference && <div className="text-[12.5px] text-slate-500">Ref. {r.labReference}</div>}
+              </div>
+            ),
+          },
           { key: 'sentAt', header: 'Sent', cell: (r) => fmtDate(r.sentAt) },
-          { key: 'result', header: 'Result', cell: (r) => <LabResultBadge result={r.result} /> },
-          { key: 'resultDate', header: 'Result date', cell: (r) => fmtDate(r.resultDate) },
+          {
+            key: 'result',
+            header: 'Result',
+            cell: (r) => (
+              <div>
+                <LabResultBadge result={r.result} />
+                {r.resultDate && (
+                  <div className="mt-0.5 text-[12.5px] text-slate-500">{fmtDate(r.resultDate)}</div>
+                )}
+              </div>
+            ),
+          },
           ...(onEdit || onVoid
             ? [
                 {
@@ -1038,6 +1245,7 @@ export function LabTable({
         ]}
         empty="No laboratory records yet."
       />
+      {closed && <ClosedNote />}
     </Card>
   );
 }
@@ -1045,10 +1253,12 @@ export function LabTable({
 export function ResponsePanel({
   detail,
   onLog,
+  onEdit,
   onVoid,
 }: {
   detail: CaseDetail;
   onLog?: () => void;
+  onEdit?: (r: CaseDetail['responses'][number]) => void;
   onVoid?: (r: CaseDetail['responses'][number]) => void;
 }) {
   const c = detail.case;
@@ -1130,13 +1340,23 @@ export function ResponsePanel({
           <Timeline
             items={detail.responses.map((r) => ({
               key: r.id,
-              meta: fmtDate(r.date),
+              meta: `${fmtDate(r.date)}${r.endDate ? ` – ${fmtDate(r.endDate)}` : ''}`,
               title: r.voided ? (
                 <VoidAware r={r}>{r.typeLabel}</VoidAware>
               ) : (
                 <span className="inline-flex flex-wrap items-center gap-2">
                   {r.typeLabel}
+                  <Badge
+                    tone={r.status === 'COMPLETED' ? 'green' : r.status === 'ONGOING' ? 'amber' : 'blue'}
+                  >
+                    {r.statusLabel}
+                  </Badge>
                   {r.heads ? <Badge tone="red">{r.heads} culled</Badge> : null}
+                  {onEdit && (
+                    <Button size="xs" variant="outline" onClick={() => onEdit(r)}>
+                      {r.status === 'COMPLETED' ? 'Edit' : 'Update'}
+                    </Button>
+                  )}
                   {onVoid && (
                     <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
                       Void
@@ -1145,12 +1365,25 @@ export function ResponsePanel({
                 </span>
               ),
               tag: r.personnel,
-              body: r.remarks,
+              body:
+                r.location || r.disposalMethod || r.remarks ? (
+                  <div>
+                    {(r.location || r.disposalMethod) && (
+                      <div className="text-[13.5px] text-slate-500">
+                        {[r.location, r.disposalMethod ? `Disposal: ${r.disposalMethod}` : null]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    )}
+                    {r.remarks && <div>{r.remarks}</div>}
+                  </div>
+                ) : null,
             }))}
           />
         ) : (
           <p className="p-4 text-sm text-slate-500">No response activities logged yet.</p>
         )}
+        {c.closed && <ClosedNote />}
       </Card>
     </div>
   );
@@ -1289,13 +1522,31 @@ export function CaseTrackingPage() {
 
 export function InvestigationPage() {
   const navigate = useNavigate();
-  const { canEdit } = useAuth();
+  const { canEdit: canWrite, isAdmin } = useAuth();
   const [caseId, setCaseId] = useState('');
-  const [dlg, setDlg] = useState<null | 'inv' | 'lab'>(null);
+  const [dlg, setDlg] = useState<null | 'inv' | 'lab' | 'void'>(null);
+  const [labEdit, setLabEdit] = useState<LabEditRecord | null>(null);
+  const [voidTarget, setVoidTarget] = useState<{ url: string; what: string } | null>(null);
   const { data: cases } = useApi<CaseRow[]>('/api/cases');
   const { data: labs, isLoading } =
-    useApi<(CaseDetail['labs'][number] & { caseId: number; caseCode: string })[]>('/api/labs');
+    useApi<(CaseDetail['labs'][number] & { caseId: number; caseCode: string; caseClosed?: boolean })[]>(
+      '/api/labs',
+    );
   const { data: detail } = useApi<CaseDetail>(caseId ? `/api/cases/${caseId}` : null);
+  const closed = !!detail?.case.closed;
+  const canEdit = canWrite && !closed;
+  const caseStart = detail ? (detail.case.symptomsDate ?? detail.case.reportedAt) : undefined;
+  const afterLabSaved = (v: { result: string }) => {
+    if (!detail || (v.result !== 'POSITIVE' && v.result !== 'NEGATIVE') || v.result === detail.case.status)
+      return;
+    toast(
+      `Result recorded. Update ${detail.case.code}'s status to ${titleCase(v.result)} on the case page.`,
+      {
+        duration: 12000,
+        action: { label: 'Open case', onClick: () => navigate(`/cases/${detail.case.id}`) },
+      },
+    );
+  };
   return (
     <div>
       <PageHeader
@@ -1309,7 +1560,10 @@ export function InvestigationPage() {
             all="Select case..."
             options={[...(cases ?? [])]
               .sort((a, b) => a.id - b.id)
-              .map((c) => ({ value: String(c.id), label: `${c.code} · ${c.disease}` }))}
+              .map((c) => ({
+                value: String(c.id),
+                label: `${c.code} · ${c.disease}${c.closed ? ' (closed)' : ''}`,
+              }))}
             className="w-full sm:w-80"
           />
         }
@@ -1324,16 +1578,35 @@ export function InvestigationPage() {
             onRowClick={(r) => setCaseId(String(r.caseId))}
             pageSize={0}
             hideFooter
+            minWidth={820}
             columns={[
-              { key: 'sampleId', header: 'Sample ID' },
-              { key: 'caseCode', header: 'Case' },
+              {
+                key: 'sampleId',
+                header: 'Sample ID',
+                cell: (r) => <VoidAware r={r}>{r.sampleId}</VoidAware>,
+              },
+              {
+                key: 'caseCode',
+                header: 'Case',
+                cell: (r) => (
+                  <span className="inline-flex items-center gap-1.5">
+                    {r.caseCode}
+                    {r.caseClosed && <ClosedBadge />}
+                  </span>
+                ),
+              },
               { key: 'sampleType', header: 'Type' },
+              { key: 'testMethod', header: 'Test', cell: (r) => r.testMethod ?? '—' },
               { key: 'laboratory', header: 'Laboratory' },
               { key: 'sentAt', header: 'Sent', cell: (r) => fmtDate(r.sentAt) },
               { key: 'result', header: 'Result', cell: (r) => <LabResultBadge result={r.result} /> },
+              { key: 'resultDate', header: 'Result date', cell: (r) => fmtDate(r.resultDate) },
             ]}
             empty="No laboratory records yet."
           />
+          <p className="border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-500">
+            Select a record (or a case above) to add investigations, enter results or edit lab records.
+          </p>
         </Card>
       ) : !detail ? (
         <Loading />
@@ -1343,6 +1616,7 @@ export function InvestigationPage() {
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-[17px] font-semibold text-slate-900">{detail.case.code}</span>
               <CaseStatusBadge status={detail.case.status} />
+              {closed && <ClosedBadge />}
               <span className="text-[15px] text-slate-600">
                 {detail.case.farmName} · {detail.case.barangay}
               </span>
@@ -1355,43 +1629,81 @@ export function InvestigationPage() {
               Open case profile
             </button>
           </Card>
-          <Card>
-            <CardHeader
-              title="Investigation records"
-              actions={
-                canEdit && (
-                  <Button variant="outline" size="xs" onClick={() => setDlg('inv')}>
-                    <Plus /> Add investigation
-                  </Button>
-                )
-              }
-            />
-            <DataTable
-              rows={detail.investigations}
-              rowKey={(r) => r.id}
-              pageSize={0}
-              hideFooter
-              columns={[
-                { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date) },
-                { key: 'investigator', header: 'Investigator' },
-                { key: 'notes', header: 'Notes' },
-              ]}
-              empty="No investigations recorded yet."
-            />
-          </Card>
-          <LabTable labs={detail.labs} onAdd={canEdit ? () => setDlg('lab') : undefined} />
+          <InvestigationTable
+            rows={detail.investigations}
+            closed={closed}
+            onAdd={canEdit ? () => setDlg('inv') : undefined}
+            onVoid={
+              isAdmin && !closed
+                ? (r) => {
+                    setVoidTarget({
+                      url: `/api/investigations/${r.id}/void`,
+                      what: `investigation of ${fmtDate(r.date)}`,
+                    });
+                    setDlg('void');
+                  }
+                : undefined
+            }
+          />
+          <LabTable
+            labs={detail.labs}
+            closed={closed}
+            onAdd={
+              canEdit
+                ? () => {
+                    setLabEdit(null);
+                    setDlg('lab');
+                  }
+                : undefined
+            }
+            onEdit={
+              canEdit
+                ? (l) => {
+                    setLabEdit(l);
+                    setDlg('lab');
+                  }
+                : undefined
+            }
+            onVoid={
+              isAdmin && !closed
+                ? (l) => {
+                    setVoidTarget({ url: `/api/labs/${l.id}/void`, what: `lab record ${l.sampleId}` });
+                    setDlg('void');
+                  }
+                : undefined
+            }
+          />
           <InvestigationDialog
             open={dlg === 'inv'}
-            onOpenChange={(o) => setDlg(o ? 'inv' : null)}
+            onOpenChange={(o) => setDlg((d) => (o ? 'inv' : d === 'inv' ? null : d))}
             caseId={detail.case.id}
             code={detail.case.code}
+            minDate={caseStart}
+            caseDeaths={detail.case.deaths}
+            onMoreDeaths={(dead) =>
+              toast(`This visit found ${dead} dead, but ${detail.case.code} records ${detail.case.deaths}.`, {
+                duration: 15000,
+                action: { label: 'Open case', onClick: () => navigate(`/cases/${detail.case.id}`) },
+              })
+            }
           />
           <LabDialog
             open={dlg === 'lab'}
-            onOpenChange={(o) => setDlg(o ? 'lab' : null)}
+            onOpenChange={(o) => setDlg((d) => (o ? 'lab' : d === 'lab' ? null : d))}
             caseId={detail.case.id}
             code={detail.case.code}
+            lab={labEdit}
+            minDate={caseStart}
+            onSaved={afterLabSaved}
           />
+          {voidTarget && (
+            <VoidDialog
+              open={dlg === 'void'}
+              onOpenChange={(o) => setDlg(o ? 'void' : null)}
+              url={voidTarget.url}
+              what={voidTarget.what}
+            />
+          )}
         </div>
       )}
     </div>
@@ -1401,7 +1713,9 @@ export function InvestigationPage() {
 /* ---------------- Response activities ---------------- */
 
 export function ResponseActivitiesPage() {
+  const navigate = useNavigate();
   const { canEdit } = useAuth();
+  const { data: lookups } = useLookups();
   const { data: cases, isLoading: casesLoading, error: casesError } = useApi<CaseRow[]>('/api/cases');
   const sorted = [...(cases ?? [])].sort(
     (a, b) => (a.status === 'POSITIVE' ? -1 : 0) - (b.status === 'POSITIVE' ? -1 : 0) || a.id - b.id,
@@ -1409,9 +1723,11 @@ export function ResponseActivitiesPage() {
   const [caseId, setCaseId] = useState('');
   const effective = caseId || (sorted[0] ? String(sorted[0].id) : '');
   const [open, setOpen] = useState(false);
+  const [respEdit, setRespEdit] = useState<ResponseEditRecord | null>(null);
   const { data: detail, error: detailError } = useApi<CaseDetail>(
     effective ? `/api/cases/${effective}` : null,
   );
+  const writable = canEdit && !!detail && !detail.case.closed;
   return (
     <div>
       <PageHeader
@@ -1424,7 +1740,7 @@ export function ResponseActivitiesPage() {
             onChange={setCaseId}
             options={sorted.map((c) => ({
               value: String(c.id),
-              label: `${c.code} · ${c.disease} (${CASE_STATUS_LABELS[c.status]})`,
+              label: `${c.code} · ${c.disease} (${c.closed ? 'closed' : CASE_STATUS_LABELS[c.status]})`,
             }))}
             className="w-full sm:w-96"
           />
@@ -1444,13 +1760,40 @@ export function ResponseActivitiesPage() {
         <>
           <ResponsePanel
             detail={detail}
-            onLog={canEdit && !detail.case.closed ? () => setOpen(true) : undefined}
+            onLog={
+              writable
+                ? () => {
+                    setRespEdit(null);
+                    setOpen(true);
+                  }
+                : undefined
+            }
+            onEdit={
+              writable
+                ? (r) => {
+                    setRespEdit(r);
+                    setOpen(true);
+                  }
+                : undefined
+            }
           />
           <ResponseDialog
             open={open}
             onOpenChange={setOpen}
             caseId={detail.case.id}
             code={detail.case.code}
+            response={respEdit}
+            minDate={detail.case.symptomsDate ?? detail.case.reportedAt}
+            maxHeads={
+              speciesOnFarm(lookups, detail.case.farmId).find((s) => s.species === detail.case.species)?.head
+            }
+            onSaved={(v) => {
+              if (v.type === 'CULLING_DEPOPULATION' && v.status !== 'PLANNED' && v.added > 0)
+                toast(`${v.added} culled. Update the farm's population from the case page.`, {
+                  duration: 12000,
+                  action: { label: 'Open case', onClick: () => navigate(`/cases/${detail.case.id}`) },
+                });
+            }}
           />
         </>
       )}

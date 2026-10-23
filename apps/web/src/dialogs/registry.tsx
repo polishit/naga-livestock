@@ -8,6 +8,7 @@ import {
   FARM_TYPES,
   HEALTH_STATUSES,
   LIFE_STAGES,
+  MIN_DATE,
   OWNER_STATUSES,
   PCIC_STATUSES,
   SEXES,
@@ -372,10 +373,10 @@ export function PcicDialog({ open, onOpenChange, ownerId }: DialogProps & { owne
           <Input type="number" min={0} step="0.01" {...form.register('amountCovered')} />
         </Field>
         <Field label="Coverage start *" error={err(e, 'startDate')}>
-          <Input type="date" {...form.register('startDate')} />
+          <Input type="date" min={MIN_DATE} {...form.register('startDate')} />
         </Field>
         <Field label="Coverage end *" error={err(e, 'endDate')}>
-          <Input type="date" {...form.register('endDate')} />
+          <Input type="date" min={form.watch('startDate') || MIN_DATE} {...form.register('endDate')} />
         </Field>
         <Field label="Status" error={err(e, 'status')}>
           <Select {...form.register('status')}>
@@ -677,7 +678,12 @@ export function GroupDialog({ open, onOpenChange, farmId }: DialogProps & { farm
           error={err(e, 'reportingMonth')}
           hint="Month the initial count was verified."
         >
-          <Input type="month" max={isoMonth()} {...form.register('reportingMonth')} />
+          <Input
+            type="month"
+            min={MIN_DATE.slice(0, 7)}
+            max={isoMonth()}
+            {...form.register('reportingMonth')}
+          />
         </Field>
         <Field label="Initial head count" error={err(e, 'count')}>
           <Input type="number" min={0} {...form.register('count')} />
@@ -774,7 +780,7 @@ export function PopulationUpdateDialog({
           </p>
         )}
         <Field label="Reporting month" error={e.month?.message} className="w-full sm:w-48">
-          <Input type="month" max={isoMonth()} {...form.register('month')} />
+          <Input type="month" min={MIN_DATE.slice(0, 7)} max={isoMonth()} {...form.register('month')} />
         </Field>
         {!groups.length && (
           <p className="text-sm text-slate-500">This farm has no population groups yet. Add a group first.</p>

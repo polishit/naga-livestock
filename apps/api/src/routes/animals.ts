@@ -275,6 +275,22 @@ transfersRouter.post(
       throw badRequest('Validation failed', {
         fieldErrors: { toFarmId: ['Animal is already at this farm'] },
       });
+    // A transfer cannot be dated before the animal's birth or its previous transfer.
+    const lastTransfer = await prisma.ownershipTransfer.findFirst({
+      where: { animalId: animal.id },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    });
+    const earliest = [ymd(animal.dob), ymd(lastTransfer?.date)].filter(Boolean).sort().at(-1);
+    if (earliest && d.date < earliest)
+      throw badRequest('Validation failed', {
+        fieldErrors: {
+          date: [
+            lastTransfer && ymd(lastTransfer.date) === earliest
+              ? `Cannot be before the previous transfer (${earliest})`
+              : `Cannot be before the date of birth (${earliest})`,
+          ],
+        },
+      });
 
     const t = await prisma.$transaction(async (tx) => {
       let dest = await tx.populationGroup.findFirst({

@@ -5,6 +5,8 @@ import {
   BARANGAYS,
   MAX_PHOTOS,
   MAX_PHOTO_MB,
+  MIN_DATE,
+  MIN_DOB,
   SPECIES,
   STRAY_STATUSES,
   animalCreateSchema,
@@ -15,7 +17,7 @@ import {
   titleCase,
   transferCreateSchema,
 } from '@livestock/shared';
-import { isQueued } from '@/lib/api';
+import { api, isQueued } from '@/lib/api';
 import { useAddressLookup, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
 import { MapView } from '@/components/MapView';
 import { AddressLookupHint, PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
@@ -126,15 +128,21 @@ export function AnimalDialog({
           <Field
             label="Population group *"
             error={err(e, 'groupId')}
-            hint="Registering an animal does not change the group count; the animal is counted within its group."
+            hint={
+              selectedGroup
+                ? `${selectedGroup.count - selectedGroup.tagged} untagged head left in ${selectedGroup.code}. The animal is counted within its group (the count does not change).`
+                : 'Registering an animal does not change the group count; full groups are greyed out.'
+            }
             className="sm:col-span-3"
           >
             <Select {...form.register('groupId')} aria-invalid={!!e.groupId}>
               <option value="">Select group...</option>
               {lookups?.groups.map((g) => (
-                <option key={g.id} value={g.id}>
+                // A group is full when every head is already tagged: update its count first.
+                <option key={g.id} value={g.id} disabled={g.tagged >= g.count}>
                   {g.code} · {g.farmName} · {g.species}
-                  {g.breed ? ` (${g.breed})` : ''} · {g.count} head
+                  {g.breed ? ` (${g.breed})` : ''} · {g.tagged} of {g.count} tagged
+                  {g.tagged >= g.count ? ' — full' : ''}
                 </option>
               ))}
             </Select>
@@ -153,7 +161,7 @@ export function AnimalDialog({
           </Select>
         </Field>
         <Field label="Date of birth" error={err(e, 'dob')}>
-          <Input type="date" max={isoDate()} {...form.register('dob')} />
+          <Input type="date" min={MIN_DOB} max={isoDate()} {...form.register('dob')} />
         </Field>
         <Field label="Estimated age" error={err(e, 'estimatedAge')}>
           <Input {...form.register('estimatedAge')} placeholder="e.g. 3 yrs" />
@@ -248,7 +256,7 @@ export function TransferDialog({ open, onOpenChange, animal }: DialogProps & { a
           </Select>
         </Field>
         <Field label="Transfer date *" error={err(e, 'date')}>
-          <Input type="date" max={isoDate()} {...form.register('date')} />
+          <Input type="date" min={animal.dob ?? MIN_DATE} max={isoDate()} {...form.register('date')} />
         </Field>
         <Field label="Type" error={err(e, 'type')}>
           <Select {...form.register('type')}>
@@ -286,10 +294,33 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
     lng: '',
   } as any);
   const geo = useAddressLookup(form, { address: 'location', barangay: 'barangay' });
+  const [tagHint, setTagHint] = useState<string | null>(null);
   useEffect(() => {
-    if (open) geo.reset();
+    if (open) {
+      geo.reset();
+      setTagHint(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  /** A registered ear tag tells us the species and the owner. */
+  const lookupTag = async (tag: string) => {
+    const q = tag.trim();
+    if (!q) return setTagHint(null);
+    try {
+      const a = await api.get<{
+        code: string;
+        species: string;
+        ownerId: number;
+        ownerName: string;
+        farmName: string;
+      }>(`/api/animals/lookup?q=${encodeURIComponent(q)}`);
+      form.setValue('species', a.species as any);
+      if (!form.getValues('ownerId')) form.setValue('ownerId', String(a.ownerId) as any);
+      setTagHint(`Registered animal ${a.code} (${a.species}) of ${a.ownerName}, ${a.farmName}.`);
+    } catch {
+      setTagHint('No registered animal has this tag — fill in the species and owner yourself.');
+    }
+  };
   const save = useSave<any>('POST', '/api/strays', {
     success: 'Stray livestock report saved.',
     label: (b) => `Stray report (${b.species}, ${b.barangay})`,
@@ -329,8 +360,13 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
         className="grid grid-cols-1 gap-5 lg:grid-cols-2"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Ear tag / Animal ID (if any)" error={err(e, 'earTag')} className="sm:col-span-2">
-            <Input {...form.register('earTag')} />
+          <Field
+            label="Ear tag / Animal ID (if any)"
+            error={err(e, 'earTag')}
+            hint={tagHint ?? 'If the animal is registered, its species and owner are filled in.'}
+            className="sm:col-span-2"
+          >
+            <Input {...form.register('earTag', { onBlur: (ev) => lookupTag(ev.target.value) })} />
           </Field>
           <Field
             label="Owner (if known)"
@@ -355,7 +391,12 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
             </Select>
           </Field>
           <Field label="Date & time discovered" error={err(e, 'discoveredAt')}>
-            <Input type="datetime-local" {...form.register('discoveredAt')} />
+            <Input
+              type="datetime-local"
+              min={`${MIN_DATE}T00:00`}
+              max={local}
+              {...form.register('discoveredAt')}
+            />
           </Field>
           <Field label="Barangay *" error={err(e, 'barangay')}>
             <Select {...form.register('barangay')} aria-invalid={!!e.barangay}>

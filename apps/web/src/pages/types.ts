@@ -54,6 +54,7 @@ export interface CaseRow {
   closedAt: string | null;
   closedBy: string | null;
   closureNote: string | null;
+  closureOutcome: string | null;
   relatedCaseId: number | null;
   relatedCaseCode: string | null;
 }

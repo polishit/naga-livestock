@@ -13,8 +13,12 @@ import {
   SPECIES,
   STRAY_STATUSES,
   TRANSFER_TYPES,
+  CASE_OUTCOMES,
+  INVESTIGATION_VISIT_TYPES,
+  RESPONSE_STATUSES,
   VACCINATION_TARGETS,
 } from './constants';
+import { isoDate, isoMonth } from './format';
 
 /* ---------- helpers: form inputs arrive as strings, JSON may contain null ---------- */
 
@@ -35,19 +39,25 @@ export const reqText = (max = 200, msg = 'Required') =>
   );
 
 /** Integer coerced from string. */
-export const intField = (min = 0, msg?: string) =>
+export const intField = (min = 0, msg?: string, max = 1_000_000) =>
   z.preprocess(
     (v) => (v === '' || v === null || v === undefined ? undefined : Number(v)),
     z
       .number({ required_error: msg ?? 'Required', invalid_type_error: 'Must be a number' })
       .int('Must be a whole number')
-      .min(min, `Must be at least ${min}`),
+      .min(min, `Must be at least ${min}`)
+      .max(max, `Must be ${max.toLocaleString()} or less`),
   );
 
-export const optInt = (min = 0) =>
+export const optInt = (min = 0, max = 1_000_000) =>
   z.preprocess(
     (v) => (v === '' || v === null || v === undefined ? undefined : Number(v)),
-    z.number({ invalid_type_error: 'Must be a number' }).int().min(min).optional(),
+    z
+      .number({ invalid_type_error: 'Must be a number' })
+      .int('Must be a whole number')
+      .min(min, `Must be at least ${min}`)
+      .max(max, `Must be ${max.toLocaleString()} or less`)
+      .optional(),
   );
 
 /** Optional number that may be explicitly cleared with null. */
@@ -67,6 +77,70 @@ const MONTH_RE = /^\d{4}-\d{2}$/;
 
 export const optDate = z.preprocess(blankToUndefined, z.string().regex(DATE_RE, 'Use YYYY-MM-DD').optional());
 export const reqDate = z.string({ required_error: 'Required' }).regex(DATE_RE, 'Use YYYY-MM-DD');
+
+/** Earliest date accepted anywhere (catches typos such as 0202-05-01). */
+export const MIN_DATE = '2000-01-01';
+/** Earliest date of birth accepted for an animal. */
+export const MIN_DOB = '1990-01-01';
+
+const validDay = (s: string) => {
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+};
+const notFuture = (s: string) => s <= isoDate();
+
+/** Optional date that must be a real calendar day, not before `min` and not after today. */
+export const pastDate = (min = MIN_DATE) =>
+  z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .regex(DATE_RE, 'Use YYYY-MM-DD')
+      .refine(validDay, 'Enter a valid date')
+      .refine((s) => s >= min, `Date cannot be before ${min.slice(0, 4)}`)
+      .refine(notFuture, 'Date cannot be in the future')
+      .optional(),
+  );
+/** Required date, real calendar day, not before `min` and not after today. */
+export const reqPastDate = (min = MIN_DATE) =>
+  z
+    .string({ required_error: 'Required' })
+    .regex(DATE_RE, 'Use YYYY-MM-DD')
+    .refine(validDay, 'Enter a valid date')
+    .refine((s) => s >= min, `Date cannot be before ${min.slice(0, 4)}`)
+    .refine(notFuture, 'Date cannot be in the future');
+/** Optional date that may be in the future (schedules, end dates). */
+export const anyDate = z.preprocess(
+  blankToUndefined,
+  z
+    .string()
+    .regex(DATE_RE, 'Use YYYY-MM-DD')
+    .refine(validDay, 'Enter a valid date')
+    .refine((s) => s >= MIN_DATE, `Date cannot be before ${MIN_DATE.slice(0, 4)}`)
+    .optional(),
+);
+/** Required date that may be in the future. */
+export const reqAnyDate = z
+  .string({ required_error: 'Required' })
+  .regex(DATE_RE, 'Use YYYY-MM-DD')
+  .refine(validDay, 'Enter a valid date')
+  .refine((s) => s >= MIN_DATE, `Date cannot be before ${MIN_DATE.slice(0, 4)}`);
+
+/** Philippine mobile or landline: digits with optional spaces, dashes, brackets or +63. */
+export const PHONE_RE = /^\+?[\d\s()-]{7,20}$/;
+const phoneField = z.preprocess(
+  (v) => (typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim()) : blankToUndefined(v)),
+  z
+    .string()
+    .max(40)
+    .refine(
+      (s) => PHONE_RE.test(s) && s.replace(/\D/g, '').length >= 7 && s.replace(/\D/g, '').length <= 13,
+      'Enter a valid contact number (e.g. 0917-123-4567)',
+    )
+    .optional(),
+);
+/** Largest head count accepted in one field (guards against typing errors). */
+export const MAX_HEAD = 100000;
 export const optDateTime = z.preprocess(
   blankToUndefined,
   z
@@ -74,7 +148,11 @@ export const optDateTime = z.preprocess(
     .regex(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/, 'Invalid date/time')
     .optional(),
 );
-export const monthField = z.string({ required_error: 'Required' }).regex(MONTH_RE, 'Use YYYY-MM');
+export const monthField = z
+  .string({ required_error: 'Required' })
+  .regex(MONTH_RE, 'Use YYYY-MM')
+  .refine((m) => m >= MIN_DATE.slice(0, 7), `Month cannot be before ${MIN_DATE.slice(0, 4)}`)
+  .refine((m) => m <= isoMonth(), 'Cannot use a future month');
 export const optMonth = z.preprocess(blankToUndefined, monthField.optional());
 
 const idField = (msg = 'Required') => intField(1, msg);
@@ -115,11 +193,19 @@ export const userUpdateSchema = z.object({
 /* ---------- owners ---------- */
 
 export const ownerCreateSchema = z.object({
-  fullName: reqText(150),
+  fullName: z.preprocess(
+    (v) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : v),
+    z
+      .string({ required_error: 'Required' })
+      .min(1, 'Required')
+      .min(2, 'Enter the full name')
+      .max(150)
+      .regex(/^[\p{L}][\p{L} .,'-]*$/u, 'Use letters, spaces, periods, commas, apostrophes or hyphens'),
+  ),
   barangay: z.enum(BARANGAYS, { errorMap: () => ({ message: 'Select a barangay' }) }),
   zone: optText(60),
   street: optText(200),
-  contact: optText(40),
+  contact: phoneField,
   rsbsa: optText(60),
   remarks: optText(1000),
   /** Set after the user confirms a possible duplicate (same name in the same barangay) is a different person. */
@@ -128,16 +214,21 @@ export const ownerCreateSchema = z.object({
 export type OwnerCreateInput = z.infer<typeof ownerCreateSchema>;
 export const ownerUpdateSchema = ownerCreateSchema.extend({ status: z.enum(OWNER_STATUSES).optional() });
 
-export const pcicCreateSchema = z.object({
-  policyNo: reqText(60),
-  species: z.enum(SPECIES),
-  heads: intField(1),
-  amountCovered: nullableNumber(0),
-  startDate: reqDate,
-  endDate: reqDate,
-  status: z.enum(PCIC_STATUSES).default('ACTIVE'),
-  remarks: optText(500),
-});
+export const pcicCreateSchema = z
+  .object({
+    policyNo: reqText(60),
+    species: z.enum(SPECIES),
+    heads: intField(1, undefined, MAX_HEAD),
+    amountCovered: nullableNumber(0, 100_000_000),
+    startDate: reqAnyDate,
+    endDate: reqAnyDate,
+    status: z.enum(PCIC_STATUSES).default('ACTIVE'),
+    remarks: optText(500),
+  })
+  .refine((v) => v.endDate >= v.startDate, {
+    path: ['endDate'],
+    message: 'Coverage end cannot be before the start',
+  });
 
 /* ---------- farms ---------- */
 
@@ -170,7 +261,7 @@ export const groupCreateSchema = z.object({
   sex: z.string().default('Mixed'),
   lifeStage: z.string().default('Mixed'),
   reportingMonth: optMonth,
-  count: intField(0),
+  count: intField(0, undefined, MAX_HEAD),
   healthStatus: z.string().default('Healthy'),
   remarks: optText(500),
 });
@@ -191,7 +282,7 @@ export const populationUpdateSchema = z.object({
     .array(
       z.object({
         groupId: idField(),
-        count: intField(0),
+        count: intField(0, undefined, MAX_HEAD),
         reason: optText(200),
       }),
     )
@@ -206,7 +297,7 @@ export const animalCreateSchema = z.object({
   earTag: optText(40),
   breed: optText(80),
   sex: z.enum(['Female', 'Male']).default('Female'),
-  dob: optDate,
+  dob: pastDate(MIN_DOB),
   estimatedAge: optText(40),
   lifeStage: optText(40),
   markings: optText(200),
@@ -226,7 +317,7 @@ export const animalUpdateSchema = animalCreateSchema
 export const transferCreateSchema = z.object({
   animalId: idField(),
   toFarmId: idField('Select the receiving farm'),
-  date: reqDate,
+  date: reqPastDate(),
   type: z.enum(TRANSFER_TYPES).default('TRANSFER'),
   remarks: optText(300),
 });
@@ -237,7 +328,9 @@ export const strayCreateSchema = z.object({
   earTag: optText(40),
   ownerId: optId,
   species: z.enum(SPECIES),
-  discoveredAt: optDateTime,
+  discoveredAt: optDateTime
+    .refine((s) => !s || new Date(s).getTime() <= Date.now() + 5 * 60_000, 'Cannot be in the future')
+    .refine((s) => !s || s.slice(0, 10) >= MIN_DATE, `Date cannot be before ${MIN_DATE.slice(0, 4)}`),
   barangay: z.enum(BARANGAYS, { errorMap: () => ({ message: 'Select a barangay' }) }),
   location: reqText(200),
   description: optText(1000),
@@ -247,7 +340,7 @@ export const strayCreateSchema = z.object({
 });
 export const strayUpdateSchema = z.object({
   status: z.enum(STRAY_STATUSES).optional(),
-  violations: optInt(0),
+  violations: optInt(0, 1000),
   ownerId: optId,
   remarks: optText(1000),
 });
@@ -261,10 +354,10 @@ export const caseCreateSchema = z
     zone: optText(60),
     species: z.enum(SPECIES, { errorMap: () => ({ message: 'Select a species' }) }),
     disease: reqText(150),
-    affected: intField(1),
-    deaths: intField(0),
-    symptomsDate: optDate,
-    reportedAt: optDate,
+    affected: intField(1, undefined, MAX_HEAD),
+    deaths: intField(0, undefined, MAX_HEAD),
+    symptomsDate: pastDate(),
+    reportedAt: pastDate(),
     symptoms: optText(1000),
     reportedBy: optText(120),
     assignedToId: optId,
@@ -278,6 +371,10 @@ export const caseCreateSchema = z
   .refine((v) => v.deaths <= v.affected, {
     path: ['deaths'],
     message: 'Deaths cannot exceed animals affected',
+  })
+  .refine((v) => !v.symptomsDate || v.symptomsDate <= (v.reportedAt ?? isoDate()), {
+    path: ['symptomsDate'],
+    message: 'Symptoms cannot be observed after the report date',
   });
 export type CaseCreateInput = z.infer<typeof caseCreateSchema>;
 
@@ -287,9 +384,9 @@ export const caseUpdateSchema = z
   .object({
     disease: reqText(150),
     zone: optText(60),
-    affected: intField(1),
-    deaths: intField(0),
-    symptomsDate: optDate,
+    affected: intField(1, undefined, MAX_HEAD),
+    deaths: intField(0, undefined, MAX_HEAD),
+    symptomsDate: pastDate(),
     symptoms: optText(1000),
     reportedBy: optText(120),
     assignedToId: optId,
@@ -300,26 +397,51 @@ export const caseUpdateSchema = z
     path: ['deaths'],
     message: 'Deaths cannot exceed animals affected',
   });
-export const caseCloseSchema = z.object({ note: reqText(1000, 'Write the closing remarks / outcome') });
+export const caseCloseSchema = z.object({
+  outcome: z.enum(CASE_OUTCOMES, { errorMap: () => ({ message: 'Select the outcome' }) }),
+  note: reqText(1000, 'Write the closing remarks / outcome'),
+});
 export const caseLocationSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
 });
 
-export const investigationCreateSchema = z.object({
-  date: optDate,
-  investigator: optText(120),
-  notes: reqText(2000),
-});
+export const investigationCreateSchema = z
+  .object({
+    date: pastDate(),
+    visitType: z.enum(INVESTIGATION_VISIT_TYPES).default('INITIAL'),
+    investigator: optText(120),
+    animalsExamined: optInt(0, MAX_HEAD),
+    sickCount: optInt(0, MAX_HEAD),
+    deadCount: optInt(0, MAX_HEAD),
+    clinicalSigns: optText(1000),
+    biosecurity: optText(1000),
+    actionsTaken: optText(1000),
+    samplesCollected: z.preprocess((v) => v === true || v === 'true', z.boolean()).default(false),
+    nextVisit: anyDate,
+    notes: reqText(2000, 'Write the findings'),
+  })
+  .refine((v) => v.sickCount == null || v.animalsExamined == null || v.sickCount <= v.animalsExamined, {
+    path: ['sickCount'],
+    message: 'Sick animals cannot exceed animals examined',
+  })
+  .refine((v) => !v.nextVisit || v.nextVisit > (v.date ?? isoDate()), {
+    path: ['nextVisit'],
+    message: 'Next visit must be after the visit date',
+  });
 export const labCreateSchema = z
   .object({
     sampleId: reqText(60),
     sampleType: optText(80),
-    collectedAt: optDate,
+    sampleCount: optInt(1, 10000),
+    testMethod: optText(80),
+    collectedAt: pastDate(),
     laboratory: optText(120),
-    sentAt: optDate,
+    labReference: optText(60),
+    submittedBy: optText(120),
+    sentAt: pastDate(),
     result: z.enum(LAB_RESULTS).default('PENDING'),
-    resultDate: optDate,
+    resultDate: pastDate(),
     remarks: optText(500),
   })
   .refine((v) => !v.collectedAt || !v.sentAt || v.sentAt >= v.collectedAt, {
@@ -341,13 +463,27 @@ export const labCreateSchema = z
 export const responseCreateSchema = z
   .object({
     type: z.enum(RESPONSE_TYPES),
-    date: optDate,
+    status: z.enum(RESPONSE_STATUSES).default('COMPLETED'),
+    /** Start date; may be in the future only for a planned activity. */
+    date: anyDate,
+    /** When the measure ends or is lifted (quarantine, movement restriction, checkpoint). */
+    endDate: anyDate,
+    location: optText(200),
     personnel: optText(200),
     remarks: optText(1000),
     /** Number of animals culled (Culling / depopulation only). */
-    heads: optInt(1),
+    heads: optInt(1, MAX_HEAD),
+    disposalMethod: optText(80),
   })
-  .refine((v) => v.type !== 'CULLING_DEPOPULATION' || !!v.heads, {
+  .refine((v) => v.status === 'PLANNED' || !v.date || v.date <= isoDate(), {
+    path: ['date'],
+    message: 'A future date is only allowed for a planned activity',
+  })
+  .refine((v) => !v.endDate || !v.date || v.endDate >= v.date, {
+    path: ['endDate'],
+    message: 'End date cannot be before the start date',
+  })
+  .refine((v) => v.type !== 'CULLING_DEPOPULATION' || v.status === 'PLANNED' || !!v.heads, {
     path: ['heads'],
     message: 'Enter how many animals were culled',
   });
@@ -363,11 +499,11 @@ export const vaccinationCreateSchema = z
     target: z.enum(VACCINATION_TARGETS).default('GROUP'),
     groupId: optId,
     animalId: optId,
-    count: intField(1),
+    count: intField(1, undefined, MAX_HEAD),
     vaccine: reqText(120),
-    date: optDate,
-    nextDate: optDate,
-    doseNumber: intField(1),
+    date: pastDate(),
+    nextDate: anyDate,
+    doseNumber: intField(1, undefined, 20),
     batch: optText(60),
     administeredBy: optText(120),
     remarks: optText(500),
@@ -375,7 +511,20 @@ export const vaccinationCreateSchema = z
   .refine((v) => (v.target === 'GROUP' ? !!v.groupId : !!v.animalId), {
     path: ['groupId'],
     message: 'Select a target',
-  });
+  })
+  .refine((v) => !v.nextDate || v.nextDate > (v.date ?? isoDate()), {
+    path: ['nextDate'],
+    message: 'Next schedule must be after the vaccination date',
+  })
+  .refine(
+    (v) => {
+      if (!v.nextDate) return true;
+      const limit = new Date(`${v.date ?? isoDate()}T00:00:00Z`);
+      limit.setUTCFullYear(limit.getUTCFullYear() + 3);
+      return v.nextDate <= limit.toISOString().slice(0, 10);
+    },
+    { path: ['nextDate'], message: 'Next schedule should be within 3 years' },
+  );
 export type VaccinationCreateInput = z.infer<typeof vaccinationCreateSchema>;
 
 /* ---------- settings ---------- */
@@ -383,9 +532,9 @@ export type VaccinationCreateInput = z.infer<typeof vaccinationCreateSchema>;
 export const settingsSchema = z.object({
   officeName: reqText(150),
   cityName: reqText(80),
-  defaultRadiusMeters: intField(50),
-  populationOverdueDays: intField(1),
-  vaccinationUpcomingDays: intField(1),
+  defaultRadiusMeters: intField(50, undefined, 50000),
+  populationOverdueDays: intField(1, undefined, 365),
+  vaccinationUpcomingDays: intField(1, undefined, 365),
   letterheadLine1: optText(150),
   letterheadLine2: optText(150),
 });
@@ -393,9 +542,11 @@ export type SettingsInput = z.infer<typeof settingsSchema>;
 
 /* ---------- reports ---------- */
 
-export const reportQuerySchema = z.object({
-  barangay: optText(80),
-  species: optText(40),
-  from: optDate,
-  to: optDate,
-});
+export const reportQuerySchema = z
+  .object({
+    barangay: optText(80),
+    species: optText(40),
+    from: anyDate,
+    to: anyDate,
+  })
+  .refine((v) => !v.from || !v.to || v.to >= v.from, { path: ['to'], message: '"To" is before "From"' });

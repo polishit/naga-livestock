@@ -1,10 +1,22 @@
 import { useState } from 'react';
 import {
+  CASE_OUTCOMES,
+  CASE_OUTCOME_LABELS,
   CASE_STATUSES,
   CASE_STATUS_LABELS,
+  DISPOSAL_METHODS,
+  INVESTIGATION_VISIT_LABELS,
+  INVESTIGATION_VISIT_TYPES,
   LAB_RESULTS,
+  LAB_TEST_METHODS,
+  MIN_DATE,
+  RESPONSE_STATUSES,
+  RESPONSE_STATUS_LABELS,
   RESPONSE_TYPES,
+  RESPONSE_TYPES_WITH_END,
+  RESPONSE_TYPES_WITH_LOCATION,
   RESPONSE_TYPE_LABELS,
+  fmtDateTime,
   ROLES,
   ROLE_LABELS,
   caseCloseSchema,
@@ -21,12 +33,13 @@ import {
   vaccinationCreateSchema,
   voidSchema,
   type CaseStatus,
+  type ResponseType,
 } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
-import { useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
+import { speciesOnFarm, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
 import { MapView, type LatLng } from '@/components/MapView';
 import { err, useZodForm } from '@/components/forms';
-import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
+import { Button, Checkbox, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
 
 interface DialogProps {
   open: boolean;
@@ -150,11 +163,14 @@ export interface CaseEditRecord {
   sampleInfo: string | null;
   remarks: string | null;
   reportedAt: string;
+  farmId: number;
+  species: string;
 }
 
 /** Update a case while the outbreak develops (more animals affected, more deaths, new inspector…). */
 export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: CaseEditRecord }) {
   const { data: lookups } = useLookups();
+  const head = speciesOnFarm(lookups, c.farmId).find((s) => s.species === c.species)?.head;
   const form = useZodForm(caseUpdateSchema, {});
   useResetOnOpen(open, form, {
     disease: c.disease,
@@ -200,17 +216,26 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
         <Field label="Suspected disease *" error={err(e, 'disease')} className="sm:col-span-2">
           <Input {...form.register('disease')} aria-invalid={!!e.disease} />
         </Field>
-        <Field label="Animals affected *" error={err(e, 'affected')}>
-          <Input type="number" min={1} {...form.register('affected')} />
+        <Field
+          label="Animals affected *"
+          error={err(e, 'affected')}
+          hint={head != null ? `${head} ${c.species.toLowerCase()} on this farm` : undefined}
+        >
+          <Input type="number" min={1} max={head} {...form.register('affected')} />
         </Field>
         <Field label="Deaths" error={err(e, 'deaths')}>
-          <Input type="number" min={0} {...form.register('deaths')} />
+          <Input
+            type="number"
+            min={0}
+            max={Number(form.watch('affected')) || undefined}
+            {...form.register('deaths')}
+          />
         </Field>
         <Field label="Zone / Purok" error={err(e, 'zone')}>
           <Input {...form.register('zone')} />
         </Field>
         <Field label="Date symptoms observed" error={err(e, 'symptomsDate')}>
-          <Input type="date" max={c.reportedAt} {...form.register('symptomsDate')} />
+          <Input type="date" min={MIN_DATE} max={c.reportedAt} {...form.register('symptomsDate')} />
         </Field>
         <Field label="Assigned inspector" error={err(e, 'assignedToId')}>
           <Select {...form.register('assignedToId')}>
@@ -297,11 +322,12 @@ export function CaseCloseDialog({
   code,
 }: DialogProps & { caseId: number; code: string }) {
   const form = useZodForm(caseCloseSchema, {});
-  useResetOnOpen(open, form, { note: '' } as any);
+  useResetOnOpen(open, form, { outcome: '', note: '' } as any);
   const save = useSave<any>('POST', `/api/cases/${caseId}/close`, {
     success: `${code} closed.`,
     label: () => `Close ${code}`,
     form,
+    offline: false,
     onDone: () => onOpenChange(false),
   });
   const e = form.formState.errors;
@@ -327,7 +353,17 @@ export function CaseCloseDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="space-y-4"
       >
-        <Field label="Closing remarks / outcome *" error={err(e, 'note')}>
+        <Field label="Outcome *" error={err(e, 'outcome')}>
+          <Select {...form.register('outcome')} aria-invalid={!!e.outcome}>
+            <option value="">Select...</option>
+            {CASE_OUTCOMES.map((o) => (
+              <option key={o} value={o}>
+                {CASE_OUTCOME_LABELS[o]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Closing remarks *" error={err(e, 'note')}>
           <Textarea
             rows={4}
             placeholder="e.g. Quarantine lifted after 30 days; no new cases; farm disinfected."
@@ -335,8 +371,9 @@ export function CaseCloseDialog({
           />
         </Field>
         <p className="text-[12.5px] text-slate-400">
-          A closed case is kept in the records, history and reports, but it no longer counts as an active case
-          and can no longer be changed. An administrator can reopen it if needed.
+          All response activities must be completed first. A closed case keeps its investigations, laboratory
+          records, responses and history (they still appear in reports), but nothing can be added or changed.
+          An administrator can reopen it to make a correction; the reopening is recorded in the history.
         </p>
       </form>
     </Dialog>
@@ -411,23 +448,54 @@ export function InvestigationDialog({
   onOpenChange,
   caseId,
   code,
-}: DialogProps & { caseId: number; code: string }) {
+  minDate,
+  caseDeaths,
+  onMoreDeaths,
+}: DialogProps & {
+  caseId: number;
+  code: string;
+  /** First day of the case (symptoms or report date); a visit cannot be earlier. */
+  minDate?: string;
+  /** Deaths currently recorded on the case. */
+  caseDeaths?: number;
+  /** Called when this visit found more dead animals than the case records. */
+  onMoreDeaths?: (dead: number) => void;
+}) {
   const { user } = useAuth();
   const form = useZodForm(investigationCreateSchema, {});
-  useResetOnOpen(open, form, { date: isoDate(), investigator: user?.name ?? '', notes: '' } as any);
+  useResetOnOpen(open, form, {
+    date: isoDate(),
+    visitType: 'INITIAL',
+    investigator: user?.name ?? '',
+    animalsExamined: '',
+    sickCount: '',
+    deadCount: '',
+    clinicalSigns: '',
+    biosecurity: '',
+    actionsTaken: '',
+    samplesCollected: false,
+    nextVisit: '',
+    notes: '',
+  } as any);
   const save = useSave<any>('POST', `/api/cases/${caseId}/investigations`, {
     success: 'Investigation recorded.',
     label: () => `Investigation for ${code}`,
     form,
-    onDone: () => onOpenChange(false),
+    onDone: () => {
+      const dead = Number(form.getValues('deadCount') ?? 0);
+      onOpenChange(false);
+      if (caseDeaths != null && dead > caseDeaths) onMoreDeaths?.(dead);
+    },
   });
   const e = form.formState.errors;
   const notes = form.watch('notes');
+  const date = form.watch('date');
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title="Add investigation"
+      size="lg"
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -448,19 +516,66 @@ export function InvestigationDialog({
         id="inv-form"
         noValidate
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
-        className="space-y-4"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Date" error={err(e, 'date')}>
-            <Input type="date" max={isoDate()} {...form.register('date')} />
-          </Field>
-          <Field label="Investigator" error={err(e, 'investigator')}>
-            <Input {...form.register('investigator')} />
-          </Field>
-        </div>
-        <Field label="Findings / notes *" error={err(e, 'notes')}>
-          <Textarea rows={4} {...form.register('notes')} aria-invalid={!!e.notes} />
+        <Field label="Visit date *" error={err(e, 'date')}>
+          <Input type="date" min={minDate ?? MIN_DATE} max={isoDate()} {...form.register('date')} />
         </Field>
+        <Field label="Type of visit" error={err(e, 'visitType')}>
+          <Select {...form.register('visitType')}>
+            {INVESTIGATION_VISIT_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {INVESTIGATION_VISIT_LABELS[t]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Investigator" error={err(e, 'investigator')}>
+          <Input {...form.register('investigator')} />
+        </Field>
+        <Field label="Animals examined" error={err(e, 'animalsExamined')}>
+          <Input type="number" min={0} {...form.register('animalsExamined')} />
+        </Field>
+        <Field label="Sick at the visit" error={err(e, 'sickCount')}>
+          <Input type="number" min={0} {...form.register('sickCount')} />
+        </Field>
+        <Field
+          label="Dead at the visit"
+          error={err(e, 'deadCount')}
+          hint={caseDeaths != null ? `Case records ${caseDeaths} death(s)` : undefined}
+        >
+          <Input type="number" min={0} {...form.register('deadCount')} />
+        </Field>
+        <Field label="Clinical signs observed" error={err(e, 'clinicalSigns')} className="sm:col-span-3">
+          <Textarea
+            rows={2}
+            placeholder="e.g. high fever, skin hemorrhages, loss of appetite"
+            {...form.register('clinicalSigns')}
+          />
+        </Field>
+        <Field label="Biosecurity observations" error={err(e, 'biosecurity')} className="sm:col-span-3">
+          <Textarea
+            rows={2}
+            placeholder="e.g. no footbath, shared feed source, swill feeding"
+            {...form.register('biosecurity')}
+          />
+        </Field>
+        <Field label="Findings / summary *" error={err(e, 'notes')} className="sm:col-span-3">
+          <Textarea rows={3} {...form.register('notes')} aria-invalid={!!e.notes} />
+        </Field>
+        <Field label="Actions taken / advice given" error={err(e, 'actionsTaken')} className="sm:col-span-2">
+          <Textarea rows={2} {...form.register('actionsTaken')} />
+        </Field>
+        <Field label="Next visit" error={err(e, 'nextVisit')} hint="Adds a reminder to Notifications">
+          <Input type="date" min={date || isoDate()} {...form.register('nextVisit')} />
+        </Field>
+        <div className="sm:col-span-3">
+          <Checkbox
+            label="Samples were collected during this visit (add them in the Laboratory tab)"
+            checked={!!form.watch('samplesCollected')}
+            onChange={(v) => form.setValue('samplesCollected', v as any)}
+          />
+        </div>
       </form>
     </Dialog>
   );
@@ -470,12 +585,18 @@ export interface LabEditRecord {
   id: number;
   sampleId: string;
   sampleType: string | null;
+  sampleCount?: number | null;
+  testMethod?: string | null;
   collectedAt: string | null;
   laboratory: string | null;
+  labReference?: string | null;
+  submittedBy?: string | null;
   sentAt: string | null;
   result: string;
   resultDate: string | null;
   remarks?: string | null;
+  updatedAt?: string | null;
+  updatedBy?: string | null;
 }
 
 export function LabDialog({
@@ -484,20 +605,28 @@ export function LabDialog({
   caseId,
   code,
   lab,
+  minDate,
   onSaved,
 }: DialogProps & {
   caseId: number;
   code: string;
   /** Edit this record (e.g. enter the result when it comes back) instead of adding a new one. */
   lab?: LabEditRecord | null;
+  /** First day of the case; sample dates cannot be earlier. */
+  minDate?: string;
   onSaved?: (values: { result: string; sentAt?: string }) => void;
 }) {
+  const { user } = useAuth();
   const form = useZodForm(labCreateSchema, {});
   useResetOnOpen(open, form, {
     sampleId: lab?.sampleId ?? '',
     sampleType: lab ? (lab.sampleType ?? '') : 'Whole blood',
+    sampleCount: lab?.sampleCount != null ? String(lab.sampleCount) : '1',
+    testMethod: lab?.testMethod ?? '',
     collectedAt: lab ? (lab.collectedAt ?? '') : isoDate(),
     laboratory: lab ? (lab.laboratory ?? '') : 'RADDL Region V, Pili',
+    labReference: lab?.labReference ?? '',
+    submittedBy: lab ? (lab.submittedBy ?? '') : (user?.name ?? ''),
     sentAt: lab?.sentAt ?? '',
     result: lab?.result ?? 'PENDING',
     resultDate: lab?.resultDate ?? '',
@@ -517,11 +646,16 @@ export function LabDialog({
     },
   );
   const e = form.formState.errors;
+  const collected = form.watch('collectedAt');
+  const sent = form.watch('sentAt');
+  const result = form.watch('result');
+  const start = minDate ?? MIN_DATE;
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title={lab ? `Update lab record ${lab.sampleId}` : 'Add lab record'}
+      size="lg"
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -537,23 +671,59 @@ export function LabDialog({
         id="lab-form"
         noValidate
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
+        <p className="text-[12.5px] font-medium uppercase tracking-wide text-slate-500 sm:col-span-3">
+          Sample
+        </p>
         <Field label="Sample ID number *" error={err(e, 'sampleId')}>
           <Input {...form.register('sampleId')} aria-invalid={!!e.sampleId} placeholder={`RADDL-${code}`} />
         </Field>
         <Field label="Sample type" error={err(e, 'sampleType')}>
-          <Input {...form.register('sampleType')} />
+          <Input {...form.register('sampleType')} list="sample-types" />
+        </Field>
+        <datalist id="sample-types">
+          {[
+            'Whole blood',
+            'Serum',
+            'Tissue (spleen, lymph node)',
+            'Nasal swab',
+            'Oral swab',
+            'Feces',
+            'Carcass',
+          ].map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
+        <Field label="Number of samples" error={err(e, 'sampleCount')}>
+          <Input type="number" min={1} {...form.register('sampleCount')} />
         </Field>
         <Field label="Collection date" error={err(e, 'collectedAt')}>
-          <Input type="date" max={isoDate()} {...form.register('collectedAt')} />
+          <Input type="date" min={start} max={isoDate()} {...form.register('collectedAt')} />
         </Field>
+        <Field label="Collected / submitted by" error={err(e, 'submittedBy')} className="sm:col-span-2">
+          <Input {...form.register('submittedBy')} />
+        </Field>
+        <p className="text-[12.5px] font-medium uppercase tracking-wide text-slate-500 sm:col-span-3">
+          Laboratory
+        </p>
         <Field label="Laboratory" error={err(e, 'laboratory')}>
           <Input {...form.register('laboratory')} />
         </Field>
         <Field label="Date sent" error={err(e, 'sentAt')}>
-          <Input type="date" max={isoDate()} {...form.register('sentAt')} />
+          <Input type="date" min={collected || start} max={isoDate()} {...form.register('sentAt')} />
         </Field>
+        <Field label="Laboratory reference no." error={err(e, 'labReference')}>
+          <Input {...form.register('labReference')} placeholder="From the lab's receipt" />
+        </Field>
+        <Field label="Test requested" error={err(e, 'testMethod')}>
+          <Input {...form.register('testMethod')} list="lab-tests" placeholder="e.g. PCR" />
+        </Field>
+        <datalist id="lab-tests">
+          {LAB_TEST_METHODS.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
         <Field label="Result" error={err(e, 'result')}>
           <Select {...form.register('result')}>
             {LAB_RESULTS.map((r) => (
@@ -563,15 +733,39 @@ export function LabDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Result date" error={err(e, 'resultDate')}>
-          <Input type="date" max={isoDate()} {...form.register('resultDate')} />
+        <Field label={result === 'PENDING' ? 'Result date' : 'Result date *'} error={err(e, 'resultDate')}>
+          <Input
+            type="date"
+            min={sent || collected || start}
+            max={isoDate()}
+            {...form.register('resultDate')}
+          />
         </Field>
-        <Field label="Remarks" error={err(e, 'remarks')}>
-          <Input {...form.register('remarks')} />
+        <Field label="Remarks / result details" error={err(e, 'remarks')} className="sm:col-span-3">
+          <Textarea rows={2} {...form.register('remarks')} />
         </Field>
+        {lab?.updatedAt && (
+          <p className="text-[12.5px] text-slate-400 sm:col-span-3">
+            Last changed {fmtDateTime(lab.updatedAt)}
+            {lab.updatedBy ? ` by ${lab.updatedBy}` : ''}. Every change is written to the case History.
+          </p>
+        )}
       </form>
     </Dialog>
   );
+}
+
+export interface ResponseEditRecord {
+  id: number;
+  type: string;
+  status: string;
+  date: string;
+  endDate: string | null;
+  location: string | null;
+  personnel: string | null;
+  remarks: string | null;
+  heads: number | null;
+  disposalMethod: string | null;
 }
 
 export function ResponseDialog({
@@ -579,36 +773,64 @@ export function ResponseDialog({
   onOpenChange,
   caseId,
   code,
+  response,
+  minDate,
+  maxHeads,
   onSaved,
 }: DialogProps & {
   caseId: number;
   code: string;
-  onSaved?: (values: { type: string; heads?: string }) => void;
+  /** Edit this activity (e.g. mark a planned quarantine as started or completed). */
+  response?: ResponseEditRecord | null;
+  /** First day of the case; an activity cannot start earlier. */
+  minDate?: string;
+  /** Head of the affected species on the farm (limit for culling). */
+  maxHeads?: number;
+  onSaved?: (values: { type: string; heads?: string; status: string; added: number }) => void;
 }) {
   const form = useZodForm(responseCreateSchema, {});
   useResetOnOpen(open, form, {
-    type: 'OWNER_NOTIFICATION',
-    date: isoDate(),
-    personnel: '',
-    remarks: '',
-    heads: '',
+    type: response?.type ?? 'OWNER_NOTIFICATION',
+    status: response?.status ?? 'COMPLETED',
+    date: response?.date ?? isoDate(),
+    endDate: response?.endDate ?? '',
+    location: response?.location ?? '',
+    personnel: response?.personnel ?? '',
+    remarks: response?.remarks ?? '',
+    heads: response?.heads != null ? String(response.heads) : '',
+    disposalMethod: response?.disposalMethod ?? '',
   } as any);
-  const save = useSave<any>('POST', `/api/cases/${caseId}/responses`, {
-    success: 'Response activity logged.',
-    label: () => `Response activity (${code})`,
-    form,
-    onDone: () => {
-      onOpenChange(false);
-      onSaved?.({ type: form.getValues('type'), heads: form.getValues('heads') as any });
+  const save = useSave<any>(
+    response ? 'PATCH' : 'POST',
+    response ? `/api/responses/${response.id}` : `/api/cases/${caseId}/responses`,
+    {
+      success: response ? 'Response activity updated.' : 'Response activity logged.',
+      label: () => `Response activity (${code})`,
+      form,
+      onDone: () => {
+        onOpenChange(false);
+        const heads = Number(form.getValues('heads') ?? 0) || 0;
+        onSaved?.({
+          type: form.getValues('type'),
+          heads: form.getValues('heads') as any,
+          status: form.getValues('status'),
+          added: heads - (response?.heads ?? 0),
+        });
+      },
     },
-  });
+  );
   const e = form.formState.errors;
-  const type = form.watch('type');
+  const type = form.watch('type') as ResponseType;
+  const status = form.watch('status');
+  const date = form.watch('date');
+  const culling = type === 'CULLING_DEPOPULATION';
+  const withEnd = RESPONSE_TYPES_WITH_END.includes(type);
+  const withPlace = RESPONSE_TYPES_WITH_LOCATION.includes(type);
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Log response activity"
+      title={response ? 'Update response activity' : 'Log response activity'}
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -635,24 +857,77 @@ export function ResponseDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Date" error={err(e, 'date')}>
-          <Input type="date" max={isoDate()} {...form.register('date')} />
+        <Field label="Status" error={err(e, 'status')}>
+          <Select {...form.register('status')}>
+            {RESPONSE_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {RESPONSE_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </Select>
         </Field>
-        {type === 'CULLING_DEPOPULATION' && (
+        <Field
+          label={status === 'PLANNED' ? 'Planned start' : 'Date started'}
+          error={err(e, 'date')}
+          hint={status === 'PLANNED' ? 'A planned activity may have a future date.' : undefined}
+        >
+          <Input
+            type="date"
+            min={minDate ?? MIN_DATE}
+            max={status === 'PLANNED' ? undefined : isoDate()}
+            {...form.register('date')}
+          />
+        </Field>
+        {withEnd ? (
           <Field
-            label="Number of animals culled *"
-            error={err(e, 'heads')}
-            hint="Used to remind you to update the farm's population."
+            label={type === 'QUARANTINE' ? 'Quarantine until' : 'Until (lifted / ends)'}
+            error={err(e, 'endDate')}
+            hint="You'll be reminded when it is due to end."
+          >
+            <Input type="date" min={date || minDate || MIN_DATE} {...form.register('endDate')} />
+          </Field>
+        ) : (
+          <div className="hidden sm:block" />
+        )}
+        {culling && (
+          <>
+            <Field
+              label={status === 'PLANNED' ? 'Animals to be culled' : 'Number of animals culled *'}
+              error={err(e, 'heads')}
+              hint={maxHeads != null ? `${maxHeads} head of this species on the farm` : undefined}
+            >
+              <Input
+                type="number"
+                min={1}
+                max={maxHeads}
+                {...form.register('heads')}
+                aria-invalid={!!e.heads}
+              />
+            </Field>
+            <Field label="Disposal method" error={err(e, 'disposalMethod')}>
+              <Select {...form.register('disposalMethod')}>
+                <option value="">Select...</option>
+                {DISPOSAL_METHODS.map((d) => (
+                  <option key={d}>{d}</option>
+                ))}
+              </Select>
+            </Field>
+          </>
+        )}
+        {withPlace && (
+          <Field
+            label={type === 'ASF_CHECKPOINT' ? 'Checkpoint location' : 'Location / area'}
+            error={err(e, 'location')}
             className="sm:col-span-2"
           >
-            <Input type="number" min={1} {...form.register('heads')} aria-invalid={!!e.heads} />
+            <Input {...form.register('location')} placeholder="e.g. Brgy. Pacol boundary, national road" />
           </Field>
         )}
         <Field label="Personnel involved" error={err(e, 'personnel')} className="sm:col-span-2">
           <Input {...form.register('personnel')} />
         </Field>
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
-          <Textarea rows={4} {...form.register('remarks')} />
+          <Textarea rows={3} {...form.register('remarks')} />
         </Field>
       </form>
     </Dialog>
@@ -688,6 +963,8 @@ export function VaccinationDialog({ open, onOpenChange, farmId }: DialogProps & 
   const target = form.watch('target');
   const groups = (lookups?.groups ?? []).filter((g) => g.farmId === fId);
   const animals = (lookups?.animals ?? []).filter((a) => a.farmId === fId);
+  const group = groups.find((g) => String(g.id) === String(form.watch('groupId')));
+  const vaxDate = form.watch('date');
   return (
     <Dialog
       open={open}
@@ -747,7 +1024,16 @@ export function VaccinationDialog({ open, onOpenChange, farmId }: DialogProps & 
           </Field>
         ) : (
           <Field label="Group *" error={err(e, 'groupId')}>
-            <Select {...form.register('groupId')} disabled={!fId}>
+            <Select
+              {...form.register('groupId', {
+                onChange: (ev) => {
+                  // The number vaccinated starts at the group's head count.
+                  const g = groups.find((x) => String(x.id) === ev.target.value);
+                  if (g) form.setValue('count', String(g.count) as any, { shouldValidate: true });
+                },
+              })}
+              disabled={!fId}
+            >
               <option value="">{fId ? 'Select...' : 'Select farm first'}</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -757,8 +1043,18 @@ export function VaccinationDialog({ open, onOpenChange, farmId }: DialogProps & 
             </Select>
           </Field>
         )}
-        <Field label="Number vaccinated" error={err(e, 'count')}>
-          <Input type="number" min={1} {...form.register('count')} disabled={target === 'ANIMAL'} />
+        <Field
+          label="Number vaccinated"
+          error={err(e, 'count')}
+          hint={target === 'GROUP' && group ? `Group ${group.code} has ${group.count} head` : undefined}
+        >
+          <Input
+            type="number"
+            min={1}
+            max={target === 'GROUP' ? group?.count : 1}
+            {...form.register('count')}
+            disabled={target === 'ANIMAL'}
+          />
         </Field>
         <Field label="Vaccine name *" error={err(e, 'vaccine')}>
           <Input {...form.register('vaccine')} list="vaccine-names" aria-invalid={!!e.vaccine} />
@@ -771,10 +1067,10 @@ export function VaccinationDialog({ open, onOpenChange, farmId }: DialogProps & 
           <option value="Anti-Rabies Vaccine" />
         </datalist>
         <Field label="Date" error={err(e, 'date')}>
-          <Input type="date" max={isoDate()} {...form.register('date')} />
+          <Input type="date" min={MIN_DATE} max={isoDate()} {...form.register('date')} />
         </Field>
-        <Field label="Next schedule" error={err(e, 'nextDate')}>
-          <Input type="date" {...form.register('nextDate')} />
+        <Field label="Next schedule" error={err(e, 'nextDate')} hint="Optional — creates a reminder">
+          <Input type="date" min={vaxDate || isoDate()} {...form.register('nextDate')} />
         </Field>
         <Field label="Dose number" error={err(e, 'doseNumber')}>
           <Input type="number" min={1} {...form.register('doseNumber')} />

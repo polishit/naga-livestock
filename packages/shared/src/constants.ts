@@ -219,6 +219,64 @@ export const RESPONSE_TYPE_LABELS: Record<ResponseType, string> = {
   OTHER: 'Other',
 };
 
+/** Status of a response activity (a planned activity may have a future date). */
+export const RESPONSE_STATUSES = ['PLANNED', 'ONGOING', 'COMPLETED'] as const;
+export type ResponseStatus = (typeof RESPONSE_STATUSES)[number];
+export const RESPONSE_STATUS_LABELS: Record<ResponseStatus, string> = {
+  PLANNED: 'Planned',
+  ONGOING: 'Ongoing',
+  COMPLETED: 'Completed',
+};
+/** Response types that last for a period (an end / lifting date applies). */
+export const RESPONSE_TYPES_WITH_END: ResponseType[] = [
+  'QUARANTINE',
+  'MOVEMENT_RESTRICTION',
+  'ASF_CHECKPOINT',
+];
+/** Response types done at a specific place (checkpoint location, disinfection site…). */
+export const RESPONSE_TYPES_WITH_LOCATION: ResponseType[] = [
+  'ASF_CHECKPOINT',
+  'DISINFECTION',
+  'MOVEMENT_RESTRICTION',
+  'CULLING_DEPOPULATION',
+];
+export const DISPOSAL_METHODS = [
+  'Burial',
+  'Burning / incineration',
+  'Rendering',
+  'Composting',
+  'Other',
+] as const;
+
+export const INVESTIGATION_VISIT_TYPES = ['INITIAL', 'FOLLOW_UP', 'TRACING', 'FINAL'] as const;
+export type InvestigationVisitType = (typeof INVESTIGATION_VISIT_TYPES)[number];
+export const INVESTIGATION_VISIT_LABELS: Record<InvestigationVisitType, string> = {
+  INITIAL: 'Initial visit',
+  FOLLOW_UP: 'Follow-up visit',
+  TRACING: 'Contact tracing',
+  FINAL: 'Final inspection',
+};
+
+/** Suggested laboratory test methods (free text is also accepted). */
+export const LAB_TEST_METHODS = [
+  'PCR',
+  'ELISA',
+  'Rapid antigen test',
+  'Bacterial culture',
+  'Necropsy',
+] as const;
+
+/** How a closed case ended. */
+export const CASE_OUTCOMES = ['RESOLVED', 'CONTAINED', 'DEPOPULATED', 'NOT_CONFIRMED', 'OTHER'] as const;
+export type CaseOutcome = (typeof CASE_OUTCOMES)[number];
+export const CASE_OUTCOME_LABELS: Record<CaseOutcome, string> = {
+  RESOLVED: 'Resolved — animals recovered',
+  CONTAINED: 'Contained — no further spread',
+  DEPOPULATED: 'Depopulated — affected animals culled',
+  NOT_CONFIRMED: 'Disease not confirmed',
+  OTHER: 'Other',
+};
+
 export const STRAY_STATUSES = ['REPORTED', 'IMPOUNDED', 'RELEASED', 'CLOSED'] as const;
 export type StrayStatus = (typeof STRAY_STATUSES)[number];
 

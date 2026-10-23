@@ -1,7 +1,7 @@
 import { Plus, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BARANGAYS, fmtDate, type ReportResult } from '@livestock/shared';
+import { BARANGAYS, MIN_DATE, fmtDate, type ReportResult } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
 import { useApi } from '@/lib/hooks';
 import { printReport } from '@/lib/export';
@@ -185,6 +185,8 @@ export default function VaccinationsPage() {
           <>
             <Input
               type="date"
+              min={MIN_DATE}
+              max={to || undefined}
               value={from}
               onChange={(e) => setFrom(e.target.value)}
               className="w-[calc(50%-4px)] sm:w-40"
@@ -192,6 +194,7 @@ export default function VaccinationsPage() {
             />
             <Input
               type="date"
+              min={from || MIN_DATE}
               value={to}
               onChange={(e) => setTo(e.target.value)}
               className="w-[calc(50%-4px)] sm:w-40"

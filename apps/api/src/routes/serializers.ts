@@ -34,6 +34,7 @@ export function serializeCase(c: any) {
     closedAt: c.closedAt ?? null,
     closedBy: c.closedBy ?? null,
     closureNote: c.closureNote ?? null,
+    closureOutcome: c.closureOutcome ?? null,
     relatedCaseId: c.relatedCaseId ?? null,
     relatedCaseCode: c.relatedCase?.code ?? null,
   };
