@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { vaccinationCreateSchema } from '@livestock/shared';
-import { prisma } from '../db';
+import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, today } from '../lib/dates';
 import { ah, badRequest, parse, qstr } from '../lib/http';
@@ -11,6 +11,46 @@ import { serializeVaccination } from './serializers';
 export const vaccinationsRouter = Router();
 
 const include = { farm: true, group: true, animal: true } as const;
+
+/**
+ * Reminders only for animals still on record: a tagged animal that was sold or died, or a group that
+ * was archived, no longer needs its next dose.
+ */
+export const liveReminder = {
+  farm: { archived: false },
+  OR: [
+    { target: 'GROUP' as const, group: { archived: false } },
+    { target: 'ANIMAL' as const, animal: { status: 'ACTIVE' as const } },
+  ],
+};
+
+/**
+ * Recompute which "next dose" reminders are fulfilled for one group or animal and vaccine: a reminder
+ * is done when a later dose of the same vaccine was given. Run after a dose is added or voided, so
+ * voiding a dose brings back the reminder it had cleared.
+ */
+export async function refreshReminders(
+  tx: Prisma.TransactionClient,
+  v: { groupId: number | null; animalId: number | null; vaccine: string },
+) {
+  const key = v.vaccine.trim().toLowerCase();
+  const doses = (
+    await tx.vaccination.findMany({
+      where: { voidedAt: null, ...(v.animalId ? { animalId: v.animalId } : { groupId: v.groupId }) },
+      select: { id: true, date: true, nextDate: true, vaccine: true, reminderDone: true },
+    })
+  ).filter((x) => x.vaccine.trim().toLowerCase() === key);
+  for (const x of doses) {
+    if (!x.nextDate) continue;
+    const done = doses.some(
+      (y) =>
+        y.id !== x.id &&
+        (y.date.getTime() > x.date.getTime() || (y.date.getTime() === x.date.getTime() && y.id > x.id)),
+    );
+    if (done !== x.reminderDone)
+      await tx.vaccination.update({ where: { id: x.id }, data: { reminderDone: done } });
+  }
+}
 
 vaccinationsRouter.get(
   '/',
@@ -39,7 +79,8 @@ vaccinationsRouter.get(
         voidedAt: null,
         reminderDone: false,
         nextDate: { gte: new Date(`${start}T00:00:00Z`), lte: end },
-        ...(barangay ? { farm: { barangay } } : {}),
+        ...liveReminder,
+        ...(barangay ? { farm: { archived: false, barangay } } : {}),
       },
       include,
       orderBy: { nextDate: 'asc' },
@@ -121,24 +162,9 @@ vaccinationsRouter.post(
         where: { id: created.id },
         data: { code: displayCode('VAX', created.id) },
       });
-      // This dose fulfils earlier "next dose" reminders for the same group/animal and vaccine.
-      const earlier = await tx.vaccination.findMany({
-        where: {
-          id: { not: vv.id },
-          voidedAt: null,
-          reminderDone: false,
-          nextDate: { not: null },
-          date: { lte: vv.date },
-          ...(d.target === 'GROUP' ? { groupId: d.groupId! } : { animalId: d.animalId! }),
-        },
-        select: { id: true, vaccine: true },
-      });
-      const same = earlier.filter((e) => e.vaccine.trim().toLowerCase() === vv.vaccine.trim().toLowerCase());
-      if (same.length)
-        await tx.vaccination.updateMany({
-          where: { id: { in: same.map((e) => e.id) } },
-          data: { reminderDone: true },
-        });
+      // This dose fulfils earlier "next dose" reminders for the same group/animal and vaccine
+      // (and if it was back-dated before a dose already given, it needs no reminder itself).
+      await refreshReminders(tx, vv);
       await logActivity(
         'farm',
         farm.id,

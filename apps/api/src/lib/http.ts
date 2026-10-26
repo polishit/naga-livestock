@@ -31,6 +31,21 @@ export function parse<S extends ZodTypeAny>(schema: S, data: unknown): z.infer<S
   return r.data;
 }
 
+/**
+ * For PATCH: only the fields actually sent are changed. A field sent blank clears it (null);
+ * a field left out of the request keeps its current value.
+ */
+export function sent<T extends Record<string, unknown>, K extends keyof T>(
+  body: unknown,
+  d: T,
+  keys: readonly K[],
+): { [P in K]?: Exclude<T[P], undefined> | null } {
+  const out: Record<string, unknown> = {};
+  const b = (body ?? {}) as Record<string, unknown>;
+  for (const k of keys) if (Object.prototype.hasOwnProperty.call(b, k)) out[k as string] = d[k] ?? null;
+  return out as { [P in K]?: Exclude<T[P], undefined> | null };
+}
+
 export function idParam(req: Request, name = 'id'): number {
   const n = Number(req.params[name]);
   if (!Number.isInteger(n) || n <= 0) throw badRequest(`Invalid ${name}`);

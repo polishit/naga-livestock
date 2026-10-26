@@ -320,7 +320,13 @@ export function CaseCloseDialog({
   onOpenChange,
   caseId,
   code,
-}: DialogProps & { caseId: number; code: string }) {
+  pending = 0,
+}: DialogProps & {
+  caseId: number;
+  code: string;
+  /** Deaths/culled heads not yet reflected in the farm population (must be 0 to close). */
+  pending?: number;
+}) {
   const form = useZodForm(caseCloseSchema, {});
   useResetOnOpen(open, form, { outcome: '', note: '' } as any);
   const save = useSave<any>('POST', `/api/cases/${caseId}/close`, {
@@ -341,7 +347,7 @@ export function CaseCloseDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button form="close-form" type="submit" loading={save.isPending}>
+          <Button form="close-form" type="submit" loading={save.isPending} disabled={pending > 0}>
             Close case
           </Button>
         </>
@@ -353,6 +359,13 @@ export function CaseCloseDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="space-y-4"
       >
+        {pending > 0 && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14px] text-slate-700">
+            {pending} animal(s) that died or were culled are not yet reflected in the farm's population. Use
+            “Update population” (or “Already counted”) on the case first — a closed case can no longer change
+            it.
+          </p>
+        )}
         <Field label="Outcome *" error={err(e, 'outcome')}>
           <Select {...form.register('outcome')} aria-invalid={!!e.outcome}>
             <option value="">Select...</option>
@@ -814,7 +827,8 @@ export function ResponseDialog({
           type: form.getValues('type'),
           heads: form.getValues('heads') as any,
           status: form.getValues('status'),
-          added: heads - (response?.heads ?? 0),
+          // A planned cull removed no animals yet, so completing it adds all its heads.
+          added: heads - (response && response.status !== 'PLANNED' ? (response.heads ?? 0) : 0),
         });
       },
     },

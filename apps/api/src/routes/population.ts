@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { groupCreateSchema, groupUpdateSchema, isoMonth, populationUpdateSchema } from '@livestock/shared';
+import {
+  fmtMonth,
+  groupCreateSchema,
+  groupUpdateSchema,
+  isoMonth,
+  populationUpdateSchema,
+} from '@livestock/shared';
 import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
@@ -157,6 +163,10 @@ populationRouter.post(
           `${g.code}: count (${e.count}) cannot be lower than its ${g.animals.length} tagged animal(s)`,
         );
       }
+      // A group has no count before it was first recorded.
+      const first = g.updates.map((u) => u.month).sort()[0];
+      if (first && d.month < first)
+        throw badRequest(`${g.code} was first recorded in ${fmtMonth(first)}; choose that month or later.`);
     }
     const result = await prisma.$transaction(async (tx) => {
       const out = [];
@@ -185,18 +195,35 @@ populationRouter.post(
             createdBy: req.user?.name,
           },
         });
-        // Correcting an older month: the next entry's "previous" and "change" must follow the new count.
-        const following = active.find((x) => x.month > d.month);
-        if (following)
+        // Correcting an older month: automatic adjustments made after it (sales, deaths, transfers)
+        // still apply on top of the corrected count, and the next verified count's "previous" and
+        // "change" follow the corrected figures.
+        const later = active.filter((x) => x.month > d.month);
+        const nextVerified = later.find((x) => x.kind === 'VERIFIED');
+        let running = e.count;
+        for (const adj of later) {
+          if (adj === nextVerified) break;
+          if (adj.kind !== 'ADJUSTMENT') continue;
+          const prevCount = running;
+          running = Math.max(0, running + adj.change);
           await tx.populationUpdate.update({
-            where: { id: following.id },
-            data: { previous: e.count, change: following.count - e.count },
+            where: { id: adj.id },
+            data: { previous: prevCount, count: running },
           });
-        const isLatest = !g.lastVerified || d.month >= g.lastVerified;
-        if (isLatest)
+        }
+        if (nextVerified)
+          await tx.populationUpdate.update({
+            where: { id: nextVerified.id },
+            data: { previous: running, change: nextVerified.count - running },
+          });
+        // No verified count after this month: the group's current count follows this one.
+        else
           await tx.populationGroup.update({
             where: { id: g.id },
-            data: { count: e.count, lastVerified: d.month },
+            data: {
+              count: Math.max(g.animals.length, running),
+              lastVerified: !g.lastVerified || d.month > g.lastVerified ? d.month : g.lastVerified,
+            },
           });
         out.push(u);
       }

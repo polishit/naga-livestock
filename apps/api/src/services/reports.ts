@@ -31,6 +31,7 @@ import {
   vaccinationCoverage,
 } from './metrics';
 import { getSettings } from './settings';
+import { liveReminder } from '../routes/vaccinations';
 
 export interface ReportParams {
   barangay?: string;
@@ -49,12 +50,13 @@ function inRange(d: Date | null | undefined, p: ReportParams) {
   return true;
 }
 
-async function subtitle(p: ReportParams, fromDefault?: string) {
+async function subtitle(p: ReportParams) {
   const s = await getSettings();
-  const from = p.from ?? fromDefault ?? '2026-05-01';
   const to = p.to ?? today();
+  // Without a start date the report covers every record up to the end date.
+  const period = p.from ? `${fmtDate(p.from)} to ${fmtDate(to)}` : `All records as of ${fmtDate(to)}`;
   const scope = [p.barangay, p.species].filter(Boolean).join(' · ');
-  return `${s.officeName} — ${s.cityName} · ${from} to ${to}${scope ? ` · ${scope}` : ''}`;
+  return `${s.officeName} — ${s.cityName} · ${period}${scope ? ` · ${scope}` : ''}`;
 }
 
 export async function buildReport(id: string, p: ReportParams): Promise<ReportResult> {
@@ -590,8 +592,9 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           voidedAt: null,
           reminderDone: false,
           nextDate: { gte: dateOnly(start), lte: dateOnly(end) },
+          ...liveReminder,
           ...(p.species ? { species: p.species } : {}),
-          ...(p.barangay ? { farm: { barangay: p.barangay } } : {}),
+          ...(p.barangay ? { farm: { archived: false, barangay: p.barangay } } : {}),
         },
         include: { farm: { include: { owner: true } }, group: true, animal: true },
         orderBy: { nextDate: 'asc' },
@@ -845,7 +848,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           heads: x.heads,
           amount: x.amountCovered ? `₱${Number(x.amountCovered).toLocaleString()}` : '—',
           period: `${fmtDate(ymd(x.startDate))} – ${fmtDate(ymd(x.endDate))}`,
-          status: titleCase(x.status),
+          status: titleCase(x.status === 'ACTIVE' && ymd(x.endDate)! < today() ? 'EXPIRED' : x.status),
         })),
         summary: [
           { label: 'Policies', value: pol.length },

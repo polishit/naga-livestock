@@ -16,11 +16,12 @@ import {
   settingsSchema,
   userCreateSchema,
   userUpdateSchema,
-  type ResponseType,
+  type ResponseType,  
 } from '@livestock/shared';
 import {
   REFRESH_COOKIE,
   clearAuthCookies,
+  forgetUserState,
   requireAuth,
   requireRole,
   revokeRefreshToken,
@@ -37,6 +38,7 @@ import { storage } from '../storage';
 import { loadCases, loadFarms, overview, summarizeFarm } from '../services/metrics';
 import { buildOutbreakReport, buildReport } from '../services/reports';
 import { getSettings, saveSettings } from '../services/settings';
+import { liveReminder } from './vaccinations';
 
 /* ---------------- auth ---------------- */
 
@@ -152,6 +154,8 @@ usersRouter.patch(
     if (id === req.user!.id && (d.active === false || (d.role && d.role !== 'ADMIN'))) {
       throw badRequest('You cannot deactivate or demote your own account');
     }
+    const before = await prisma.user.findUnique({ where: { id } });
+    if (!before) throw new HttpError(404, 'User not found');
     const u = await prisma.user.update({
       where: { id },
       data: {
@@ -162,11 +166,14 @@ usersRouter.patch(
         ...(d.password ? { passwordHash: await bcrypt.hash(d.password, 10) } : {}),
       },
     });
-    if (d.active === false || d.password)
+    // Deactivation, a new password or a new role signs the user out of every session, so the
+    // change takes effect at once (they sign in again with the new role).
+    if (d.active === false || d.password || (d.role && d.role !== before.role))
       await prisma.refreshToken.updateMany({
         where: { userId: id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+    forgetUserState(id);
     await logActivity('user', id, 'updated', `User ${u.email} updated`, req.user?.name);
     res.json({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active });
   }),
@@ -372,7 +379,7 @@ metricsRouter.get(
       where: {
         voidedAt: null,
         reminderDone: false,
-        farm: { archived: false },
+        ...liveReminder,
         nextDate: { lte: end, gte: new Date(new Date(`${start}T00:00:00Z`).getTime() - 30 * 86400_000) },
       },
       include: { farm: true, group: true, animal: true },

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { ownerCreateSchema, ownerUpdateSchema, pcicCreateSchema } from '@livestock/shared';
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
-import { dateOnly, ymd } from '../lib/dates';
+import { dateOnly, today, ymd } from '../lib/dates';
 import { HttpError, ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { loadFarms, summarizeFarm } from '../services/metrics';
 import { serializeCase, serializeTransfer, serializeVaccination } from './serializers';
@@ -175,7 +175,8 @@ ownersRouter.get(
         amountCovered: p.amountCovered ? Number(p.amountCovered) : null,
         startDate: ymd(p.startDate),
         endDate: ymd(p.endDate),
-        status: p.status,
+        // An active policy past its end date is shown as expired.
+        status: p.status === 'ACTIVE' && ymd(p.endDate)! < today() ? 'EXPIRED' : p.status,
         remarks: p.remarks,
       })),
     });
@@ -288,27 +289,63 @@ ownersRouter.post(
   }),
 );
 
+/** A PCIC policy number belongs to one policy. */
+async function assertUniquePolicy(policyNo: string, exceptId?: number) {
+  const dup = await prisma.pcicPolicy.findFirst({
+    where: { policyNo, ...(exceptId ? { NOT: { id: exceptId } } : {}) },
+    include: { owner: true },
+  });
+  if (dup)
+    throw badRequest('Validation failed', {
+      fieldErrors: { policyNo: [`Policy number already recorded for ${dup.owner.fullName}`] },
+    });
+}
+
+function pcicData(d: ReturnType<typeof pcicCreateSchema.parse>) {
+  return {
+    policyNo: d.policyNo,
+    species: d.species,
+    heads: d.heads,
+    amountCovered: d.amountCovered ?? null,
+    startDate: dateOnly(d.startDate)!,
+    endDate: dateOnly(d.endDate)!,
+    status: d.status,
+    remarks: d.remarks ?? null,
+  };
+}
+
 ownersRouter.post(
   '/:id/pcic',
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(pcicCreateSchema, req.body);
-    if (d.endDate < d.startDate)
-      throw badRequest('Validation failed', { fieldErrors: { endDate: ['End date is before start date'] } });
-    const p = await prisma.pcicPolicy.create({
-      data: {
-        ownerId: id,
-        policyNo: d.policyNo,
-        species: d.species,
-        heads: d.heads,
-        amountCovered: d.amountCovered ?? null,
-        startDate: dateOnly(d.startDate)!,
-        endDate: dateOnly(d.endDate)!,
-        status: d.status,
-        remarks: d.remarks ?? null,
-      },
-    });
+    const owner = await prisma.owner.findUnique({ where: { id } });
+    if (!owner) throw notFound('Owner');
+    if (owner.status === 'ARCHIVED') throw badRequest('This owner is archived');
+    await assertUniquePolicy(d.policyNo);
+    const p = await prisma.pcicPolicy.create({ data: { ownerId: id, ...pcicData(d) } });
     await logActivity('owner', id, 'pcic', `PCIC policy ${p.policyNo} recorded`, req.user?.name);
     res.status(201).json(p);
+  }),
+);
+
+/** Update a PCIC policy (e.g. mark it claimed or cancelled, correct its details). */
+ownersRouter.patch(
+  '/pcic/:id',
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const d = parse(pcicCreateSchema, req.body);
+    const before = await prisma.pcicPolicy.findUnique({ where: { id } });
+    if (!before) throw notFound('PCIC policy');
+    await assertUniquePolicy(d.policyNo, id);
+    const p = await prisma.pcicPolicy.update({ where: { id }, data: pcicData(d) });
+    await logActivity(
+      'owner',
+      p.ownerId,
+      'pcic',
+      `PCIC policy ${p.policyNo} updated${before.status !== p.status ? ` (${before.status.toLowerCase()} → ${p.status.toLowerCase()})` : ''}`,
+      req.user?.name,
+    );
+    res.json(p);
   }),
 );

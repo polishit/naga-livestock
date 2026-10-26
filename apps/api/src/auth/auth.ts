@@ -110,19 +110,53 @@ export function toAuthUser(u: {
   return { id: u.id, name: u.name, email: u.email, role: u.role, title: u.title };
 }
 
-/** Attach req.user when a valid access cookie (or Bearer token) is present. */
+/** Current role/active state per user, cached briefly so every request doesn't hit the database. */
+const userState = new Map<
+  number,
+  { at: number; active: boolean; role: Role; name: string; title: string | null }
+>();
+const USER_STATE_TTL = 10_000;
+
+/** Forget the cached state after an administrator changes a user. */
+export function forgetUserState(id: number) {
+  userState.delete(id);
+}
+
+async function currentState(id: number) {
+  const hit = userState.get(id);
+  if (hit && Date.now() - hit.at < USER_STATE_TTL) return hit;
+  const u = await prisma.user.findUnique({
+    where: { id },
+    select: { active: true, role: true, name: true, title: true },
+  });
+  const state = u
+    ? { at: Date.now(), ...u }
+    : { at: Date.now(), active: false, role: 'READONLY' as Role, name: '', title: null };
+  userState.set(id, state);
+  return state;
+}
+
+/**
+ * Attach req.user when a valid access cookie (or Bearer token) is present. The role and active flag
+ * come from the database, so deactivating or demoting a user takes effect immediately.
+ */
 export function authenticate(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   const token = req.cookies?.[ACCESS_COOKIE] ?? (header?.startsWith('Bearer ') ? header.slice(7) : undefined);
-  if (token) {
-    try {
-      const p = jwt.verify(token, env.JWT_ACCESS_SECRET) as jwt.JwtPayload;
-      req.user = { id: Number(p.sub), name: p.name, email: p.email, role: p.role, title: p.title ?? null };
-    } catch {
-      /* expired or invalid — treated as anonymous */
-    }
+  if (!token) return next();
+  let p: jwt.JwtPayload;
+  try {
+    p = jwt.verify(token, env.JWT_ACCESS_SECRET) as jwt.JwtPayload;
+  } catch {
+    return next(); // expired or invalid — treated as anonymous
   }
-  next();
+  const id = Number(p.sub);
+  currentState(id)
+    .then((s) => {
+      if (s.active) req.user = { id, name: s.name, email: p.email, role: s.role, title: s.title };
+      next();
+    })
+    .catch(next);
 }
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {

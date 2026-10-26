@@ -12,7 +12,7 @@ import {
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, dateTime, ymd } from '../lib/dates';
-import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
+import { ah, badRequest, idParam, notFound, parse, qstr, sent } from '../lib/http';
 import { adjustGroupCount } from './population';
 import { serializeCase, serializeTransfer, serializeVaccination } from './serializers';
 
@@ -83,8 +83,17 @@ animalsRouter.get(
     const id = idParam(req);
     const a = await prisma.animal.findUnique({ where: { id }, include: animalInclude });
     if (!a) throw notFound('Animal');
+    // Its own doses, plus doses given to its current group — only since it arrived, if it was
+    // transferred in (a group dose given before it came was not given to this animal).
+    const lastIn = await prisma.ownershipTransfer.findFirst({
+      // A farm reassignment changes the owner, not the herd, so it does not count as arriving.
+      where: { animalId: id, toFarmId: a.group.farmId, NOT: { fromFarmId: a.group.farmId } },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    });
     const vaccinations = await prisma.vaccination.findMany({
-      where: { OR: [{ animalId: id }, { groupId: a.groupId }] },
+      where: {
+        OR: [{ animalId: id }, { groupId: a.groupId, ...(lastIn ? { date: { gte: lastIn.date } } : {}) }],
+      },
       include: { farm: true, group: true, animal: true },
       orderBy: { date: 'desc' },
     });
@@ -207,18 +216,21 @@ animalsRouter.patch(
     const a = await prisma.$transaction(async (tx) => {
       const updated = await tx.animal.update({
         where: { id },
+        // Only the fields sent are changed (a blank field clears it); the rest keep their values.
         data: {
-          earTag: d.earTag ?? null,
-          breed: d.breed ?? null,
-          sex: d.sex,
-          dob: d.dob ? dateOnly(d.dob) : null,
-          estimatedAge: d.estimatedAge ?? null,
-          lifeStage: d.lifeStage ?? null,
-          markings: d.markings ?? null,
-          cowlick: d.cowlick ?? null,
-          health: d.health ?? null,
-          photoKeys: d.photoKeys ?? (before.photoKeys as string[] | null) ?? [],
-          remarks: d.remarks ?? null,
+          ...sent(req.body, d, [
+            'earTag',
+            'breed',
+            'estimatedAge',
+            'lifeStage',
+            'markings',
+            'cowlick',
+            'health',
+            'remarks',
+          ] as const),
+          ...('dob' in req.body ? { dob: dateOnly(d.dob) ?? null } : {}),
+          ...(d.sex ? { sex: d.sex } : {}),
+          ...(d.photoKeys ? { photoKeys: d.photoKeys } : {}),
           ...(d.status ? { status: d.status } : {}),
         },
       });
@@ -426,8 +438,16 @@ straysRouter.post(
         include: animalInclude,
       });
       if (a) {
+        // A registered tag identifies the animal: its owner and species must match the report.
+        const fieldErrors: Record<string, string[]> = {};
+        if (ownerId && ownerId !== a.group.farm.ownerId)
+          fieldErrors.ownerId = [
+            `Tag ${d.earTag} is ${a.code}, owned by ${a.group.farm.owner.fullName}. Record a transfer first if it changed hands.`,
+          ];
+        if (d.species !== a.species) fieldErrors.species = [`Tag ${d.earTag} is ${a.code}, a ${a.species}`];
+        if (Object.keys(fieldErrors).length) throw badRequest('Validation failed', { fieldErrors });
         animalId = a.id;
-        ownerId = ownerId ?? a.group.farm.ownerId;
+        ownerId = a.group.farm.ownerId;
       }
     }
     const s = await prisma.$transaction(async (tx) => {
@@ -478,8 +498,8 @@ straysRouter.patch(
       data: {
         ...(d.status ? { status: d.status } : {}),
         ...(d.violations !== undefined ? { violations: d.violations } : {}),
-        ...(d.ownerId !== undefined ? { ownerId: d.ownerId } : {}),
-        ...(d.remarks !== undefined ? { remarks: d.remarks } : {}),
+        // "Unknown owner" (blank) clears a wrongly assigned owner; blank remarks clear the remarks.
+        ...sent(req.body, d, ['ownerId', 'remarks'] as const),
       },
     });
     await logActivity(

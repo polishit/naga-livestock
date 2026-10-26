@@ -314,8 +314,9 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
         ownerName: string;
         farmName: string;
       }>(`/api/animals/lookup?q=${encodeURIComponent(q)}`);
-      form.setValue('species', a.species as any);
-      if (!form.getValues('ownerId')) form.setValue('ownerId', String(a.ownerId) as any);
+      // A registered tag decides the species and owner (the server checks they match).
+      form.setValue('species', a.species as any, { shouldValidate: true });
+      form.setValue('ownerId', String(a.ownerId) as any, { shouldValidate: true });
       setTagHint(`Registered animal ${a.code} (${a.species}) of ${a.ownerName}, ${a.farmName}.`);
     } catch {
       setTagHint('No registered animal has this tag — fill in the species and owner yourself.');

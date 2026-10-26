@@ -316,29 +316,51 @@ export function ArchiveOwnerDialog({
   );
 }
 
-export function PcicDialog({ open, onOpenChange, ownerId }: DialogProps & { ownerId: number }) {
+export interface PcicRecord {
+  id: number;
+  policyNo: string;
+  species: string;
+  heads: number;
+  amountCovered: number | null;
+  startDate: string;
+  endDate: string;
+  status: string;
+  remarks: string | null;
+}
+
+/** Record a PCIC policy, or update one (e.g. mark it claimed or cancelled). */
+export function PcicDialog({
+  open,
+  onOpenChange,
+  ownerId,
+  policy,
+}: DialogProps & { ownerId: number; policy?: PcicRecord | null }) {
   const form = useZodForm(pcicCreateSchema, {});
   useResetOnOpen(open, form, {
-    policyNo: '',
-    species: 'Swine',
-    heads: '1',
-    amountCovered: '',
-    startDate: '',
-    endDate: '',
-    status: 'ACTIVE',
-    remarks: '',
+    policyNo: policy?.policyNo ?? '',
+    species: policy?.species ?? 'Swine',
+    heads: String(policy?.heads ?? 1),
+    amountCovered: policy?.amountCovered ?? '',
+    startDate: policy?.startDate ?? '',
+    endDate: policy?.endDate ?? '',
+    status: policy?.status ?? 'ACTIVE',
+    remarks: policy?.remarks ?? '',
   } as any);
-  const save = useSave<any>('POST', `/api/owners/${ownerId}/pcic`, {
-    success: 'Insurance policy recorded.',
-    form,
-    onDone: () => onOpenChange(false),
-  });
+  const save = useSave<any>(
+    policy ? 'PATCH' : 'POST',
+    policy ? `/api/owners/pcic/${policy.id}` : `/api/owners/${ownerId}/pcic`,
+    {
+      success: policy ? 'Insurance policy updated.' : 'Insurance policy recorded.',
+      form,
+      onDone: () => onOpenChange(false),
+    },
+  );
   const e = form.formState.errors;
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Add PCIC insurance policy"
+      title={policy ? `Update policy ${policy.policyNo}` : 'Add PCIC insurance policy'}
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -810,7 +832,7 @@ export function PopulationUpdateDialog({
                   <Field label="Count" error={e.entries?.[i]?.count?.message} className="w-24">
                     <Input
                       type="number"
-                      min={0}
+                      min={g.tagged}
                       {...form.register(`entries.${i}.count` as const)}
                       aria-label={`${g.code} count`}
                     />

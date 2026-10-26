@@ -1027,6 +1027,7 @@ export function CaseDetailPage() {
         onOpenChange={(o) => setDlg(o ? 'close' : null)}
         caseId={c.id}
         code={c.code}
+        pending={pending}
       />
     </div>
   );

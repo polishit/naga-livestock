@@ -19,6 +19,7 @@ import {
   OwnerDialog,
   PcicDialog,
   type OwnerRecord,
+  type PcicRecord,
 } from '@/dialogs/registry';
 import type { CaseRow, FarmSummary, TransferRow, VaccinationRow } from './types';
 
@@ -130,16 +131,7 @@ interface OwnerDetail {
     violations: number;
     barangay: string;
   }[];
-  pcic: {
-    id: number;
-    policyNo: string;
-    species: string;
-    heads: number;
-    amountCovered: number | null;
-    startDate: string;
-    endDate: string;
-    status: string;
-  }[];
+  pcic: PcicRecord[];
 }
 
 type OwnerTab = 'info' | 'farms' | 'animals' | 'ownership' | 'vaccinations' | 'incidents' | 'pcic';
@@ -154,6 +146,7 @@ export function OwnerDetailPage() {
   const [archive, setArchive] = useState(false);
   const [addFarm, setAddFarm] = useState(false);
   const [addPcic, setAddPcic] = useState(false);
+  const [pcicEdit, setPcicEdit] = useState<PcicRecord | null>(null);
   const { data, isLoading, error } = useApi<OwnerDetail>(`/api/owners/${id}`);
 
   if (error) return <ErrorBox error={error} />;
@@ -390,7 +383,14 @@ export function OwnerDetailPage() {
               title="PCIC livestock insurance"
               actions={
                 canEdit && (
-                  <Button variant="outline" size="xs" onClick={() => setAddPcic(true)}>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => {
+                      setPcicEdit(null);
+                      setAddPcic(true);
+                    }}
+                  >
                     <Plus /> Add policy
                   </Button>
                 )
@@ -418,9 +418,45 @@ export function OwnerDetailPage() {
                   key: 'status',
                   header: 'Status',
                   cell: (r) => (
-                    <Badge tone={r.status === 'ACTIVE' ? 'green' : 'slate'}>{titleCase(r.status)}</Badge>
+                    <div>
+                      <Badge
+                        tone={
+                          r.status === 'ACTIVE'
+                            ? 'green'
+                            : r.status === 'CLAIMED'
+                              ? 'blue'
+                              : r.status === 'EXPIRED'
+                                ? 'amber'
+                                : 'slate'
+                        }
+                      >
+                        {titleCase(r.status)}
+                      </Badge>
+                      {r.remarks && <div className="mt-0.5 text-[12.5px] text-slate-500">{r.remarks}</div>}
+                    </div>
                   ),
                 },
+                ...(canEdit
+                  ? [
+                      {
+                        key: 'actions',
+                        header: '',
+                        sort: false as const,
+                        cell: (r: PcicRecord) => (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => {
+                              setPcicEdit(r);
+                              setAddPcic(true);
+                            }}
+                          >
+                            Update
+                          </Button>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
               empty="No insurance policies on record."
             />
@@ -430,7 +466,7 @@ export function OwnerDetailPage() {
       <OwnerDialog open={edit} onOpenChange={setEdit} owner={o} />
       {archive && <ArchiveOwnerDialog open={archive} onOpenChange={setArchive} owner={o} />}
       <FarmDialog open={addFarm} onOpenChange={setAddFarm} ownerId={o.id} />
-      <PcicDialog open={addPcic} onOpenChange={setAddPcic} ownerId={o.id} />
+      <PcicDialog open={addPcic} onOpenChange={setAddPcic} ownerId={o.id} policy={pcicEdit} />
     </div>
   );
 }

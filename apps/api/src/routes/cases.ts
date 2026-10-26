@@ -28,6 +28,7 @@ import { assertNotFuture, dateOnly, today, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { loadCases, radiusAnalysis } from '../services/metrics';
 import { serializeCase } from './serializers';
+import { refreshReminders } from './vaccinations';
 
 export const casesRouter = Router();
 export const labsRouter = Router();
@@ -46,22 +47,40 @@ async function speciesHead(farmId: number, species: string) {
   return { groups: groups.length, head: groups.reduce((a, g) => a + g.count, 0) };
 }
 
-async function checkAffected(farmId: number, farmName: string, species: string, affected: number) {
+/**
+ * Animals affected cannot exceed the farm's head of that species. When editing a case, the animals
+ * that already left the population because of it (deaths and culling reconciled) still count.
+ */
+async function checkAffected(
+  farmId: number,
+  farmName: string,
+  species: string,
+  affected: number,
+  alreadyRemoved = 0,
+) {
   const { groups, head } = await speciesHead(farmId, species);
-  if (!groups)
+  if (!groups && !alreadyRemoved)
     throw badRequest('Validation failed', {
       fieldErrors: {
         species: [`${farmName} has no ${species} recorded. Add a population group for it first.`],
       },
     });
-  if (affected > head)
+  const limit = head + alreadyRemoved;
+  if (affected > limit)
     throw badRequest('Validation failed', {
       fieldErrors: {
         affected: [
-          `${farmName} has only ${head} ${species} on record. Update the farm's population first if this is wrong.`,
+          alreadyRemoved
+            ? `${farmName} had only ${limit} ${species} (${head} now plus ${alreadyRemoved} removed for this case).`
+            : `${farmName} has only ${head} ${species} on record. Update the farm's population first if this is wrong.`,
         ],
       },
     });
+}
+
+/** Animals actually culled for a case (planned culling has not removed any animals yet). */
+function culledHeads(rs: { heads: number | null; status: string; voidedAt: Date | null }[]) {
+  return rs.filter((r) => !r.voidedAt && r.status !== 'PLANNED').reduce((a, r) => a + (r.heads ?? 0), 0);
 }
 
 /** Deaths plus culled heads on a case that the farm's population has not yet been updated for. */
@@ -110,7 +129,7 @@ casesRouter.get(
     });
     if (!c) throw notFound('Case');
     const radius = c.lat != null ? await radiusAnalysis(id) : null;
-    const culled = c.responses.filter((r) => !r.voidedAt).reduce((a, r) => a + (r.heads ?? 0), 0);
+    const culled = culledHeads(c.responses);
     res.json({
       case: { ...serializeCase(c), culled, pendingPopulation: pendingPopulation(c, culled) },
       history: c.history.map((h) => ({
@@ -428,6 +447,18 @@ function labData(d: LabInput) {
   };
 }
 type LabInput = ReturnType<typeof labCreateSchema.parse>;
+
+/** A laboratory sample ID identifies one sample: it cannot be used twice (voided records excepted). */
+async function assertUniqueSample(sampleId: string, exceptId?: number) {
+  const dup = await prisma.labRecord.findFirst({
+    where: { sampleId, voidedAt: null, ...(exceptId ? { NOT: { id: exceptId } } : {}) },
+    include: { case: true },
+  });
+  if (dup)
+    throw badRequest('Validation failed', {
+      fieldErrors: { sampleId: [`Sample ID already used on ${dup.case.code}`] },
+    });
+}
 type ResponseInput = ReturnType<typeof responseCreateSchema.parse>;
 
 /** Checks shared by creating and editing a response activity. */
@@ -524,6 +555,7 @@ casesRouter.post(
     if (!c) throw notFound('Case');
     if (c.closedAt) throw closedError();
     notBeforeCase(c, { collectedAt: d.collectedAt, sentAt: d.sentAt, resultDate: d.resultDate });
+    await assertUniqueSample(d.sampleId);
     const l = await prisma.$transaction(async (tx) => {
       const created = await tx.labRecord.create({ data: { caseId: id, ...labData(d) } });
       await historyNote(
@@ -584,16 +616,24 @@ casesRouter.post(
     const d = parse(caseCloseSchema, req.body);
     const c = await prisma.diseaseCase.findUnique({
       where: { id },
-      include: { responses: { where: { voidedAt: null, status: { not: 'COMPLETED' } } } },
+      include: { responses: { where: { voidedAt: null } } },
     });
     if (!c) throw notFound('Case');
     if (c.closedAt) throw badRequest('This case is already closed');
     if (c.status !== 'POSITIVE' && c.status !== 'NEGATIVE') {
       throw badRequest('Only cases with a final result (Positive or Negative) can be closed');
     }
-    if (c.responses.length) {
+    const open = c.responses.filter((r) => r.status !== 'COMPLETED');
+    if (open.length) {
       throw badRequest(
-        `${c.responses.length} response activit${c.responses.length === 1 ? 'y is' : 'ies are'} still planned or ongoing. Mark ${c.responses.length === 1 ? 'it' : 'them'} completed first.`,
+        `${open.length} response activit${open.length === 1 ? 'y is' : 'ies are'} still planned or ongoing. Mark ${open.length === 1 ? 'it' : 'them'} completed first.`,
+      );
+    }
+    // A closed case is locked, so the farm's population must already reflect its deaths and culling.
+    const pending = pendingPopulation(c, culledHeads(c.responses));
+    if (pending > 0) {
+      throw badRequest(
+        `${pending} animal(s) that died or were culled are not yet reflected in the farm's population. Use "Update population" (or "Already counted") on the case first.`,
       );
     }
     const updated = await prisma.$transaction(async (tx) => {
@@ -661,7 +701,8 @@ casesRouter.patch(
       throw badRequest('Validation failed', {
         fieldErrors: { symptomsDate: ['Symptoms cannot be observed after the report date'] },
       });
-    await checkAffected(c.farmId, c.farm.name, c.species, d.affected);
+    if (d.affected !== c.affected)
+      await checkAffected(c.farmId, c.farm.name, c.species, d.affected, c.populationReconciled);
     const assignee = d.assignedToId ? await prisma.user.findUnique({ where: { id: d.assignedToId } }) : null;
     const changes: string[] = [];
     const diff = (label: string, a: unknown, b: unknown) => {
@@ -717,7 +758,7 @@ casesRouter.post(
     const id = idParam(req);
     const c = await prisma.diseaseCase.findUnique({ where: { id }, include: { responses: true } });
     if (!c) throw notFound('Case');
-    const culled = c.responses.filter((r) => !r.voidedAt).reduce((a, r) => a + (r.heads ?? 0), 0);
+    const culled = culledHeads(c.responses);
     const u = await prisma.diseaseCase.update({
       where: { id },
       data: { populationReconciled: c.deaths + culled },
@@ -771,6 +812,7 @@ labsRouter.patch(
     if (l.case.closedAt) throw closedError();
     notBeforeCase(l.case, { collectedAt: d.collectedAt, sentAt: d.sentAt, resultDate: d.resultDate });
     await guardFinalResult(l.caseId, l.case.status, id, d.result);
+    await assertUniqueSample(d.sampleId, id);
     const next = labData(d);
     const changes: string[] = [];
     const show = (v: unknown) =>
@@ -831,7 +873,8 @@ recordsRouter.patch(
     const r = await prisma.responseActivity.findUnique({ where: { id }, include: { case: true } });
     if (!r || r.voidedAt) throw notFound('Response activity');
     if (r.case.closedAt) throw closedError();
-    await checkResponse(r.case, d, r.heads ?? 0);
+    // Heads of a planned cull were never taken off the population, so they are not given back.
+    await checkResponse(r.case, d, r.status === 'PLANNED' ? 0 : (r.heads ?? 0));
     const u = await prisma.$transaction(async (tx) => {
       const updated = await tx.responseActivity.update({ where: { id }, data: responseData(d) });
       const bits = [
@@ -911,7 +954,11 @@ for (const [path, label] of [
       } else {
         const r = await prisma.vaccination.findUnique({ where: { id } });
         if (!r || r.voidedAt) throw notFound(label);
-        await prisma.vaccination.update({ where: { id }, data });
+        // Voiding a dose brings back any reminder it had marked as fulfilled.
+        await prisma.$transaction(async (tx) => {
+          await tx.vaccination.update({ where: { id }, data });
+          await refreshReminders(tx, r);
+        });
         entity = 'farm';
         entityId = r.farmId;
         what = `vaccination ${r.code}`;
