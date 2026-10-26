@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Pencil, Plus, Printer, Search } from 'lucide-react';
+import { ArrowRightLeft, MoveRight, Pencil, Plus, Printer, Search } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -21,7 +21,7 @@ import { PhotoGallery } from '@/components/forms';
 import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
-import { AnimalDialog, TransferDialog, type AnimalRecord } from '@/dialogs/animals';
+import { AnimalDialog, MoveGroupDialog, TransferDialog, type AnimalRecord } from '@/dialogs/animals';
 import type { CaseRow, TransferRow, VaccinationRow } from './types';
 
 type AnimalRow = AnimalRecord & { groupCode: string; barangay: string };
@@ -114,7 +114,7 @@ export function AnimalDetailPage() {
   const { canEdit } = useAuth();
   const lh = useLetterhead();
   const [tab, setTab] = useState<'vax' | 'own' | 'cases' | 'history'>('vax');
-  const [dlg, setDlg] = useState<null | 'edit' | 'transfer'>(null);
+  const [dlg, setDlg] = useState<null | 'edit' | 'transfer' | 'move'>(null);
   const { data, isLoading, error } = useApi<AnimalDetail>(`/api/animals/${id}`);
   if (error) return <ErrorBox error={error} />;
   if (isLoading || !data) return <Loading />;
@@ -165,6 +165,11 @@ export function AnimalDetailPage() {
             <Button variant="outline" onClick={printSummary}>
               <Printer /> Ownership summary
             </Button>
+            {canEdit && a.status === 'ACTIVE' && (
+              <Button variant="outline" onClick={() => setDlg('move')}>
+                <MoveRight /> Move group
+              </Button>
+            )}
             {canEdit && a.status === 'ACTIVE' && (
               <Button variant="outline" onClick={() => setDlg('transfer')}>
                 <ArrowRightLeft /> Transfer
@@ -331,6 +336,7 @@ export function AnimalDetailPage() {
         )}
       </div>
       <AnimalDialog open={dlg === 'edit'} onOpenChange={(o) => setDlg(o ? 'edit' : null)} animal={a} />
+      <MoveGroupDialog open={dlg === 'move'} onOpenChange={(o) => setDlg(o ? 'move' : null)} animal={a} />
       <TransferDialog
         open={dlg === 'transfer'}
         onOpenChange={(o) => setDlg(o ? 'transfer' : null)}

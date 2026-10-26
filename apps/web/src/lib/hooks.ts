@@ -36,6 +36,7 @@ export interface Lookups {
     species: string;
     breed: string | null;
     sex: string;
+    lifeStage: string;
     count: number;
     tagged: number;
   }[];
@@ -236,4 +237,49 @@ export function useResetOnOpen<T extends FieldValues>(open: boolean, form: UseFo
     if (open) form.reset(values);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+}
+
+export const UNSAVED_MESSAGE = 'You have information in this form that has not been saved. Leave anyway?';
+
+/**
+ * Unsaved-changes guard for a full-page form: warns before closing or reloading the tab, and before
+ * following a link elsewhere in the app, while `dirty` is true.
+ */
+export function useUnsavedGuard(dirty: boolean) {
+  useEffect(() => {
+    if (!dirty) return;
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement).closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!a || a.target === '_blank' || a.origin !== window.location.origin) return;
+      if (a.pathname === window.location.pathname) return;
+      if (!window.confirm(UNSAVED_MESSAGE)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    document.addEventListener('click', onClick, true);
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnload);
+      document.removeEventListener('click', onClick, true);
+    };
+  }, [dirty]);
+}
+
+/** Naga City barangay boundaries (GeoJSON in /public/geo), loaded once and kept for the session. */
+export function useBarangayShapes() {
+  return useQuery<GeoJSON.FeatureCollection>({
+    queryKey: ['barangay-shapes'],
+    queryFn: async () => {
+      const r = await fetch('/geo/naga-barangays.geojson');
+      if (!r.ok) throw new Error('Could not load the barangay boundaries');
+      return r.json();
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
 }

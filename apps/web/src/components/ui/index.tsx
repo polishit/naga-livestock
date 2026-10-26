@@ -7,7 +7,10 @@ import {
   cloneElement,
   forwardRef,
   isValidElement,
+  useEffect,
   useId,
+  useState,
+  type SyntheticEvent,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -229,6 +232,7 @@ export function Dialog({
   children,
   footer,
   size = 'md',
+  guardChanges = true,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -236,6 +240,8 @@ export function Dialog({
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Ask "Discard changes?" before closing a form the user has typed in (default on). */
+  guardChanges?: boolean;
 }) {
   const width = {
     sm: 'sm:max-w-[460px]',
@@ -243,12 +249,33 @@ export function Dialog({
     lg: 'sm:max-w-[1024px]',
     xl: 'sm:max-w-[1180px]',
   }[size];
+  // Unsaved-changes guard: typing in any form field marks the dialog dirty. Closing it then (tapping
+  // outside, Esc, the X, or Cancel/Close) asks first. Saving closes it normally.
+  const [dirty, setDirty] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setDirty(false);
+      setConfirming(false);
+    }
+  }, [open]);
+  const markDirty = (e: SyntheticEvent) => {
+    if (guardChanges && (e.target as HTMLElement).closest?.('form')) setDirty(true);
+  };
+  const requestClose = () => (guardChanges && dirty ? setConfirming(true) : onOpenChange(false));
+  const discard = () => {
+    setConfirming(false);
+    setDirty(false);
+    onOpenChange(false);
+  };
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <DialogPrimitive.Root open={open} onOpenChange={(o) => (o ? onOpenChange(true) : requestClose())}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[1000] bg-slate-900/40 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
+          onInput={markDirty}
+          onChange={markDirty}
           className={cn(
             'fixed z-[1001] flex max-h-[100dvh] w-full flex-col bg-white shadow-xl outline-none',
             'inset-x-0 bottom-0 rounded-t-xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-h-[92vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl',
@@ -273,8 +300,45 @@ export function Dialog({
             <div
               className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-white px-5 py-3.5 sm:py-4 [&>button]:flex-1 sm:[&>button]:flex-none"
               style={{ paddingBottom: 'max(0.875rem, env(safe-area-inset-bottom))' }}
+              onClickCapture={(e) => {
+                // The footer's Cancel / Close button goes through the same check.
+                const b = (e.target as HTMLElement).closest('button');
+                if (
+                  guardChanges &&
+                  dirty &&
+                  b &&
+                  b.getAttribute('type') !== 'submit' &&
+                  /^(Cancel|Close)$/.test(b.textContent?.trim() ?? '')
+                ) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setConfirming(true);
+                }
+              }}
             >
               {footer}
+            </div>
+          )}
+          {confirming && (
+            <div
+              role="alertdialog"
+              aria-label="Discard changes?"
+              className="absolute inset-0 z-10 flex items-center justify-center rounded-[inherit] bg-white/85 p-5 backdrop-blur-[2px]"
+            >
+              <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
+                <div className="text-[16px] font-semibold text-slate-900">Discard changes?</div>
+                <p className="mt-1 text-[14px] text-slate-600">
+                  You have typed information in this form that has not been saved.
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setConfirming(false)} autoFocus>
+                    Keep editing
+                  </Button>
+                  <Button variant="destructive" onClick={discard}>
+                    Discard
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </DialogPrimitive.Content>
@@ -282,7 +346,6 @@ export function Dialog({
     </DialogPrimitive.Root>
   );
 }
-
 /* ---------------- Tabs ---------------- */
 
 export function Tabs<T extends string>({

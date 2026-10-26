@@ -3,6 +3,7 @@ import {
   SPECIES_ID_LETTER,
   isoMonth,
   animalCreateSchema,
+  animalMoveSchema,
   animalUpdateSchema,
   strayCreateSchema,
   strayUpdateSchema,
@@ -256,6 +257,56 @@ animalsRouter.patch(
   }),
 );
 
+/**
+ * Move a tagged animal to another group on the same farm (e.g. weaned young stock joining the adult
+ * group). The animal is counted within its group, so one head moves from the old group to the new one.
+ */
+animalsRouter.post(
+  '/:id/move',
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const d = parse(animalMoveSchema, req.body);
+    const animal = await prisma.animal.findUnique({ where: { id }, include: { group: true } });
+    if (!animal) throw notFound('Animal');
+    if (animal.status !== 'ACTIVE') throw badRequest('Only active animals can be moved');
+    const dest = await prisma.populationGroup.findUnique({ where: { id: d.groupId } });
+    const fail = (msg: string) => badRequest('Validation failed', { fieldErrors: { groupId: [msg] } });
+    if (!dest || dest.archived) throw fail('Select an active group');
+    if (dest.id === animal.groupId) throw fail('The animal is already in this group');
+    if (dest.farmId !== animal.group.farmId)
+      throw fail('Choose a group on the same farm (use Transfer to move it to another farm)');
+    if (dest.species !== animal.species) throw fail(`Choose a ${animal.species} group`);
+    const why = d.reason ? ` — ${d.reason}` : '';
+    const moved = await prisma.$transaction(async (tx) => {
+      const a = await tx.animal.update({ where: { id }, data: { groupId: dest.id } });
+      await adjustGroupCount(
+        tx,
+        animal.groupId,
+        -1,
+        `${animal.code} moved to ${dest.code}${why}`,
+        req.user?.name,
+      );
+      await adjustGroupCount(
+        tx,
+        dest.id,
+        1,
+        `${animal.code} moved in from ${animal.group.code}${why}`,
+        req.user?.name,
+      );
+      await logActivity(
+        'animal',
+        id,
+        'moved',
+        `Moved from ${animal.group.code} to ${dest.code}${why}`,
+        req.user?.name,
+        tx,
+      );
+      return a;
+    });
+    res.json(moved);
+  }),
+);
+
 /* ---------------- ownership transfers ---------------- */
 
 transfersRouter.get(
@@ -410,6 +461,26 @@ straysRouter.get(
       orderBy: { discoveredAt: 'desc' },
     });
     res.json(rows.map(serializeStray));
+  }),
+);
+
+/** An owner's earlier stray incidents, so repeat offenders are noticed (optionally leaving one out). */
+straysRouter.get(
+  '/owner/:ownerId/summary',
+  ah(async (req, res) => {
+    const ownerId = idParam(req, 'ownerId');
+    const except = Number(req.query.except) || undefined;
+    const rows = await prisma.strayIncident.findMany({
+      where: { ownerId, ...(except ? { NOT: { id: except } } : {}) },
+      orderBy: { discoveredAt: 'desc' },
+      select: { id: true, code: true, discoveredAt: true, violations: true, status: true },
+    });
+    res.json({
+      incidents: rows.length,
+      violations: rows.reduce((a, r) => a + r.violations, 0),
+      open: rows.filter((r) => r.status === 'REPORTED' || r.status === 'IMPOUNDED').length,
+      last: rows[0] ? { code: rows[0].code, discoveredAt: rows[0].discoveredAt } : null,
+    });
   }),
 );
 

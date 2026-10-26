@@ -5,12 +5,16 @@ import {
   ChevronDown,
   ChevronRight,
   CloudOff,
+  Download,
   LayoutGrid,
   LogOut,
   PanelLeft,
   RefreshCw,
   Search,
   Settings,
+  Share,
+  Smartphone,
+  SquarePlus,
   UserCog,
   X,
 } from 'lucide-react';
@@ -21,9 +25,10 @@ import { ROLE_LABELS, initials } from '@livestock/shared';
 import { runSync } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useApi, useOnline, usePendingCount } from '@/lib/hooks';
+import { dismissInstall, installDismissed, useInstall } from '@/lib/install';
 import { cn } from '@/lib/utils';
 import { Logo } from '../Logo';
-import { Dialog } from '../ui';
+import { Button, Dialog } from '../ui';
 import { NAV, crumbsFor, sectionFor, type NavSection } from './nav';
 
 function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
@@ -372,9 +377,98 @@ function SyncStatus() {
   );
 }
 
+/** iPhone / iPad: there is no install button, so show the three taps instead. */
+function IosInstallDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} title="Install on iPhone or iPad" size="sm">
+      <ol className="space-y-3 text-[15px] text-slate-700">
+        <li className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-light text-brand-strong">
+            <Share className="h-4 w-4" />
+          </span>
+          <span>
+            In <b className="font-medium">Safari</b>, tap the <b className="font-medium">Share</b> button (the
+            square with an arrow).
+          </span>
+        </li>
+        <li className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-light text-brand-strong">
+            <SquarePlus className="h-4 w-4" />
+          </span>
+          <span>
+            Scroll down and choose <b className="font-medium">Add to Home Screen</b>.
+          </span>
+        </li>
+        <li className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-light text-brand-strong">
+            <Smartphone className="h-4 w-4" />
+          </span>
+          <span>
+            Tap <b className="font-medium">Add</b>. Open Naga City Vet from its home-screen icon from now on.
+          </span>
+        </li>
+      </ol>
+    </Dialog>
+  );
+}
+
+/** Ask the browser to install the app, or explain how on iPhone. */
+function useInstallAction() {
+  const inst = useInstall();
+  const [iosHelp, setIosHelp] = useState(false);
+  const available = inst.canPrompt || inst.ios;
+  const run = async () => {
+    if (inst.canPrompt) {
+      if (await inst.install()) toast.success('Naga City Vet was installed on this device.');
+    } else setIosHelp(true);
+  };
+  const dialog = <IosInstallDialog open={iosHelp} onOpenChange={setIosHelp} />;
+  return { available, run, dialog };
+}
+
+/** Phones: a one-time suggestion to install the app (hidden for two weeks after "Not now"). */
+function InstallBanner() {
+  const { available, run, dialog } = useInstallAction();
+  const [hidden, setHidden] = useState(installDismissed);
+  if (!available || hidden) return dialog;
+  return (
+    <>
+      <div
+        role="region"
+        aria-label="Install the app"
+        className="fixed inset-x-3 z-[940] flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-lg lg:hidden"
+        style={{ bottom: 'calc(72px + env(safe-area-inset-bottom))' }}
+      >
+        <img src="/icons/icon-192.png" alt="" className="h-10 w-10 shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1 text-[13.5px] leading-snug text-slate-700">
+          <b className="block text-[14.5px] font-semibold text-slate-900">Install on this phone</b>
+          Opens like an app and keeps working offline.
+        </div>
+        <div className="flex shrink-0 flex-col gap-1">
+          <Button size="xs" onClick={run}>
+            Install
+          </Button>
+          <button
+            type="button"
+            className="text-[12.5px] text-slate-500 hover:underline"
+            onClick={() => {
+              dismissInstall();
+              setHidden(true);
+            }}
+          >
+            Not now
+          </button>
+        </div>
+      </div>
+      {dialog}
+    </>
+  );
+}
+
 function UserMenu() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const install = useInstallAction();
   if (!user) return null;
   return (
     <DropdownMenu.Root>
@@ -419,6 +513,14 @@ function UserMenu() {
           >
             <Settings className="h-4 w-4" /> System settings
           </DropdownMenu.Item>
+          {install.available && (
+            <DropdownMenu.Item
+              onSelect={install.run}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
+            >
+              <Download className="h-4 w-4" /> Install app on this device
+            </DropdownMenu.Item>
+          )}
           <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
           <DropdownMenu.Item
             onSelect={async () => {
@@ -431,6 +533,7 @@ function UserMenu() {
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
+      {install.dialog}
     </DropdownMenu.Root>
   );
 }
@@ -547,6 +650,7 @@ export function AppLayout() {
         </main>
       </div>
       <BottomNav />
+      <InstallBanner />
     </div>
   );
 }

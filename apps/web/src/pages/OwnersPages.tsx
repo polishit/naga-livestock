@@ -1,4 +1,4 @@
-import { Archive, Pencil, Plus, RotateCcw } from 'lucide-react';
+import { Archive, IdCard, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -6,9 +6,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { BARANGAYS, OWNER_STATUSES, fmtDate, fmtDateTime, titleCase } from '@livestock/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { printOwnerCard } from '@/lib/print';
 import { useApi } from '@/lib/hooks';
 import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
+import { useLetterhead } from '@/components/ExportButtons';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge, StrayStatusBadge } from '@/components/status';
@@ -141,6 +143,7 @@ export function OwnerDetailPage() {
   const navigate = useNavigate();
   const { canEdit } = useAuth();
   const qc = useQueryClient();
+  const lh = useLetterhead();
   const [tab, setTab] = useState<OwnerTab>('info');
   const [edit, setEdit] = useState(false);
   const [archive, setArchive] = useState(false);
@@ -164,34 +167,49 @@ export function OwnerDetailPage() {
           </span>
         }
         actions={
-          canEdit && (
-            <>
-              <Button variant="outline" onClick={() => setEdit(true)}>
-                <Pencil /> Edit
+          <>
+            {!archived && (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  printOwnerCard(
+                    { ...o, farms: data.farms.map((f) => ({ code: f.code, name: f.name, total: f.total })) },
+                    lh,
+                  )
+                }
+              >
+                <IdCard /> Print ID card
               </Button>
-              {archived ? (
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    await api.post(`/api/owners/${o.id}/restore`);
-                    toast.success('Owner restored.');
-                    qc.invalidateQueries();
-                  }}
-                >
-                  <RotateCcw /> Restore
+            )}
+            {canEdit && (
+              <>
+                <Button variant="outline" onClick={() => setEdit(true)}>
+                  <Pencil /> Edit
                 </Button>
-              ) : (
-                <Button variant="outline" onClick={() => setArchive(true)}>
-                  <Archive /> Archive
-                </Button>
-              )}
-              {!archived && (
-                <Button onClick={() => setAddFarm(true)}>
-                  <Plus /> Add farm
-                </Button>
-              )}
-            </>
-          )
+                {archived ? (
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      await api.post(`/api/owners/${o.id}/restore`);
+                      toast.success('Owner restored.');
+                      qc.invalidateQueries();
+                    }}
+                  >
+                    <RotateCcw /> Restore
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={() => setArchive(true)}>
+                    <Archive /> Archive
+                  </Button>
+                )}
+                {!archived && (
+                  <Button onClick={() => setAddFarm(true)}>
+                    <Plus /> Add farm
+                  </Button>
+                )}
+              </>
+            )}
+          </>
         }
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

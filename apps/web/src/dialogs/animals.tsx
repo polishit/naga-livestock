@@ -10,7 +10,9 @@ import {
   SPECIES,
   STRAY_STATUSES,
   animalCreateSchema,
+  animalMoveSchema,
   animalUpdateSchema,
+  fmtDate,
   isoDate,
   strayCreateSchema,
   strayUpdateSchema,
@@ -18,7 +20,7 @@ import {
   transferCreateSchema,
 } from '@livestock/shared';
 import { api, isQueued } from '@/lib/api';
-import { useAddressLookup, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
+import { useAddressLookup, useApi, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
 import { MapView } from '@/components/MapView';
 import { AddressLookupHint, PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
 import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
@@ -197,6 +199,118 @@ export function AnimalDialog({
         </Field>
       </form>
     </Dialog>
+  );
+}
+/** Move a tagged animal to another group on the same farm (e.g. young stock to the adult group). */
+export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { animal: AnimalRecord }) {
+  const { data: lookups } = useLookups();
+  const form = useZodForm(animalMoveSchema, {});
+  useResetOnOpen(open, form, { groupId: '', reason: '' } as any);
+  const save = useSave<any>('POST', `/api/animals/${animal.id}/move`, {
+    success: `${animal.code} moved to its new group.`,
+    label: () => `Move ${animal.code}`,
+    form,
+    onDone: () => onOpenChange(false),
+  });
+  const e = form.formState.errors;
+  const current = lookups?.groups.find((g) => g.id === animal.groupId);
+  // Only groups of the same species on the same farm can take the animal.
+  const choices = (lookups?.groups ?? []).filter(
+    (g) => g.farmId === animal.farmId && g.species === animal.species && g.id !== animal.groupId,
+  );
+  const label = (g: { code: string; lifeStage: string; sex: string; breed: string | null; count: number }) =>
+    `${g.code} · ${titleCase(g.lifeStage)}${g.sex !== 'Mixed' ? ` · ${g.sex}` : ''}${g.breed ? ` · ${g.breed}` : ''} · ${g.count} head`;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Move ${animal.code} to another group`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button form="move-form" type="submit" loading={save.isPending} disabled={!choices.length}>
+            Move animal
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="move-form"
+        noValidate
+        onSubmit={form.handleSubmit((v) => save.mutate(v))}
+        className="space-y-4"
+      >
+        <p className="text-[14px] text-slate-600">
+          Now in <b className="font-medium text-slate-800">{current ? label(current) : '—'}</b> at{' '}
+          {animal.farmName}.
+        </p>
+        {choices.length ? (
+          <Field label="New group *" error={err(e, 'groupId')}>
+            <Select {...form.register('groupId')} aria-invalid={!!e.groupId}>
+              <option value="">Select...</option>
+              {choices.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {label(g)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <p className="rounded-md bg-slate-50 px-3 py-2.5 text-[14px] text-slate-600">
+            {animal.farmName} has no other {animal.species.toLowerCase()} group. Add one on the farm page
+            first (e.g. an &ldquo;adult&rdquo; group).
+          </p>
+        )}
+        <Field label="Reason" error={err(e, 'reason')}>
+          <Input {...form.register('reason')} placeholder="e.g. Weaned — now adult" />
+        </Field>
+        <p className="text-[12.5px] text-slate-400">
+          One head moves from the old group to the new one; both changes are written to the farm&apos;s
+          population history. To move the animal to another farm, use Transfer instead.
+        </p>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Earlier stray incidents of an owner, so repeat offenders are noticed when deciding penalties. */
+export function OwnerStrayHistory({
+  ownerId,
+  exceptId,
+}: {
+  ownerId?: number | string | null;
+  exceptId?: number;
+}) {
+  const id = Number(ownerId) || 0;
+  const { data } = useApi<{
+    incidents: number;
+    violations: number;
+    open: number;
+    last: { code: string; discoveredAt: string } | null;
+  }>(id ? `/api/strays/owner/${id}/summary${exceptId ? `?except=${exceptId}` : ''}` : null);
+  if (!id || !data) return null;
+  if (!data.incidents)
+    return <p className="text-[13px] text-slate-500">No earlier stray incidents for this owner.</p>;
+  const repeat = data.incidents >= 2;
+  return (
+    <div
+      role="status"
+      className={
+        repeat
+          ? 'rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13.5px] text-red-800'
+          : 'rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-800'
+      }
+    >
+      <b className="font-semibold">{repeat ? 'Repeat offender: ' : 'Earlier incident: '}</b>
+      {data.incidents} earlier stray incident{data.incidents === 1 ? '' : 's'}
+      {data.violations ? `, ${data.violations} violation(s) recorded` : ''}
+      {data.last
+        ? ` — last ${data.last.code} on ${fmtDate(data.last.discoveredAt)}`
+        : ''}.{data.open ? ` ${data.open} still open.` : ''}
+    </div>
   );
 }
 
@@ -384,6 +498,9 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
               ))}
             </Select>
           </Field>
+          <div className="sm:col-span-2 empty:hidden">
+            <OwnerStrayHistory ownerId={form.watch('ownerId')} />
+          </div>
           <Field label="Species" error={err(e, 'species')}>
             <Select {...form.register('species')}>
               {SPECIES.map((s) => (
@@ -553,6 +670,9 @@ export function StrayUpdateDialog({
             ))}
           </Select>
         </Field>
+        <div className="sm:col-span-2 empty:hidden">
+          <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />
+        </div>
         <Field label="Remarks / actions taken" error={err(e, 'remarks')} className="sm:col-span-2">
           <Textarea rows={3} {...form.register('remarks')} />
         </Field>

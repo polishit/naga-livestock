@@ -1,4 +1,4 @@
-import { Archive, ClipboardList, MapPin, Pencil, Plus, Syringe } from 'lucide-react';
+import { Archive, ClipboardList, MapPin, Pencil, Plus, Printer, Syringe } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -6,9 +6,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { BARANGAYS, FARM_TYPES, fmtDate, fmtMonth, titleCase } from '@livestock/shared';
 import { ApiError, api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { printFarmProfile } from '@/lib/print';
 import { useApi } from '@/lib/hooks';
 import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
+import { useLetterhead } from '@/components/ExportButtons';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge, RecordStatusBadge, SpeciesChip } from '@/components/status';
@@ -177,8 +179,9 @@ type FarmTab = 'overview' | 'groups' | 'animals' | 'history' | 'vaccinations' | 
 export function FarmDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit } = useAuth();
+  const { canEdit, user } = useAuth();
   const qc = useQueryClient();
+  const lh = useLetterhead();
   const [tab, setTab] = useState<FarmTab>('overview');
   const [dlg, setDlg] = useState<null | 'edit' | 'group' | 'update' | 'animal' | 'vax' | 'group-edit'>(null);
   const [editGroup, setEditGroup] = useState<FarmDetail['groups'][number] | null>(null);
@@ -222,28 +225,32 @@ export function FarmDetailPage() {
           </span>
         }
         actions={
-          canEdit &&
-          !f.archived && (
-            <>
-              <Button variant="outline" asChild>
-                <Link to={`/geotagging?farm=${f.id}`}>
-                  <MapPin /> {f.mapped ? 'Edit location' : 'Geotag'}
-                </Link>
-              </Button>
-              <Button variant="outline" onClick={() => setDlg('vax')}>
-                <Syringe /> Vaccination
-              </Button>
-              <Button variant="outline" onClick={() => setDlg('edit')}>
-                <Pencil /> Edit
-              </Button>
-              <Button variant="outline" onClick={archive}>
-                <Archive /> Archive
-              </Button>
-              <Button onClick={() => setDlg('update')} disabled={!data.groups.length}>
-                <ClipboardList /> Update population
-              </Button>
-            </>
-          )
+          <>
+            <Button variant="outline" onClick={() => printFarmProfile(data, lh, user?.name)}>
+              <Printer /> Print profile
+            </Button>
+            {canEdit && !f.archived && (
+              <>
+                <Button variant="outline" asChild>
+                  <Link to={`/geotagging?farm=${f.id}`}>
+                    <MapPin /> {f.mapped ? 'Edit location' : 'Geotag'}
+                  </Link>
+                </Button>
+                <Button variant="outline" onClick={() => setDlg('vax')}>
+                  <Syringe /> Vaccination
+                </Button>
+                <Button variant="outline" onClick={() => setDlg('edit')}>
+                  <Pencil /> Edit
+                </Button>
+                <Button variant="outline" onClick={archive}>
+                  <Archive /> Archive
+                </Button>
+                <Button onClick={() => setDlg('update')} disabled={!data.groups.length}>
+                  <ClipboardList /> Update population
+                </Button>
+              </>
+            )}
+          </>
         }
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -6,3 +6,4 @@ apps/api/prisma/migrations
 playwright-report
 test-results
 src/generated
+apps/web/public/geo

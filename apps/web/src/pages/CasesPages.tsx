@@ -22,7 +22,7 @@ import {
 } from '@livestock/shared';
 import { isQueued } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { speciesOnFarm, useApi, useLookups, useSave } from '@/lib/hooks';
+import { UNSAVED_MESSAGE, speciesOnFarm, useApi, useLookups, useSave, useUnsavedGuard } from '@/lib/hooks';
 import { cn, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
@@ -209,18 +209,18 @@ export function CaseNewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [farm?.id]);
 
-  // Pre-select the farm passed in the link: first its owner, then (once that owner's farms are listed) the farm.
+  // Pre-select the farm passed in the link, together with its owner, in one step (the owner and farm
+  // lists below follow the form's values, so both show the selection as soon as it is set).
   const presetFarm = presetFarmId ? lookups?.farms.find((x) => String(x.id) === presetFarmId) : undefined;
   useEffect(() => {
-    if (presetFarm) form.setValue('ownerId', String(presetFarm.ownerId) as any);
+    if (!presetFarm || form.getValues('farmId')) return;
+    form.setValue('ownerId', String(presetFarm.ownerId) as any);
+    form.setValue('farmId', String(presetFarm.id) as any);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetFarm?.id]);
-  useEffect(() => {
-    if (presetFarm && farms.some((f) => f.id === presetFarm.id) && !form.getValues('farmId')) {
-      form.setValue('farmId', String(presetFarm.id) as any);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetFarm?.id, farms.length]);
+  /** Owner / farm picked by the user (validated again after a failed submit). */
+  const pick = (name: 'ownerId' | 'farmId', value: string) =>
+    form.setValue(name, value as any, { shouldDirty: true, shouldValidate: form.formState.isSubmitted });
 
   // Copy the disease (and the species, if this farm keeps it) from the original case.
   useEffect(() => {
@@ -229,7 +229,12 @@ export function CaseNewPage() {
     if (!form.getValues('species') && farmSpecies.some((s) => s.species === parent.case.species))
       pickSpecies(parent.case.species);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parent?.case.id, farmSpecies.length]);
+  }, [parent?.case.id, farm?.id, farmSpecies.length]);
+
+  // Warn before leaving a report that has been started but not submitted.
+  const [submitted, setSubmitted] = useState(false);
+  const started = !submitted && (form.formState.isDirty || photos.length > 0);
+  useUnsavedGuard(started);
 
   const save = useSave<any, { id: number }>('POST', '/api/cases', {
     success: 'Disease incident reported.',
@@ -237,8 +242,10 @@ export function CaseNewPage() {
     form,
     files: () => photos,
     photoField: 'photoKeys',
-    onDone: (res) =>
-      navigate(isQueued(res) ? '/cases' : `/cases/${(res as { id: number }).id}`, { replace: true }),
+    onDone: (res) => {
+      setSubmitted(true);
+      navigate(isQueued(res) ? '/cases' : `/cases/${(res as { id: number }).id}`, { replace: true });
+    },
   });
 
   return (
@@ -266,7 +273,11 @@ export function CaseNewPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Owner *" error={err(e, 'ownerId')}>
               <Select
-                {...form.register('ownerId', { onChange: () => form.setValue('farmId', '' as any) })}
+                value={ownerId ?? ''}
+                onChange={(ev) => {
+                  pick('ownerId', ev.target.value);
+                  form.setValue('farmId', '' as any);
+                }}
                 aria-invalid={!!e.ownerId}
               >
                 <option value="">Select owner...</option>
@@ -278,7 +289,12 @@ export function CaseNewPage() {
               </Select>
             </Field>
             <Field label="Farm *" error={err(e, 'farmId')}>
-              <Select {...form.register('farmId')} disabled={!ownerId} aria-invalid={!!e.farmId}>
+              <Select
+                value={farmId ?? ''}
+                onChange={(ev) => pick('farmId', ev.target.value)}
+                disabled={!ownerId}
+                aria-invalid={!!e.farmId}
+              >
                 <option value="">{ownerId ? 'Select farm...' : 'Select owner first'}</option>
                 {farms.map((f) => (
                   <option key={f.id} value={f.id}>
@@ -426,7 +442,11 @@ export function CaseNewPage() {
             </div>
           </Card>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => navigate(-1)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => (!started || window.confirm(UNSAVED_MESSAGE)) && navigate(-1)}
+            >
               Cancel
             </Button>
             <Button type="submit" loading={save.isPending}>

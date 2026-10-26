@@ -42,7 +42,7 @@ export default defineConfig({
       },
       workbox: {
         // App shell is precached; API GETs fall back to the last response when offline.
-        globPatterns: ['**/*.{js,css,html,svg,png,jpg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,jpg,woff2,geojson}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],

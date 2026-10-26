@@ -1,7 +1,17 @@
 import L from 'leaflet';
 import { LocateFixed } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Circle, MapContainer, Marker, Popup, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import {
+  Circle,
+  GeoJSON,
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+  Tooltip,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet';
 import { Link } from 'react-router-dom';
 import {
   CASE_MARKER_COLORS,
@@ -48,6 +58,21 @@ export interface LatLng {
   lng: number;
 }
 
+/** Shaded areas (barangays) drawn from GeoJSON, each coloured by a value. */
+export interface AreaLayer {
+  data: GeoJSON.FeatureCollection;
+  /** Fill colour for an area, by its `name` property. */
+  fill: (name: string) => string;
+  /** Tooltip text for an area. */
+  label: (name: string) => string;
+  onClick?: (name: string) => void;
+  selected?: string | null;
+  /** Draw boundaries only (no fill), e.g. as context under other layers. */
+  outlineOnly?: boolean;
+  /** Change to redraw the colours (e.g. when the metric changes). */
+  version: string;
+}
+
 function farmIcon(f: FarmMarker) {
   const dominant = [...(f.species ?? [])].sort((a, b) => b.count - a.count)[0]?.species as
     | Species
@@ -61,11 +86,15 @@ function farmIcon(f: FarmMarker) {
   return L.divIcon({ html, className: 'leaflet-div-icon-clear', iconSize: [22, 22], iconAnchor: [11, 11] });
 }
 
-function caseIcon(status: CaseStatus) {
+function caseIcon(status: CaseStatus, highlight = false) {
   const kind = caseMarkerKind(status);
   const color = CASE_MARKER_COLORS[kind];
   const hollow = kind === 'suspected';
-  const html = `<div style="width:16px;height:16px;transform:rotate(45deg);border-radius:2px;background:${hollow ? '#fff' : color};border:${hollow ? `3px solid ${color}` : '1.5px solid #fff'};box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>`;
+  const diamond = `<div style="width:16px;height:16px;transform:rotate(45deg);border-radius:2px;background:${hollow ? '#fff' : color};border:${hollow ? `3px solid ${color}` : '1.5px solid #fff'};box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>`;
+  // A newly reported case (timeline) gets a pulsing ring.
+  const html = highlight
+    ? `<div style="position:relative;width:16px;height:16px"><span class="case-pulse" style="border-color:${color}"></span>${diamond}</div>`
+    : diamond;
   return L.divIcon({ html, className: 'leaflet-div-icon-clear', iconSize: [16, 16], iconAnchor: [8, 8] });
 }
 
@@ -94,16 +123,20 @@ const pinIcon = L.divIcon({
 function FitTo({
   points,
   circle,
+  bounds,
   version,
 }: {
   points: [number, number][];
   circle?: { lat: number; lng: number; radius: number };
+  bounds?: L.LatLngBounds | null;
   version: number;
 }) {
   const map = useMap();
   useEffect(() => {
     if (circle) {
       map.fitBounds(L.latLng(circle.lat, circle.lng).toBounds(circle.radius * 2.4), { animate: false });
+    } else if (bounds && bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [16, 16], animate: false });
     } else if (points.length > 1) {
       map.fitBounds(L.latLngBounds(points), { padding: [36, 36], maxZoom: 15, animate: false });
     } else if (points.length === 1) {
@@ -155,6 +188,10 @@ export interface MapViewProps {
   overlay?: ReactNode;
   /** Change to re-fit bounds (e.g. when the selection changes). */
   fitKey?: string | number;
+  /** Shaded barangays (the map then fits to them). */
+  areas?: AreaLayer;
+  /** Cases drawn with a pulsing ring (e.g. newly reported this month on the timeline). */
+  highlightCaseIds?: number[];
 }
 
 export function MapView({
@@ -171,8 +208,12 @@ export function MapView({
   showZoom = true,
   overlay,
   fitKey,
+  areas,
+  highlightCaseIds,
 }: MapViewProps) {
   const [version, setVersion] = useState(0);
+  const areaBounds = useMemo(() => (areas ? L.geoJSON(areas.data).getBounds() : null), [areas?.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const highlighted = useMemo(() => new Set(highlightCaseIds ?? []), [highlightCaseIds]);
   const points = useMemo(() => {
     const p: [number, number][] = [];
     for (const f of farms) if (f.lat != null && f.lng != null) p.push([f.lat, f.lng]);
@@ -197,6 +238,7 @@ export function MapView({
       <MapContainer
         center={NAGA_CENTER}
         zoom={12}
+        zoomSnap={0.25}
         zoomControl={showZoom}
         scrollWheelZoom
         className="h-full w-full"
@@ -208,7 +250,31 @@ export function MapView({
           maxZoom={19}
         />
         <InvalidateOnResize />
-        <FitTo points={points} circle={focusCircle} version={version} />
+        <FitTo points={points} circle={focusCircle} bounds={areaBounds} version={version} />
+        {areas && (
+          <GeoJSON
+            key={`${areas.version}|${areas.selected ?? ''}`}
+            data={areas.data}
+            interactive={!areas.outlineOnly}
+            style={(feature) => {
+              const name = String(feature?.properties?.name ?? '');
+              const sel = areas.selected === name;
+              if (areas.outlineOnly)
+                return { color: '#166534', weight: 1, opacity: 0.55, dashArray: '4 3', fillOpacity: 0 };
+              return {
+                color: sel ? '#0f172a' : '#ffffff',
+                weight: sel ? 3 : 1.2,
+                fillColor: areas.fill(name),
+                fillOpacity: 0.72,
+              };
+            }}
+            onEachFeature={(feature, layer) => {
+              const name = String(feature.properties?.name ?? '');
+              if (!areas.outlineOnly) layer.bindTooltip(areas.label(name), { sticky: true });
+              if (areas.onClick) layer.on('click', () => areas.onClick!(name));
+            }}
+          />
+        )}
         {circles.map((c, i) => (
           <Circle
             key={i}
@@ -256,8 +322,8 @@ export function MapView({
             <Marker
               key={`c${c.id}`}
               position={[c.lat!, c.lng!]}
-              icon={caseIcon(c.status)}
-              zIndexOffset={500}
+              icon={caseIcon(c.status, highlighted.has(c.id))}
+              zIndexOffset={highlighted.has(c.id) ? 700 : 500}
               eventHandlers={onCaseClick ? { click: () => onCaseClick(c) } : undefined}
             >
               {!onCaseClick && (

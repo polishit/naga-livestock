@@ -14,6 +14,7 @@ import {
   ListChecks,
   Map,
   MapPin,
+  MapPinned,
   Microscope,
   Radar,
   Settings,
@@ -92,6 +93,12 @@ export const NAV: NavSection[] = [
         hint: 'Where the disease cases are',
       },
       { to: '/radius', label: 'Radius Analysis', icon: Radar, hint: 'Farms near a confirmed case' },
+      {
+        to: '/barangay-map',
+        label: 'Barangay Map',
+        icon: MapPinned,
+        hint: 'Barangays shaded by livestock or cases',
+      },
     ],
   },
   {

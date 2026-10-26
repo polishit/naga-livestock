@@ -314,6 +314,12 @@ export const animalUpdateSchema = animalCreateSchema
     status: z.enum(ANIMAL_STATUSES).optional(),
   });
 
+/** Move a tagged animal to another group on the same farm (e.g. young stock to the adult group). */
+export const animalMoveSchema = z.object({
+  groupId: idField('Select the new group'),
+  reason: optText(200),
+});
+
 export const transferCreateSchema = z.object({
   animalId: idField(),
   toFarmId: idField('Select the receiving farm'),

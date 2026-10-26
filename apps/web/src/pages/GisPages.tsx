@@ -1,5 +1,5 @@
-import { FileText, Info, Plus, Radar, Save } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, FileText, Info, Pause, Play, Plus, Radar, Save } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -10,15 +10,18 @@ import {
   FARM_TYPES,
   RADIUS_PRESETS,
   SPECIES,
+  addMonths,
   caseMarkerKind,
+  fmtMonth,
   fmtNumber,
+  isoMonth,
   formatRadius,
   titleCase,
   type ReportResult,
 } from '@livestock/shared';
 import { ApiError, isQueued, mutate } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { offerFarmLocationForCases, useApi } from '@/lib/hooks';
+import { offerFarmLocationForCases, useApi, useBarangayShapes } from '@/lib/hooks';
 import { cn, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { ExportButtons } from '@/components/ExportButtons';
@@ -307,6 +310,24 @@ export function GisMapPage() {
 /* ---------------- Disease outbreak map ---------------- */
 
 export function OutbreakMapPage() {
+  const [view, setView] = useState<'current' | 'timeline'>('current');
+  return (
+    <div>
+      <Tabs
+        className="mb-4"
+        value={view}
+        onChange={setView}
+        tabs={[
+          { id: 'current', label: 'Current cases' },
+          { id: 'timeline', label: 'Outbreak timeline' },
+        ]}
+      />
+      {view === 'current' ? <CurrentOutbreakMap /> : <OutbreakTimeline />}
+    </div>
+  );
+}
+
+function CurrentOutbreakMap() {
   const navigate = useNavigate();
   const { canEdit } = useAuth();
   const [status, setStatus] = useState('');
@@ -438,7 +459,417 @@ export function OutbreakMapPage() {
     </div>
   );
 }
+/**
+ * Outbreak timeline: replays the cases month by month. A case is shown from the month it was reported
+ * until the month it was closed; cases reported in the selected month pulse.
+ */
+function OutbreakTimeline() {
+  const { data, error } = useApi<CaseRow[]>('/api/cases');
+  const { data: shapes } = useBarangayShapes();
+  const cases = useMemo(() => data ?? [], [data]);
+  const months = useMemo(() => {
+    if (!cases.length) return [isoMonth()];
+    const first = cases.map((c) => c.reportedAt.slice(0, 7)).sort()[0];
+    const out: string[] = [];
+    for (let m = first; m <= isoMonth(); m = addMonths(m, 1)) out.push(m);
+    return out;
+  }, [cases]);
+  const [idx, setIdx] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const i = idx ?? months.length - 1;
+  const month = months[Math.min(i, months.length - 1)];
+  const timer = useRef<ReturnType<typeof setInterval>>();
 
+  useEffect(() => {
+    if (!playing) return;
+    timer.current = setInterval(() => {
+      setIdx((cur) => {
+        const n = (cur ?? months.length - 1) + 1;
+        if (n >= months.length) {
+          setPlaying(false);
+          return months.length - 1;
+        }
+        return n;
+      });
+    }, 1300);
+    return () => clearInterval(timer.current);
+  }, [playing, months.length]);
+
+  const play = () => {
+    // Pressing play at the last month starts again from the first month.
+    if (i >= months.length - 1) setIdx(0);
+    setPlaying((p) => !p);
+  };
+
+  const reportedIn = (c: CaseRow) => c.reportedAt.slice(0, 7);
+  const closedIn = (c: CaseRow) => (c.closedAt ? c.closedAt.slice(0, 7) : null);
+  const active = cases.filter((c) => reportedIn(c) <= month && (!closedIn(c) || closedIn(c)! >= month));
+  const fresh = active.filter((c) => reportedIn(c) === month);
+  const closedNow = cases.filter((c) => closedIn(c) === month);
+  const mapped = active.filter((c) => c.mapped);
+  const perMonth = months.map((m) => cases.filter((c) => reportedIn(c) === m).length);
+  const peak = Math.max(1, ...perMonth);
+
+  return (
+    <div>
+      <PageHeader
+        title="Outbreak Timeline"
+        subtitle="Replay the disease cases month by month to see where an outbreak started and how it spread."
+      />
+      {error && <ErrorBox error={error} />}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
+        <div>
+          <MapView
+            className="h-[420px] lg:h-[560px]"
+            cases={mapped}
+            highlightCaseIds={fresh.map((c) => c.id)}
+            circles={mapped
+              .filter((c) => c.status === 'POSITIVE')
+              .map((c) => ({ lat: c.lat!, lng: c.lng!, radius: 1000 }))}
+            areas={
+              shapes
+                ? {
+                    data: shapes,
+                    fill: () => 'transparent',
+                    label: (n) => n,
+                    outlineOnly: true,
+                    version: 'outline',
+                  }
+                : undefined
+            }
+            fitKey={shapes ? 'city' : 'loading'}
+          />
+          <Card className="mt-3 p-3 sm:p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={play} aria-label={playing ? 'Pause' : 'Play'}>
+                {playing ? <Pause /> : <Play />} {playing ? 'Pause' : 'Play'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label="Previous month"
+                disabled={i <= 0}
+                onClick={() => {
+                  setPlaying(false);
+                  setIdx(Math.max(0, i - 1));
+                }}
+              >
+                <ChevronLeft />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label="Next month"
+                disabled={i >= months.length - 1}
+                onClick={() => {
+                  setPlaying(false);
+                  setIdx(Math.min(months.length - 1, i + 1));
+                }}
+              >
+                <ChevronRight />
+              </Button>
+              <span className="ml-1 text-[16px] font-semibold text-slate-900" aria-live="polite">
+                {fmtMonth(month)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={months.length - 1}
+              value={i}
+              onChange={(e) => {
+                setPlaying(false);
+                setIdx(Number(e.target.value));
+              }}
+              aria-label="Month"
+              className="mt-3 w-full accent-[#166534]"
+            />
+            {/* New cases per month; the selected month is dark. */}
+            <div className="mt-2 flex h-14 items-end gap-[3px]" aria-hidden>
+              {perMonth.map((n, k) => (
+                <button
+                  key={months[k]}
+                  type="button"
+                  tabIndex={-1}
+                  title={`${fmtMonth(months[k])}: ${n} new case(s)`}
+                  onClick={() => {
+                    setPlaying(false);
+                    setIdx(k);
+                  }}
+                  className={cn(
+                    'flex-1 rounded-t-sm',
+                    k === i ? 'bg-brand-dark' : k < i ? 'bg-brand/60' : 'bg-slate-200',
+                  )}
+                  style={{ height: `${Math.max(6, (n / peak) * 100)}%` }}
+                />
+              ))}
+            </div>
+            <div className="mt-1 flex justify-between text-[11.5px] text-slate-500">
+              <span>{fmtMonth(months[0])}</span>
+              <span>New cases per month</span>
+              <span>{fmtMonth(months[months.length - 1])}</span>
+            </div>
+          </Card>
+          <CaseLegend />
+          <p className="mt-1 text-[12px] text-slate-400">
+            Colours show each case&apos;s current status. A pulsing ring marks cases reported that month; red
+            circles are 1 km around positive cases.
+          </p>
+        </div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard label="New this month" value={fresh.length} />
+            <StatCard label="Active cases" value={active.length} />
+            <StatCard
+              label="Positive (active)"
+              value={active.filter((c) => c.status === 'POSITIVE').length}
+            />
+            <StatCard label="Closed this month" value={closedNow.length} />
+          </div>
+          <Card className="flex max-h-[360px] flex-col overflow-hidden">
+            <CardHeader title={`Reported in ${fmtMonth(month)}`} />
+            <ul className="flex-1 overflow-y-auto">
+              {fresh.map((c) => (
+                <li key={c.id} className="border-b border-slate-100 px-4 py-2.5 last:border-0">
+                  <Link to={`/cases/${c.id}`} className="text-[15px] text-slate-900 hover:underline">
+                    {c.code} · {c.disease}
+                  </Link>
+                  <div className="text-[12.5px] text-slate-500">
+                    {c.farmName} · {c.barangay}
+                    {!c.mapped && ' · not mapped'}
+                  </div>
+                </li>
+              ))}
+              {!fresh.length && <li className="p-4 text-sm text-slate-500">No new cases this month.</li>}
+            </ul>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Barangay map (shaded) ---------------- */
+
+type BarangayMetric = 'livestock' | 'farms' | 'openCases' | 'allCases' | 'positive' | 'strays';
+
+const METRICS: { value: BarangayMetric; label: string; unit: string; palette: string[] }[] = [
+  { value: 'livestock', label: 'Livestock (head)', unit: 'head', palette: GREENS() },
+  { value: 'farms', label: 'Registered farms', unit: 'farms', palette: GREENS() },
+  { value: 'openCases', label: 'Open disease cases', unit: 'cases', palette: REDS() },
+  { value: 'allCases', label: 'All disease cases (incl. closed)', unit: 'cases', palette: REDS() },
+  { value: 'positive', label: 'Positive cases', unit: 'cases', palette: REDS() },
+  {
+    value: 'strays',
+    label: 'Stray incidents',
+    unit: 'incidents',
+    palette: ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'],
+  },
+];
+function GREENS() {
+  return ['#e5f5e0', '#c7e9c0', '#74c476', '#31a354', '#006d2c'];
+}
+function REDS() {
+  return ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
+}
+const ZERO_FILL = '#e2e8f0';
+
+/** Five equal classes from 1 to the highest value (0 is shown separately, in grey). */
+function classBreaks(max: number) {
+  if (max <= 0) return [];
+  const step = Math.max(1, Math.ceil(max / 5));
+  const out: [number, number][] = [];
+  for (let lo = 1; lo <= max && out.length < 5; lo += step) out.push([lo, Math.min(max, lo + step - 1)]);
+  return out;
+}
+
+export function BarangayMapPage() {
+  const { data: shapes, error: shapeError } = useBarangayShapes();
+  const [metric, setMetric] = useState<BarangayMetric>('livestock');
+  const [species, setSpecies] = useState('');
+  const [selected, setSelected] = useState<string | null>(null);
+  const { data: farms } = useApi<FarmSummary[]>('/api/farms');
+  const { data: cases } = useApi<CaseRow[]>('/api/cases');
+  const { data: strays } = useApi<{ id: number; barangay: string; species: string }[]>('/api/strays');
+  const m = METRICS.find((x) => x.value === metric)!;
+
+  // Every figure per barangay, for the chosen species (if any).
+  const stats = useMemo(() => {
+    const out = new Map<
+      string,
+      {
+        livestock: number;
+        farms: number;
+        openCases: number;
+        allCases: number;
+        positive: number;
+        strays: number;
+      }
+    >();
+    for (const b of BARANGAYS)
+      out.set(b, { livestock: 0, farms: 0, openCases: 0, allCases: 0, positive: 0, strays: 0 });
+    for (const f of farms ?? []) {
+      const r = out.get(f.barangay);
+      if (!r) continue;
+      const head = species ? (f.species.find((x) => x.species === species)?.count ?? 0) : f.total;
+      if (species && !head) continue;
+      r.farms += 1;
+      r.livestock += head;
+    }
+    for (const c of cases ?? []) {
+      const r = out.get(c.barangay);
+      if (!r || (species && c.species !== species)) continue;
+      r.allCases += 1;
+      if (!c.closed) r.openCases += 1;
+      if (c.status === 'POSITIVE' && !c.closed) r.positive += 1;
+    }
+    for (const st of strays ?? []) {
+      const r = out.get(st.barangay);
+      if (!r || (species && st.species !== species)) continue;
+      r.strays += 1;
+    }
+    return out;
+  }, [farms, cases, strays, species]);
+
+  const value = (b: string) => stats.get(b)?.[metric] ?? 0;
+  const max = Math.max(0, ...BARANGAYS.map(value));
+  const breaks = classBreaks(max);
+  // With fewer than five classes (small numbers), spread them over the palette so the highest is darkest.
+  const shade = (k: number) =>
+    m.palette[breaks.length === 1 ? 3 : Math.round((k * (m.palette.length - 1)) / (breaks.length - 1))];
+  const fill = (b: string) => {
+    const v = value(b);
+    if (!v) return ZERO_FILL;
+    return shade(
+      Math.max(
+        0,
+        breaks.findIndex(([lo, hi]) => v >= lo && v <= hi),
+      ),
+    );
+  };
+  const ranked = [...BARANGAYS].sort((a, b) => value(b) - value(a) || a.localeCompare(b));
+  const total = BARANGAYS.reduce((a, b) => a + value(b), 0);
+  const sel = selected ? stats.get(selected) : null;
+
+  return (
+    <div>
+      <PageHeader
+        title="Barangay Map"
+        subtitle="Barangays shaded by the figure you choose — darker means more."
+        actions={
+          <>
+            <FilterSelect
+              label="Show"
+              value={metric}
+              onChange={(v) => setMetric((v || 'livestock') as BarangayMetric)}
+              options={METRICS.map((x) => ({ value: x.value, label: x.label }))}
+              className="w-[calc(50%-4px)] sm:w-60"
+            />
+            <FilterSelect
+              label="Species"
+              value={species}
+              onChange={setSpecies}
+              options={SPECIES}
+              all="All species"
+              className="w-[calc(50%-4px)] sm:w-40"
+            />
+          </>
+        }
+      />
+      {shapeError && <ErrorBox error={shapeError} />}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
+        <div>
+          {shapes ? (
+            <MapView
+              className="h-[420px] lg:h-[600px]"
+              areas={{
+                data: shapes,
+                fill,
+                label: (b) => `${b}: ${fmtNumber(value(b))} ${m.unit}`,
+                onClick: (b) => setSelected((cur) => (cur === b ? null : b)),
+                selected,
+                version: `${metric}|${species}|${max}|${farms?.length ?? 0}|${cases?.length ?? 0}|${strays?.length ?? 0}`,
+              }}
+              fitKey="barangays"
+            />
+          ) : (
+            <Card className="flex h-[420px] items-center justify-center text-sm text-slate-500">
+              Loading barangay boundaries…
+            </Card>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-slate-600">
+            <span className="font-medium">{m.label}:</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-3 w-4 rounded-sm" style={{ background: ZERO_FILL }} /> 0
+            </span>
+            {breaks.map(([lo, hi], k) => (
+              <span key={k} className="inline-flex items-center gap-1">
+                <span className="h-3 w-4 rounded-sm" style={{ background: shade(k) }} />
+                {lo === hi ? fmtNumber(lo) : `${fmtNumber(lo)}–${fmtNumber(hi)}`}
+              </span>
+            ))}
+          </div>
+          <p className="mt-1 text-[11.5px] text-slate-400">
+            Barangay boundaries: PSA / NAMRIA, via philippines-json-maps (MIT licence). Tap a barangay for its
+            figures.
+          </p>
+        </div>
+        <div className="space-y-4">
+          {selected && sel && (
+            <Card>
+              <CardHeader title={selected} />
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3 text-[14px]">
+                <div className="text-slate-500">Farms</div>
+                <div className="text-right font-medium">{fmtNumber(sel.farms)}</div>
+                <div className="text-slate-500">Livestock</div>
+                <div className="text-right font-medium">{fmtNumber(sel.livestock)} head</div>
+                <div className="text-slate-500">Open cases</div>
+                <div className="text-right font-medium">{sel.openCases}</div>
+                <div className="text-slate-500">Positive (open)</div>
+                <div className="text-right font-medium">{sel.positive}</div>
+                <div className="text-slate-500">All cases</div>
+                <div className="text-right font-medium">{sel.allCases}</div>
+                <div className="text-slate-500">Stray incidents</div>
+                <div className="text-right font-medium">{sel.strays}</div>
+              </div>
+            </Card>
+          )}
+          <Card className="flex max-h-[520px] flex-col overflow-hidden">
+            <CardHeader title={`Ranking · ${fmtNumber(total)} ${m.unit} in total`} />
+            <ul className="flex-1 overflow-y-auto">
+              {ranked.map((b) => {
+                const v = value(b);
+                return (
+                  <li key={b}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected((cur) => (cur === b ? null : b))}
+                      className={cn(
+                        'w-full border-b border-slate-100 px-4 py-2 text-left hover:bg-slate-50',
+                        selected === b && 'bg-brand-light',
+                      )}
+                    >
+                      <span className="flex items-center justify-between gap-2 text-[14.5px]">
+                        <span className="text-slate-900">{b}</span>
+                        <span className="font-medium text-slate-700">{fmtNumber(v)}</span>
+                      </span>
+                      <span className="mt-1 block h-1.5 rounded-full bg-slate-100">
+                        <span
+                          className="block h-1.5 rounded-full"
+                          style={{ width: `${max ? (v / max) * 100 : 0}%`, background: fill(b) }}
+                        />
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
 /* ---------------- Radius analysis ---------------- */
 
 export function RadiusPage() {

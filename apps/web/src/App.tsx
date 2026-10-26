@@ -23,6 +23,7 @@ const GeotaggingPage = lazy(() => import('@/pages/GisPages').then((m) => ({ defa
 const GisMapPage = lazy(() => import('@/pages/GisPages').then((m) => ({ default: m.GisMapPage })));
 const OutbreakMapPage = lazy(() => import('@/pages/GisPages').then((m) => ({ default: m.OutbreakMapPage })));
 const RadiusPage = lazy(() => import('@/pages/GisPages').then((m) => ({ default: m.RadiusPage })));
+const BarangayMapPage = lazy(() => import('@/pages/GisPages').then((m) => ({ default: m.BarangayMapPage })));
 const CasesPage = lazy(() => import('@/pages/CasesPages').then((m) => ({ default: m.CasesPage })));
 const CaseNewPage = lazy(() => import('@/pages/CasesPages').then((m) => ({ default: m.CaseNewPage })));
 const CaseDetailPage = lazy(() => import('@/pages/CasesPages').then((m) => ({ default: m.CaseDetailPage })));
@@ -84,6 +85,7 @@ export default function App() {
           <Route path="gis-map" element={<GisMapPage />} />
           <Route path="outbreak-map" element={<OutbreakMapPage />} />
           <Route path="radius" element={<RadiusPage />} />
+          <Route path="barangay-map" element={<BarangayMapPage />} />
           <Route path="cases" element={<CasesPage />} />
           <Route
             path="cases/new"
