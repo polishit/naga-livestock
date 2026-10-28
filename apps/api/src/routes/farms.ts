@@ -8,11 +8,25 @@ import {
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { dateOnly, today, ymd } from '../lib/dates';
-import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
+import { ah, badRequest, idParam, notFound, parse, qstr, sent } from '../lib/http';
 import { loadFarms, summarizeFarm } from '../services/metrics';
 import { serializeCase, serializeVaccination } from './serializers';
 
 export const farmsRouter = Router();
+
+/** Latitude and longitude come as a pair (for the farm and for the pasture). */
+function checkPairs(d: {
+  lat?: number | null;
+  lng?: number | null;
+  pastureLat?: number | null;
+  pastureLng?: number | null;
+}) {
+  const fieldErrors: Record<string, string[]> = {};
+  if ((d.lat == null) !== (d.lng == null)) fieldErrors.lng = ['Provide both latitude and longitude'];
+  if ((d.pastureLat == null) !== (d.pastureLng == null))
+    fieldErrors.pastureLng = ['Provide both pasture latitude and longitude'];
+  if (Object.keys(fieldErrors).length) throw badRequest('Validation failed', { fieldErrors });
+}
 
 /** Open cases on this farm that still have no map location. */
 const unmappedCaseCount = (farmId: number) =>
@@ -79,6 +93,7 @@ farmsRouter.get(
       farm: {
         ...summary,
         pastureArea: farm.pastureArea,
+        pastureLocation: farm.pastureLocation,
         remarks: farm.remarks,
         archived: farm.archived,
         createdAt: farm.createdAt,
@@ -137,10 +152,7 @@ farmsRouter.post(
     const owner = await prisma.owner.findUnique({ where: { id: d.ownerId } });
     if (!owner || owner.status === 'ARCHIVED')
       throw badRequest('Validation failed', { fieldErrors: { ownerId: ['Select an active owner'] } });
-    if ((d.lat == null) !== (d.lng == null))
-      throw badRequest('Validation failed', {
-        fieldErrors: { lng: ['Provide both latitude and longitude'] },
-      });
+    checkPairs(d);
     const farm = await prisma.$transaction(async (tx) => {
       const created = await tx.farm.create({
         data: {
@@ -152,6 +164,9 @@ farmsRouter.post(
           zone: d.zone ?? null,
           address: d.address ?? null,
           pastureArea: d.pastureArea ?? null,
+          pastureLocation: d.pastureLocation ?? null,
+          pastureLat: d.pastureLat ?? null,
+          pastureLng: d.pastureLng ?? null,
           lat: d.lat ?? null,
           lng: d.lng ?? null,
           remarks: d.remarks ?? null,
@@ -173,23 +188,27 @@ farmsRouter.patch(
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(farmUpdateSchema, req.body);
-    if ((d.lat == null) !== (d.lng == null)) {
-      throw badRequest('Validation failed', { fieldErrors: { lng: ['Provide both latitude and longitude'] } });
-    }
-    const f = await prisma.farm.update({
-      where: { id },
-      data: {
-        ...(d.name !== undefined ? { name: d.name } : {}),
-        ...(d.type !== undefined ? { type: d.type } : {}),
-        ...(d.barangay !== undefined ? { barangay: d.barangay } : {}),
-        zone: d.zone ?? null,
-        address: d.address ?? null,
-        pastureArea: d.pastureArea ?? null,
-        lat: d.lat ?? null,
-        lng: d.lng ?? null,
-        remarks: d.remarks ?? null,
-      },
-    });
+    const before = await prisma.farm.findUnique({ where: { id } });
+    if (!before) throw notFound('Farm');
+    // Only the fields sent change (a blank field clears it); the rest keep their current values.
+    const changes = {
+      ...(d.name !== undefined ? { name: d.name } : {}),
+      ...(d.type !== undefined ? { type: d.type } : {}),
+      ...(d.barangay !== undefined ? { barangay: d.barangay } : {}),
+      ...sent(req.body, d, [
+        'zone',
+        'address',
+        'pastureArea',
+        'pastureLocation',
+        'pastureLat',
+        'pastureLng',
+        'lat',
+        'lng',
+        'remarks',
+      ] as const),
+    };
+    checkPairs({ ...before, ...changes });
+    const f = await prisma.farm.update({ where: { id }, data: changes });
     await logActivity('farm', id, 'updated', `Farm ${f.code} updated`, req.user?.name);
     res.json({ ...f, unmappedCases: f.lat != null ? await unmappedCaseCount(id) : 0 });
   }),

@@ -31,7 +31,7 @@ import {
   vaccinationCoverage,
 } from './metrics';
 import { getSettings } from './settings';
-import { liveReminder } from '../routes/vaccinations';
+import { OVERDUE_DAYS, liveReminder } from '../routes/vaccinations';
 
 export interface ReportParams {
   barangay?: string;
@@ -583,8 +583,9 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
     }
     case 'vaccination-upcoming': {
       const settings = await getSettings();
-      const start = p.from ?? today();
-      const endD = new Date(`${start}T00:00:00Z`);
+      // Without a start date the schedule also lists doses missed in the last 30 days (overdue).
+      const start = p.from ?? isoDate(new Date(Date.now() - OVERDUE_DAYS * 86400_000));
+      const endD = new Date(`${p.from ?? today()}T00:00:00Z`);
       endD.setUTCDate(endD.getUTCDate() + settings.vaccinationUpcomingDays);
       const end = p.to ?? isoDate(new Date(endD.getTime() + endD.getTimezoneOffset() * 60000));
       const v = await prisma.vaccination.findMany({
@@ -613,7 +614,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('dose', 'Next dose #'),
         ],
         rows: v.map((x) => ({
-          next: fmtDate(ymd(x.nextDate)),
+          next: `${fmtDate(ymd(x.nextDate))}${ymd(x.nextDate)! < today() ? ' (overdue)' : ''}`,
           vaccine: x.vaccine,
           species: x.species,
           target:
@@ -623,7 +624,10 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           contact: x.farm.owner.contact ?? '—',
           dose: x.doseNumber + 1,
         })),
-        summary: [{ label: 'Scheduled', value: v.length }],
+        summary: [
+          { label: 'Scheduled', value: v.length },
+          { label: 'Overdue', value: v.filter((x) => ymd(x.nextDate)! < today()).length },
+        ],
       };
     }
     case 'vaccination-by-barangay': {
@@ -670,7 +674,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('barangay', 'Barangay'),
           col('zone', 'Zone'),
           col('contact', 'Contact'),
-          col('cert', 'Certification'),
+          col('cert', 'RSBSA No.'),
           col('registered', 'Registered'),
         ],
         rows: owners.map((o) => ({
@@ -789,6 +793,8 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         orderBy: { discoveredAt: 'desc' },
       });
       const rows = s.filter((x) => inRange(x.discoveredAt, p));
+      const fined = rows.filter((x) => x.fineAmount != null && Number(x.fineAmount) > 0);
+      const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
       return {
         ...base,
         columns: [
@@ -798,9 +804,11 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('tag', 'Tag'),
           col('owner', 'Owner'),
           col('barangay', 'Barangay'),
-          col('location', 'Location'),
+          col('violation', 'Violation'),
+          col('impound', 'Impounded'),
+          col('release', 'Released'),
+          col('fine', 'Fine'),
           col('status', 'Status'),
-          col('violations', 'Violations'),
         ],
         rows: rows.map((x) => ({
           code: x.code,
@@ -808,14 +816,28 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           species: x.species,
           tag: x.earTag ?? '—',
           owner: x.owner?.fullName ?? 'Unknown',
-          barangay: x.barangay,
-          location: x.location,
+          barangay: `${x.barangay} — ${x.location}`,
+          violation: `${x.violationType ?? '—'}${x.violations ? ` (${x.violations})` : ''}`,
+          impound: x.impoundedAt ? `${fmtDate(ymd(x.impoundedAt))} · ${x.impoundPlace ?? ''}` : '—',
+          release: x.releasedAt ? `${fmtDate(ymd(x.releasedAt))} · to ${x.releasedTo ?? ''}` : '—',
+          fine:
+            x.fineAmount != null && Number(x.fineAmount) > 0
+              ? `${peso(Number(x.fineAmount))} · ${x.finePaid ? `Paid, OR ${x.orNumber}` : 'Unpaid'}`
+              : '—',
           status: titleCase(x.status),
-          violations: x.violations,
         })),
         summary: [
           { label: 'Incidents', value: rows.length },
           { label: 'Violations', value: rows.reduce((a, x) => a + x.violations, 0) },
+          { label: 'Impounded', value: rows.filter((x) => x.impoundedAt).length },
+          {
+            label: 'Fines collected',
+            value: peso(fined.filter((x) => x.finePaid).reduce((a, x) => a + Number(x.fineAmount), 0)),
+          },
+          {
+            label: 'Fines unpaid',
+            value: peso(fined.filter((x) => !x.finePaid).reduce((a, x) => a + Number(x.fineAmount), 0)),
+          },
         ],
       };
     }
@@ -824,10 +846,15 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         where: {
           ...(p.species ? { species: p.species } : {}),
           ...(p.barangay ? { owner: { barangay: p.barangay } } : {}),
+          // With a period chosen, the policies whose coverage overlaps it.
+          ...(p.to ? { startDate: { lte: dateOnly(p.to) } } : {}),
+          ...(p.from ? { endDate: { gte: dateOnly(p.from) } } : {}),
         },
-        include: { owner: true },
+        include: { owner: true, animals: { select: { code: true, earTag: true }, orderBy: { id: 'asc' } } },
         orderBy: { startDate: 'desc' },
       });
+      const status = (x: (typeof pol)[number]) =>
+        x.status === 'ACTIVE' && ymd(x.endDate)! < today() ? 'EXPIRED' : x.status;
       return {
         ...base,
         columns: [
@@ -836,6 +863,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('barangay', 'Barangay'),
           col('species', 'Species'),
           col('heads', 'Heads'),
+          col('animals', 'Insured animals (ear tags)'),
           col('amount', 'Amount covered'),
           col('period', 'Coverage period'),
           col('status', 'Status'),
@@ -846,14 +874,152 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           barangay: x.owner.barangay,
           species: x.species,
           heads: x.heads,
+          animals: x.animals.length ? x.animals.map((a) => a.earTag ?? a.code).join(', ') : 'Not linked',
           amount: x.amountCovered ? `₱${Number(x.amountCovered).toLocaleString()}` : '—',
           period: `${fmtDate(ymd(x.startDate))} – ${fmtDate(ymd(x.endDate))}`,
-          status: titleCase(x.status === 'ACTIVE' && ymd(x.endDate)! < today() ? 'EXPIRED' : x.status),
+          status: titleCase(status(x)),
         })),
         summary: [
           { label: 'Policies', value: pol.length },
+          { label: 'In force', value: pol.filter((x) => status(x) === 'ACTIVE').length },
           { label: 'Insured heads', value: pol.reduce((a, x) => a + x.heads, 0) },
+          { label: 'Tagged animals linked', value: pol.reduce((a, x) => a + x.animals.length, 0) },
         ],
+      };
+    }
+    case 'rsbsa-registration': {
+      const owners = await prisma.owner.findMany({
+        where: { status: { not: 'ARCHIVED' }, ...(p.barangay ? { barangay: p.barangay } : {}) },
+        select: { barangay: true, rsbsa: true },
+      });
+      const by = new Map<string, { owners: number; registered: number }>();
+      for (const o of owners) {
+        const b = by.get(o.barangay) ?? { owners: 0, registered: 0 };
+        b.owners += 1;
+        if (o.rsbsa) b.registered += 1;
+        by.set(o.barangay, b);
+      }
+      const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '—');
+      const registered = owners.filter((o) => o.rsbsa).length;
+      return {
+        ...base,
+        columns: [
+          col('barangay', 'Barangay'),
+          col('owners', 'Owners', 'right'),
+          col('registered', 'With RSBSA No.', 'right'),
+          col('unregistered', 'Without RSBSA No.', 'right'),
+          col('pct', 'Registered', 'right'),
+        ],
+        rows: [...by.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([barangay, b]) => ({
+            barangay,
+            owners: b.owners,
+            registered: b.registered,
+            unregistered: b.owners - b.registered,
+            pct: pct(b.registered, b.owners),
+          })),
+        summary: [
+          { label: 'Owners', value: owners.length },
+          { label: 'With RSBSA No.', value: registered },
+          { label: 'Without RSBSA No.', value: owners.length - registered },
+          { label: 'Registered', value: pct(registered, owners.length) },
+        ],
+        note: 'The owners without an RSBSA number are listed by name in the Incomplete Records report.',
+      };
+    }
+    case 'incomplete-records': {
+      const rows: Record<string, string>[] = [];
+      const owners = await prisma.owner.findMany({
+        where: { status: { not: 'ARCHIVED' }, ...(p.barangay ? { barangay: p.barangay } : {}) },
+        orderBy: { id: 'asc' },
+      });
+      for (const o of owners) {
+        const missing = [!o.contact && 'contact number', !o.rsbsa && 'RSBSA number'].filter(Boolean);
+        if (missing.length)
+          rows.push({
+            type: 'Owner',
+            code: o.code,
+            name: o.fullName,
+            barangay: o.barangay,
+            missing: missing.join(', '),
+          });
+      }
+      const farms = await prisma.farm.findMany({
+        where: {
+          archived: false,
+          owner: { status: { not: 'ARCHIVED' } },
+          ...(p.barangay ? { barangay: p.barangay } : {}),
+        },
+        include: { owner: true },
+        orderBy: { id: 'asc' },
+      });
+      for (const f of farms) {
+        const missing = [
+          (f.lat == null || f.lng == null) && 'map location',
+          f.type === 'pasture' && f.pastureArea == null && 'pasture area',
+          f.pastureArea != null &&
+            f.pastureArea > 0 &&
+            f.pastureLat == null &&
+            !f.pastureLocation &&
+            'pasture location',
+        ].filter(Boolean);
+        if (missing.length)
+          rows.push({
+            type: 'Farm',
+            code: f.code,
+            name: `${f.name} (${f.owner.fullName})`,
+            barangay: f.barangay,
+            missing: missing.join(', '),
+          });
+      }
+      const animals = await prisma.animal.findMany({
+        where: {
+          status: 'ACTIVE',
+          group: {
+            archived: false,
+            farm: { archived: false, ...(p.barangay ? { barangay: p.barangay } : {}) },
+          },
+          ...(p.species ? { species: p.species } : {}),
+        },
+        include: { group: { include: { farm: { include: { owner: true } } } } },
+        orderBy: { id: 'asc' },
+      });
+      for (const a of animals) {
+        const photos = (a.photoKeys as string[] | null) ?? [];
+        const missing = [
+          !photos.length && 'photo',
+          !a.markings && !a.cowlick && 'markings / cowlick',
+          !a.earTag && 'ear tag',
+        ].filter(Boolean);
+        if (missing.length)
+          rows.push({
+            type: 'Animal',
+            code: a.code,
+            name: `${a.species} · ${a.group.farm.owner.fullName}`,
+            barangay: a.group.farm.barangay,
+            missing: missing.join(', '),
+          });
+      }
+      const count = (t: string) => rows.filter((r) => r.type === t).length;
+      return {
+        ...base,
+        // A snapshot of today's records: the date range does not apply.
+        subtitle: await subtitle({ barangay: p.barangay, species: p.species }),
+        columns: [
+          col('type', 'Record'),
+          col('code', 'ID'),
+          col('name', 'Name'),
+          col('barangay', 'Barangay'),
+          col('missing', 'Missing information'),
+        ],
+        rows,
+        summary: [
+          { label: 'Owners', value: count('Owner') },
+          { label: 'Farms', value: count('Farm') },
+          { label: 'Tagged animals', value: count('Animal') },
+        ],
+        note: 'Records still in use (not archived) that lack details needed for tracing and identification.',
       };
     }
     case 'farms-without-coordinates': {

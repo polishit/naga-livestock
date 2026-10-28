@@ -790,11 +790,14 @@ export function ResponseDialog({
   minDate,
   maxHeads,
   onSaved,
+  presetType,
 }: DialogProps & {
   caseId: number;
   code: string;
   /** Edit this activity (e.g. mark a planned quarantine as started or completed). */
   response?: ResponseEditRecord | null;
+  /** Activity type chosen in advance for a new record (e.g. from the ASF response steps). */
+  presetType?: ResponseType;
   /** First day of the case; an activity cannot start earlier. */
   minDate?: string;
   /** Head of the affected species on the farm (limit for culling). */
@@ -803,7 +806,7 @@ export function ResponseDialog({
 }) {
   const form = useZodForm(responseCreateSchema, {});
   useResetOnOpen(open, form, {
-    type: response?.type ?? 'OWNER_NOTIFICATION',
+    type: response?.type ?? presetType ?? 'OWNER_NOTIFICATION',
     status: response?.status ?? 'COMPLETED',
     date: response?.date ?? isoDate(),
     endDate: response?.endDate ?? '',

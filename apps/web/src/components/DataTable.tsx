@@ -192,7 +192,7 @@ export function DataTable<T>({
                 <th
                   key={c.key}
                   className={cn(
-                    'whitespace-nowrap px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wide text-slate-500 first:pl-4 last:pr-4',
+                    'whitespace-nowrap px-3 py-2.5 text-[11.5px] font-semibold text-slate-500 first:pl-4 last:pr-4',
                     c.headerClassName,
                   )}
                 >

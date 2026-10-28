@@ -199,25 +199,38 @@ export type LabResult = (typeof LAB_RESULTS)[number];
 
 export const RESPONSE_TYPES = [
   'OWNER_NOTIFICATION',
-  'ASF_CHECKPOINT',
+  'BARANGAY_COORDINATION',
   'QUARANTINE',
-  'DISINFECTION',
   'MOVEMENT_RESTRICTION',
   'CULLING_DEPOPULATION',
+  'DISINFECTION',
+  'ASF_CHECKPOINT',
   'SURVEILLANCE_VISIT',
   'OTHER',
 ] as const;
 export type ResponseType = (typeof RESPONSE_TYPES)[number];
 export const RESPONSE_TYPE_LABELS: Record<ResponseType, string> = {
   OWNER_NOTIFICATION: 'Owner Notification',
-  ASF_CHECKPOINT: 'Asf Checkpoint',
+  BARANGAY_COORDINATION: 'Barangay Coordination',
   QUARANTINE: 'Quarantine',
-  DISINFECTION: 'Disinfection',
   MOVEMENT_RESTRICTION: 'Movement Restriction',
   CULLING_DEPOPULATION: 'Culling / Depopulation',
+  DISINFECTION: 'Disinfection / Decontamination',
+  ASF_CHECKPOINT: 'ASF Checkpoint',
   SURVEILLANCE_VISIT: 'Surveillance Visit',
   OTHER: 'Other',
 };
+
+/** The City Veterinary Office's response steps for an African Swine Fever case, in order. */
+export const ASF_RESPONSE_STEPS: { type: ResponseType; label: string }[] = [
+  { type: 'OWNER_NOTIFICATION', label: 'Inform the owner' },
+  { type: 'BARANGAY_COORDINATION', label: 'Coordinate with barangay officials' },
+  { type: 'CULLING_DEPOPULATION', label: 'Depopulate affected animals' },
+  { type: 'DISINFECTION', label: 'Decontaminate the premises' },
+  { type: 'ASF_CHECKPOINT', label: 'Activate checkpoints' },
+];
+/** A case is treated as ASF when its disease name says so. */
+export const isAsfDisease = (disease: string) => /\basf\b|african swine fever/i.test(disease);
 
 /** Status of a response activity (a planned activity may have a future date). */
 export const RESPONSE_STATUSES = ['PLANNED', 'ONGOING', 'COMPLETED'] as const;
@@ -235,6 +248,7 @@ export const RESPONSE_TYPES_WITH_END: ResponseType[] = [
 ];
 /** Response types done at a specific place (checkpoint location, disinfection site…). */
 export const RESPONSE_TYPES_WITH_LOCATION: ResponseType[] = [
+  'BARANGAY_COORDINATION',
   'ASF_CHECKPOINT',
   'DISINFECTION',
   'MOVEMENT_RESTRICTION',
@@ -279,6 +293,16 @@ export const CASE_OUTCOME_LABELS: Record<CaseOutcome, string> = {
 
 export const STRAY_STATUSES = ['REPORTED', 'IMPOUNDED', 'RELEASED', 'CLOSED'] as const;
 export type StrayStatus = (typeof STRAY_STATUSES)[number];
+
+/** Kinds of stray-livestock violation (the list in the incident form). */
+export const STRAY_VIOLATION_TYPES = [
+  'Stray / roaming animal',
+  'Animal on a public road or highway',
+  'Damage to crops or property',
+  'Unregistered or untagged animal',
+  'Repeat offense',
+  'Other',
+] as const;
 
 export const TRANSFER_TYPES = ['TRANSFER', 'REVERSAL'] as const;
 export const VACCINATION_TARGETS = ['GROUP', 'ANIMAL'] as const;

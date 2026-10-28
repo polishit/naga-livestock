@@ -14,7 +14,7 @@ export const REPORT_CATEGORIES: { id: ReportCategory; label: string }[] = [
   { id: 'ownership', label: 'Ownership & Incidents' },
 ];
 
-/** All 27 exportable report types. */
+/** All exportable report types. */
 export const REPORT_TYPES: ReportTypeDef[] = [
   { id: 'population-by-barangay', title: 'Current Recorded Population by Barangay', category: 'population' },
   { id: 'population-by-species', title: 'Current Recorded Population by Species', category: 'population' },
@@ -42,6 +42,8 @@ export const REPORT_TYPES: ReportTypeDef[] = [
   { id: 'ownership-transfers', title: 'Ownership Transfers', category: 'ownership' },
   { id: 'stray-incidents', title: 'Stray Livestock & Violations', category: 'ownership' },
   { id: 'pcic-policies', title: 'PCIC Livestock Insurance Policies', category: 'ownership' },
+  { id: 'rsbsa-registration', title: 'RSBSA Registration by Barangay', category: 'ownership' },
+  { id: 'incomplete-records', title: 'Incomplete Records', category: 'ownership' },
   { id: 'farms-without-coordinates', title: 'Farms without Coordinates', category: 'ownership' },
 ];
 

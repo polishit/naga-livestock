@@ -106,6 +106,15 @@ interface AnimalDetail {
   transfers: TransferRow[];
   cases: CaseRow[];
   history: { id: number; action: string; summary: string; byName: string | null; at: string }[];
+  insurance: {
+    id: number;
+    policyNo: string;
+    ownerId: number;
+    ownerName: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  }[];
 }
 
 export function AnimalDetailPage() {
@@ -229,6 +238,25 @@ export function AnimalDetailPage() {
                 ['Markings', a.markings],
                 ['Cowlick', a.cowlick],
                 ['Health', a.health],
+                [
+                  'PCIC insurance',
+                  data.insurance.length ? (
+                    <div className="space-y-0.5">
+                      {data.insurance.map((p) => (
+                        <div key={p.id}>
+                          <Link className="link" to={`/owners/${p.ownerId}`}>
+                            {p.policyNo}
+                          </Link>{' '}
+                          <span className="text-slate-500">
+                            {fmtDate(p.startDate)} – {fmtDate(p.endDate)} · {titleCase(p.status)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    'Not insured'
+                  ),
+                ],
                 ['Remarks', a.remarks],
               ]}
             />

@@ -9,17 +9,19 @@ import {
   MIN_DOB,
   SPECIES,
   STRAY_STATUSES,
+  STRAY_VIOLATION_TYPES,
   animalCreateSchema,
   animalMoveSchema,
   animalUpdateSchema,
   fmtDate,
   isoDate,
   strayCreateSchema,
-  strayUpdateSchema,
+  strayFormSchema,
   titleCase,
   transferCreateSchema,
 } from '@livestock/shared';
 import { api, isQueued } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useAddressLookup, useApi, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
 import { MapView } from '@/components/MapView';
 import { AddressLookupHint, PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
@@ -289,6 +291,8 @@ export function OwnerStrayHistory({
     incidents: number;
     violations: number;
     open: number;
+    unpaidFines?: number;
+    unpaidAmount?: number;
     last: { code: string; discoveredAt: string } | null;
   }>(id ? `/api/strays/owner/${id}/summary${exceptId ? `?except=${exceptId}` : ''}` : null);
   if (!id || !data) return null;
@@ -310,6 +314,9 @@ export function OwnerStrayHistory({
       {data.last
         ? ` — last ${data.last.code} on ${fmtDate(data.last.discoveredAt)}`
         : ''}.{data.open ? ` ${data.open} still open.` : ''}
+      {data.unpaidFines
+        ? ` Unpaid fine${data.unpaidFines === 1 ? '' : 's'}: ₱${(data.unpaidAmount ?? 0).toLocaleString()}.`
+        : ''}
     </div>
   );
 }
@@ -574,6 +581,7 @@ export interface StrayRecord {
   code: string;
   status: string;
   violations: number;
+  violationType: string | null;
   ownerId: number | null;
   remarks: string | null;
   species: string;
@@ -586,20 +594,40 @@ export interface StrayRecord {
   photoKeys: string[];
   lat: number | null;
   lng: number | null;
+  fineAmount: number | null;
+  finePaid: boolean;
+  orNumber: string | null;
+  paidAt: string | null;
+  impoundedAt: string | null;
+  impoundPlace: string | null;
+  releasedAt: string | null;
+  releasedTo: string | null;
 }
 
+/** Incident details, violation, impoundment / release and penalty. Read-only users can view it. */
 export function StrayUpdateDialog({
   open,
   onOpenChange,
   stray,
 }: DialogProps & { stray: StrayRecord | null }) {
   const { data: lookups } = useLookups();
-  const form = useZodForm(strayUpdateSchema, {});
+  const { canEdit } = useAuth();
+  const foundOn = stray ? isoDate(new Date(stray.discoveredAt)) : undefined;
+  const form = useZodForm(strayFormSchema(foundOn), {});
   useResetOnOpen(open, form, {
     status: stray?.status ?? 'REPORTED',
     violations: String(stray?.violations ?? 0),
+    violationType: stray?.violationType ?? '',
     ownerId: stray?.ownerId ? String(stray.ownerId) : '',
     remarks: stray?.remarks ?? '',
+    fineAmount: stray?.fineAmount != null ? String(stray.fineAmount) : '',
+    finePaid: stray?.finePaid ?? false,
+    orNumber: stray?.orNumber ?? '',
+    paidAt: stray?.paidAt ?? '',
+    impoundedAt: stray?.impoundedAt ?? '',
+    impoundPlace: stray?.impoundPlace ?? '',
+    releasedAt: stray?.releasedAt ?? '',
+    releasedTo: stray?.releasedTo ?? '',
   } as any);
   const save = useSave<any>('PATCH', `/api/strays/${stray?.id}`, {
     success: 'Incident updated.',
@@ -608,19 +636,27 @@ export function StrayUpdateDialog({
   });
   const e = form.formState.errors;
   if (!stray) return null;
+  const status = form.watch('status');
+  const finePaid = form.watch('finePaid');
+  const unpaidRelease =
+    (status === 'RELEASED' || status === 'CLOSED') && Number(form.watch('fineAmount') || 0) > 0 && !finePaid;
+  const today = isoDate();
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title={`${stray.code} · Stray ${stray.species.toLowerCase()}`}
+      size="lg"
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          <Button form="stray-update" type="submit" loading={save.isPending}>
-            Save changes
-          </Button>
+          {canEdit && (
+            <Button form="stray-update" type="submit" loading={save.isPending}>
+              Save changes
+            </Button>
+          )}
         </>
       }
     >
@@ -642,40 +678,93 @@ export function StrayUpdateDialog({
         </div>
         <PhotoGallery keys={stray.photoKeys} className="sm:max-w-[264px]" />
       </div>
-      <form
-        id="stray-update"
-        noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
-      >
-        <Field label="Status" error={err(e, 'status')}>
-          <Select {...form.register('status')}>
-            {STRAY_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {titleCase(s)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Violations" error={err(e, 'violations')}>
-          <Input type="number" min={0} {...form.register('violations')} />
-        </Field>
-        <Field label="Owner" error={err(e, 'ownerId')} className="sm:col-span-2">
-          <Select {...form.register('ownerId')}>
-            <option value="">Unknown owner</option>
-            {lookups?.owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.fullName} · {o.barangay}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="sm:col-span-2 empty:hidden">
-          <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />
-        </div>
-        <Field label="Remarks / actions taken" error={err(e, 'remarks')} className="sm:col-span-2">
-          <Textarea rows={3} {...form.register('remarks')} />
-        </Field>
+      <form id="stray-update" noValidate onSubmit={form.handleSubmit((v) => save.mutate(v))}>
+        <fieldset disabled={!canEdit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Status" error={err(e, 'status')}>
+            <Select {...form.register('status')}>
+              {STRAY_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {titleCase(s)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Violation type" error={err(e, 'violationType')}>
+            <Select {...form.register('violationType')}>
+              <option value="">Not recorded</option>
+              {STRAY_VIOLATION_TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Owner" error={err(e, 'ownerId')}>
+            <Select {...form.register('ownerId')}>
+              <option value="">Unknown owner</option>
+              {lookups?.owners.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.fullName} · {o.barangay}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Number of violations" error={err(e, 'violations')}>
+            <Input type="number" min={0} {...form.register('violations')} />
+          </Field>
+          <div className="sm:col-span-2 empty:hidden">
+            <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />
+          </div>
+
+          <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Impoundment and release</h3>
+          <Field label={`Impound date${status === 'IMPOUNDED' ? ' *' : ''}`} error={err(e, 'impoundedAt')}>
+            <Input type="date" min={foundOn} max={today} {...form.register('impoundedAt')} />
+          </Field>
+          <Field label={`Impound place${status === 'IMPOUNDED' ? ' *' : ''}`} error={err(e, 'impoundPlace')}>
+            <Input placeholder="e.g. City pound, Brgy. hall" {...form.register('impoundPlace')} />
+          </Field>
+          <Field label={`Release date${status === 'RELEASED' ? ' *' : ''}`} error={err(e, 'releasedAt')}>
+            <Input
+              type="date"
+              min={form.watch('impoundedAt') || foundOn}
+              max={today}
+              {...form.register('releasedAt')}
+            />
+          </Field>
+          <Field label={`Released to${status === 'RELEASED' ? ' *' : ''}`} error={err(e, 'releasedTo')}>
+            <Input placeholder="Name of the person who claimed it" {...form.register('releasedTo')} />
+          </Field>
+
+          <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Penalty</h3>
+          <Field label="Fine (₱)" error={err(e, 'fineAmount')}>
+            <Input type="number" min={0} step="0.01" {...form.register('fineAmount')} />
+          </Field>
+          <Field label="Payment" error={err(e, 'finePaid')}>
+            <label className="flex h-10 items-center gap-2 text-[15px] text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 accent-[#1d6fd8]"
+                {...form.register('finePaid')}
+              />
+              Fine paid
+            </label>
+          </Field>
+          <Field label={`Official receipt (OR) no.${finePaid ? ' *' : ''}`} error={err(e, 'orNumber')}>
+            <Input {...form.register('orNumber')} />
+          </Field>
+          <Field label="Date paid" error={err(e, 'paidAt')}>
+            <Input type="date" min={foundOn} max={today} {...form.register('paidAt')} />
+          </Field>
+          {unpaidRelease && (
+            <p
+              role="status"
+              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-800 sm:col-span-2"
+            >
+              The fine has not been paid yet.
+            </p>
+          )}
+          <Field label="Remarks / actions taken" error={err(e, 'remarks')} className="sm:col-span-2">
+            <Textarea rows={3} {...form.register('remarks')} />
+          </Field>
+        </fieldset>
       </form>
     </Dialog>
   );

@@ -7,8 +7,10 @@ import {
   CASE_OUTCOME_LABELS,
   CASE_STAGE,
   CASE_STATUSES,
+  ASF_RESPONSE_STEPS,
   CASE_STATUS_LABELS,
   checkCaseStatus,
+  isAsfDisease,
   MAX_PHOTOS,
   MAX_PHOTO_MB,
   MIN_DATE,
@@ -19,6 +21,7 @@ import {
   titleCase,
   type CaseOutcome,
   type CaseStatus,
+  type ResponseType,
 } from '@livestock/shared';
 import { isQueued } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -576,6 +579,7 @@ export function CaseDetailPage() {
   >(null);
   const [labEdit, setLabEdit] = useState<LabEditRecord | null>(null);
   const [respEdit, setRespEdit] = useState<ResponseEditRecord | null>(null);
+  const [respType, setRespType] = useState<ResponseType | undefined>();
   const [suggest, setSuggest] = useState<{ status: CaseStatus; lab: LabLite } | null>(null);
   const [voidTarget, setVoidTarget] = useState<{ url: string; what: string } | null>(null);
   const [popExtra, setPopExtra] = useState(0);
@@ -894,8 +898,9 @@ export function CaseDetailPage() {
             detail={data}
             onLog={
               canEdit
-                ? () => {
+                ? (type) => {
                     setRespEdit(null);
+                    setRespType(type);
                     setDlg('resp');
                   }
                 : undefined
@@ -1032,6 +1037,7 @@ export function CaseDetailPage() {
         caseId={c.id}
         code={c.code}
         response={respEdit}
+        presetType={respType}
         minDate={caseStart}
         maxHeads={speciesHead}
         onSaved={(v) => {
@@ -1278,7 +1284,8 @@ export function ResponsePanel({
   onVoid,
 }: {
   detail: CaseDetail;
-  onLog?: () => void;
+  /** Log a new activity (optionally of a given type). */
+  onLog?: (type?: ResponseType) => void;
   onEdit?: (r: CaseDetail['responses'][number]) => void;
   onVoid?: (r: CaseDetail['responses'][number]) => void;
 }) {
@@ -1346,12 +1353,13 @@ export function ResponsePanel({
           </div>
         </Card>
       </div>
+      {isAsfDisease(c.disease) && <AsfSteps detail={detail} onLog={onLog} />}
       <Card>
         <CardHeader
           title="Response activity log"
           actions={
             onLog && (
-              <Button variant="outline" size="xs" onClick={onLog}>
+              <Button variant="outline" size="xs" onClick={() => onLog()}>
                 <Plus /> Log activity
               </Button>
             )
@@ -1407,6 +1415,64 @@ export function ResponsePanel({
         {c.closed && <ClosedNote />}
       </Card>
     </div>
+  );
+}
+
+/** The office's ASF response steps, ticked off from the activities logged on the case. */
+function AsfSteps({ detail, onLog }: { detail: CaseDetail; onLog?: (type?: ResponseType) => void }) {
+  const logged = detail.responses.filter((r) => !r.voided);
+  const done = ASF_RESPONSE_STEPS.filter((s) =>
+    logged.some((r) => r.type === s.type && r.status === 'COMPLETED'),
+  ).length;
+  return (
+    <Card>
+      <CardHeader
+        title="ASF response steps"
+        actions={
+          <span className="text-[13px] text-slate-500">
+            {done} of {ASF_RESPONSE_STEPS.length} completed
+          </span>
+        }
+      />
+      <ol className="divide-y divide-slate-100">
+        {ASF_RESPONSE_STEPS.map((s, i) => {
+          const rows = logged.filter((r) => r.type === s.type);
+          const state = rows.some((r) => r.status === 'COMPLETED')
+            ? 'COMPLETED'
+            : rows.some((r) => r.status === 'ONGOING')
+              ? 'ONGOING'
+              : rows.length
+                ? 'PLANNED'
+                : null;
+          return (
+            <li key={s.type} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-[14.5px]">
+              <span
+                className={cn(
+                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold',
+                  state === 'COMPLETED' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600',
+                )}
+              >
+                {state === 'COMPLETED' ? <Check className="h-3.5 w-3.5" /> : i + 1}
+              </span>
+              <span className="min-w-0 flex-1 text-slate-800">{s.label}</span>
+              {state ? (
+                <Badge tone={state === 'COMPLETED' ? 'green' : state === 'ONGOING' ? 'amber' : 'blue'}>
+                  {state === 'COMPLETED' ? 'Done' : state === 'ONGOING' ? 'Ongoing' : 'Planned'}
+                  {rows[0] ? ` · ${fmtDate(rows[0].date)}` : ''}
+                </Badge>
+              ) : (
+                <span className="text-[13px] text-slate-400">Not yet logged</span>
+              )}
+              {onLog && !state && (
+                <Button size="xs" variant="outline" onClick={() => onLog(s.type)}>
+                  <Plus /> Log
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
   );
 }
 
@@ -1745,6 +1811,7 @@ export function ResponseActivitiesPage() {
   const effective = caseId || (sorted[0] ? String(sorted[0].id) : '');
   const [open, setOpen] = useState(false);
   const [respEdit, setRespEdit] = useState<ResponseEditRecord | null>(null);
+  const [respType, setRespType] = useState<ResponseType | undefined>();
   const { data: detail, error: detailError } = useApi<CaseDetail>(
     effective ? `/api/cases/${effective}` : null,
   );
@@ -1783,8 +1850,9 @@ export function ResponseActivitiesPage() {
             detail={detail}
             onLog={
               writable
-                ? () => {
+                ? (type) => {
                     setRespEdit(null);
+                    setRespType(type);
                     setOpen(true);
                   }
                 : undefined
@@ -1804,6 +1872,7 @@ export function ResponseActivitiesPage() {
             caseId={detail.case.id}
             code={detail.case.code}
             response={respEdit}
+            presetType={respType}
             minDate={detail.case.symptomsDate ?? detail.case.reportedAt}
             maxHeads={
               speciesOnFarm(lookups, detail.case.farmId).find((s) => s.species === detail.case.species)?.head

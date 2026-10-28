@@ -270,6 +270,13 @@ export function GisMapPage() {
           <MapView
             className="h-[420px] lg:h-[600px]"
             farms={layers.farms ? shownFarms : []}
+            pastures={
+              layers.farms
+                ? shownFarms
+                    .filter((f) => f.pastureLat != null)
+                    .map((f) => ({ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }))
+                : []
+            }
             cases={layers.cases ? mappedCases : []}
             strays={layers.strays ? (strays ?? []) : []}
             circles={
@@ -1012,6 +1019,9 @@ export function RadiusPage() {
               farms={data.farms
                 .filter((f) => f.role !== 'Ground-zero farm')
                 .map((f) => ({ ...f, inRadius: true }))}
+              pastures={data.farms
+                .filter((f) => f.pastureLat != null)
+                .map((f) => ({ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }))}
               groundZero={data.center}
               circles={data.center ? [{ ...data.center, radius: data.radius }] : []}
               focusCircle={data.center ? { ...data.center, radius: data.radius } : undefined}

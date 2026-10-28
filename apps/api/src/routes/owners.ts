@@ -9,6 +9,11 @@ import { serializeCase, serializeTransfer, serializeVaccination } from './serial
 
 export const ownersRouter = Router();
 
+/** An active policy past its end date is shown as expired. */
+export function pcicStatus(p: { status: string; endDate: Date }) {
+  return p.status === 'ACTIVE' && ymd(p.endDate)! < today() ? 'EXPIRED' : p.status;
+}
+
 /**
  * Duplicate protection: an RSBSA number belongs to one person (blocked), and the same name in the
  * same barangay is probably the same person (warning — the user can confirm it is someone else).
@@ -89,7 +94,12 @@ ownersRouter.get(
     const id = idParam(req);
     const o = await prisma.owner.findUnique({
       where: { id },
-      include: { pcicPolicies: { orderBy: { startDate: 'desc' } } },
+      include: {
+        pcicPolicies: {
+          orderBy: { startDate: 'desc' },
+          include: { animals: { select: { id: true, code: true, earTag: true }, orderBy: { id: 'asc' } } },
+        },
+      },
     });
     if (!o) throw notFound('Owner');
     const farms = (
@@ -166,6 +176,8 @@ ownersRouter.get(
         status: s.status,
         violations: s.violations,
         barangay: s.barangay,
+        fineAmount: s.fineAmount != null ? Number(s.fineAmount) : null,
+        finePaid: s.finePaid,
       })),
       pcic: o.pcicPolicies.map((p) => ({
         id: p.id,
@@ -175,9 +187,9 @@ ownersRouter.get(
         amountCovered: p.amountCovered ? Number(p.amountCovered) : null,
         startDate: ymd(p.startDate),
         endDate: ymd(p.endDate),
-        // An active policy past its end date is shown as expired.
-        status: p.status === 'ACTIVE' && ymd(p.endDate)! < today() ? 'EXPIRED' : p.status,
+        status: pcicStatus(p),
         remarks: p.remarks,
+        animals: p.animals,
       })),
     });
   }),
@@ -314,6 +326,56 @@ function pcicData(d: ReturnType<typeof pcicCreateSchema.parse>) {
   };
 }
 
+/**
+ * The insured animals must be this owner's active tagged animals of the policy's species, and an
+ * animal cannot be on two policies that are in force over the same period. Animals already on the
+ * policy may stay even if they were since sold or transferred (the policy history is kept).
+ */
+async function checkInsuredAnimals(
+  ownerId: number,
+  d: ReturnType<typeof pcicCreateSchema.parse>,
+  policyId?: number,
+) {
+  const ids = [...new Set(d.animalIds ?? [])];
+  if (!ids.length) return ids;
+  const kept = policyId
+    ? (
+        await prisma.animal.findMany({
+          where: { id: { in: ids }, pcicPolicies: { some: { id: policyId } } },
+          select: { id: true },
+        })
+      ).map((a) => a.id)
+    : [];
+  const animals = await prisma.animal.findMany({
+    where: { id: { in: ids } },
+    include: { group: { include: { farm: true } } },
+  });
+  const problems: string[] = [];
+  if (animals.length !== ids.length) problems.push('Some selected animals no longer exist');
+  for (const a of animals) {
+    const label = a.earTag ? `${a.code} (${a.earTag})` : a.code;
+    if (a.species !== d.species) problems.push(`${label} is a ${a.species}, not ${d.species}`);
+    else if (!kept.includes(a.id) && (a.group.farm.ownerId !== ownerId || a.status !== 'ACTIVE'))
+      problems.push(`${label} is not an active animal of this owner`);
+  }
+  const overlapping = await prisma.pcicPolicy.findMany({
+    where: {
+      ...(policyId ? { NOT: { id: policyId } } : {}),
+      status: 'ACTIVE',
+      startDate: { lte: dateOnly(d.endDate) },
+      endDate: { gte: dateOnly(d.startDate) },
+      animals: { some: { id: { in: ids } } },
+    },
+    include: { animals: { where: { id: { in: ids } }, select: { code: true } } },
+  });
+  if (d.status === 'ACTIVE')
+    for (const p of overlapping)
+      problems.push(`${p.animals.map((a) => a.code).join(', ')} already insured under ${p.policyNo}`);
+  if (problems.length)
+    throw badRequest('Validation failed', { fieldErrors: { animalIds: [problems.join('; ')] } });
+  return ids;
+}
+
 ownersRouter.post(
   '/:id/pcic',
   ah(async (req, res) => {
@@ -323,8 +385,17 @@ ownersRouter.post(
     if (!owner) throw notFound('Owner');
     if (owner.status === 'ARCHIVED') throw badRequest('This owner is archived');
     await assertUniquePolicy(d.policyNo);
-    const p = await prisma.pcicPolicy.create({ data: { ownerId: id, ...pcicData(d) } });
-    await logActivity('owner', id, 'pcic', `PCIC policy ${p.policyNo} recorded`, req.user?.name);
+    const ids = await checkInsuredAnimals(id, d);
+    const p = await prisma.pcicPolicy.create({
+      data: { ownerId: id, ...pcicData(d), animals: { connect: ids.map((x) => ({ id: x })) } },
+    });
+    await logActivity(
+      'owner',
+      id,
+      'pcic',
+      `PCIC policy ${p.policyNo} recorded${ids.length ? ` (${ids.length} tagged animal(s))` : ''}`,
+      req.user?.name,
+    );
     res.status(201).json(p);
   }),
 );
@@ -338,7 +409,12 @@ ownersRouter.patch(
     const before = await prisma.pcicPolicy.findUnique({ where: { id } });
     if (!before) throw notFound('PCIC policy');
     await assertUniquePolicy(d.policyNo, id);
-    const p = await prisma.pcicPolicy.update({ where: { id }, data: pcicData(d) });
+    // The insured animals change only when the list is sent.
+    const ids = 'animalIds' in (req.body ?? {}) ? await checkInsuredAnimals(before.ownerId, d, id) : null;
+    const p = await prisma.pcicPolicy.update({
+      where: { id },
+      data: { ...pcicData(d), ...(ids ? { animals: { set: ids.map((x) => ({ id: x })) } } : {}) },
+    });
     await logActivity(
       'owner',
       p.ownerId,

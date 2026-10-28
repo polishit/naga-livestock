@@ -57,6 +57,13 @@ export interface LatLng {
   lat: number;
   lng: number;
 }
+/** A farm's pasture / grazing area away from the farm itself. */
+export interface PastureMarker {
+  id: number;
+  lat: number | null;
+  lng: number | null;
+  name: string;
+}
 
 /** Shaded areas (barangays) drawn from GeoJSON, each coloured by a value. */
 export interface AreaLayer {
@@ -111,6 +118,13 @@ const strayIcon = L.divIcon({
   className: 'leaflet-div-icon-clear',
   iconSize: [18, 18],
   iconAnchor: [9, 9],
+});
+
+const pastureIcon = L.divIcon({
+  html: `<div style="width:22px;height:22px;border-radius:5px;background:#ecfdf5;border:2px dashed #15803d;color:#15803d;font:700 11px/18px Inter,sans-serif;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.25)">P</div>`,
+  className: 'leaflet-div-icon-clear',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
 });
 
 const pinIcon = L.divIcon({
@@ -174,6 +188,8 @@ export interface MapViewProps {
   farms?: FarmMarker[];
   cases?: CaseMarker[];
   strays?: StrayMarker[];
+  /** Pasture areas (drawn as a dashed green "P"). */
+  pastures?: PastureMarker[];
   /** Radius circles drawn around these points (metres). */
   circles?: { lat: number; lng: number; radius: number }[];
   groundZero?: LatLng | null;
@@ -198,6 +214,7 @@ export function MapView({
   farms = [],
   cases = [],
   strays = [],
+  pastures = [],
   circles = [],
   groundZero,
   focusCircle,
@@ -219,10 +236,11 @@ export function MapView({
     for (const f of farms) if (f.lat != null && f.lng != null) p.push([f.lat, f.lng]);
     for (const c of cases) if (c.lat != null && c.lng != null) p.push([c.lat, c.lng]);
     for (const s of strays) if (s.lat != null && s.lng != null) p.push([s.lat, s.lng]);
+    for (const s of pastures) if (s.lat != null && s.lng != null) p.push([s.lat, s.lng]);
     if (pick?.value) p.push([pick.value.lat, pick.value.lng]);
     if (groundZero) p.push([groundZero.lat, groundZero.lng]);
     return p;
-  }, [farms, cases, strays, pick?.value, groundZero]);
+  }, [farms, cases, strays, pastures, pick?.value, groundZero]);
 
   useEffect(() => {
     setVersion((v) => v + 1);
@@ -349,6 +367,15 @@ export function MapView({
             <Marker key={`s${s.id}`} position={[s.lat!, s.lng!]} icon={strayIcon}>
               <Tooltip direction="top" offset={[0, -8]}>
                 {s.code} · stray {s.species.toLowerCase()}
+              </Tooltip>
+            </Marker>
+          ))}
+        {pastures
+          .filter((s) => s.lat != null && s.lng != null)
+          .map((s) => (
+            <Marker key={`p${s.id}`} position={[s.lat!, s.lng!]} icon={pastureIcon}>
+              <Tooltip direction="top" offset={[0, -10]}>
+                Pasture · {s.name}
               </Tooltip>
             </Marker>
           ))}

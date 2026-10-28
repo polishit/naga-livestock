@@ -80,6 +80,9 @@ export interface FarmProfileData {
     lat: number | null;
     lng: number | null;
     pastureArea: number | null;
+    pastureLocation: string | null;
+    pastureLat: number | null;
+    pastureLng: number | null;
     createdAt: string;
     total: number;
     tagged: number;
@@ -134,6 +137,15 @@ export function printFarmProfile(d: FarmProfileData, lh: Letterhead, printedBy?:
         f.lat != null && f.lng != null ? `${f.lat.toFixed(6)}, ${f.lng.toFixed(6)}` : 'Not geotagged'
       }</div>
       <div><span>Pasture area</span>${f.pastureArea != null ? `${h(f.pastureArea)} ha` : '—'}</div><div><span>Registered</span>${h(fmtDate(f.createdAt))}</div>
+      ${
+        f.pastureLocation || f.pastureLat != null
+          ? `<div><span>Pasture location</span>${h(f.pastureLocation ?? '')}${
+              f.pastureLat != null && f.pastureLng != null
+                ? `${f.pastureLocation ? ' · ' : ''}${f.pastureLat.toFixed(6)}, ${f.pastureLng.toFixed(6)}`
+                : ''
+            }</div>`
+          : ''
+      }
     </div>
     <div class="stats">
       <div class="stat">Current livestock<b>${h(f.total)}</b></div>

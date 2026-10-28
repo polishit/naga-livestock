@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BARANGAYS, STRAY_STATUSES, fmtDateTime, titleCase } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
 import { useApi } from '@/lib/hooks';
@@ -19,6 +20,16 @@ export default function StraysPage() {
   const { data, isLoading, error } = useApi<(StrayRecord & { mapped: boolean })[]>(
     `/api/strays${qs({ barangay, status })}`,
   );
+  // Opened from an owner's page: /strays?open=<incident id>
+  const [params, setParams] = useSearchParams();
+  const openId = Number(params.get('open')) || 0;
+  useEffect(() => {
+    const s = openId && data?.find((r) => r.id === openId);
+    if (s) {
+      setSelected(s);
+      setParams({}, { replace: true });
+    }
+  }, [openId, data, setParams]);
   return (
     <div>
       <PageHeader
@@ -42,7 +53,7 @@ export default function StraysPage() {
             onRowClick={(r) => setSelected(r)}
             pageSize={0}
             searchText={(r) =>
-              `${r.code} ${r.species} ${r.ownerName ?? ''} ${r.barangay} ${r.earTag ?? ''} ${r.location}`
+              `${r.code} ${r.species} ${r.ownerName ?? ''} ${r.barangay} ${r.earTag ?? ''} ${r.location} ${r.orNumber ?? ''}`
             }
             defaultSort={{ key: 'discoveredAt', dir: 'desc' }}
             toolbar={
@@ -81,16 +92,26 @@ export default function StraysPage() {
               },
               { key: 'status', header: 'Status', cell: (r) => <StrayStatusBadge status={r.status} /> },
               { key: 'violations', header: 'Violations' },
+              {
+                key: 'fineAmount',
+                header: 'Fine',
+                sort: (r) => r.fineAmount ?? 0,
+                cell: (r) =>
+                  r.fineAmount ? (
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      ₱{r.fineAmount.toLocaleString()}
+                      {r.finePaid ? <Badge tone="green">Paid</Badge> : <Badge tone="amber">Unpaid</Badge>}
+                    </span>
+                  ) : (
+                    '—'
+                  ),
+              },
             ]}
           />
         </Card>
       )}
       <StrayDialog open={open} onOpenChange={setOpen} />
-      <StrayUpdateDialog
-        open={!!selected && canEdit}
-        onOpenChange={(o) => !o && setSelected(null)}
-        stray={selected}
-      />
+      <StrayUpdateDialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)} stray={selected} />
     </div>
   );
 }

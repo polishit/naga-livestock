@@ -2,13 +2,16 @@ import { Router } from 'express';
 import { vaccinationCreateSchema } from '@livestock/shared';
 import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
-import { assertNotFuture, dateOnly, today } from '../lib/dates';
+import { assertNotFuture, dateOnly, today, ymd } from '../lib/dates';
 import { ah, badRequest, parse, qstr } from '../lib/http';
 import { vaccinationCoverage } from '../services/metrics';
 import { getSettings } from '../services/settings';
 import { serializeVaccination } from './serializers';
 
 export const vaccinationsRouter = Router();
+
+/** Missed doses stay on the schedule (marked overdue) for this many days after their due date. */
+export const OVERDUE_DAYS = 30;
 
 const include = { farm: true, group: true, animal: true } as const;
 
@@ -74,18 +77,24 @@ vaccinationsRouter.get(
     const start = today();
     const end = new Date(`${start}T00:00:00Z`);
     end.setUTCDate(end.getUTCDate() + days);
+    // Doses that were due recently but not given are listed first, as overdue.
+    const missedSince = new Date(new Date(`${start}T00:00:00Z`).getTime() - OVERDUE_DAYS * 86400_000);
     const rows = await prisma.vaccination.findMany({
       where: {
         voidedAt: null,
         reminderDone: false,
-        nextDate: { gte: new Date(`${start}T00:00:00Z`), lte: end },
+        nextDate: { gte: missedSince, lte: end },
         ...liveReminder,
         ...(barangay ? { farm: { archived: false, barangay } } : {}),
       },
       include,
       orderBy: { nextDate: 'asc' },
     });
-    res.json({ days, rows: rows.map(serializeVaccination) });
+    res.json({
+      days,
+      overdueDays: OVERDUE_DAYS,
+      rows: rows.map((v) => ({ ...serializeVaccination(v), overdue: ymd(v.nextDate)! < start })),
+    });
   }),
 );
 

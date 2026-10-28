@@ -131,6 +131,7 @@ export function FarmsPage() {
 interface FarmDetail {
   farm: FarmSummary & {
     pastureArea: number | null;
+    pastureLocation: string | null;
     remarks: string | null;
     archived: boolean;
     createdAt: string;
@@ -293,6 +294,17 @@ export function FarmDetailPage() {
                     ['Address', f.address],
                     ['Pasture area', f.pastureArea != null ? `${f.pastureArea} ha` : null],
                     [
+                      'Pasture location',
+                      f.pastureLocation || f.pastureLat != null
+                        ? [
+                            f.pastureLocation,
+                            f.pastureLat != null ? `${f.pastureLat}, ${f.pastureLng}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')
+                        : null,
+                    ],
+                    [
                       'Coordinates',
                       f.mapped ? `${f.lat}, ${f.lng}` : <Badge tone="red">No coordinates</Badge>,
                     ],
@@ -313,8 +325,16 @@ export function FarmDetailPage() {
             <Card>
               <CardHeader title="Location" />
               <div className="p-4">
-                {f.mapped ? (
-                  <MapView className="h-[340px]" farms={[f]} />
+                {f.mapped || f.pastureLat != null ? (
+                  <MapView
+                    className="h-[340px]"
+                    farms={f.mapped ? [f] : []}
+                    pastures={
+                      f.pastureLat != null
+                        ? [{ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }]
+                        : []
+                    }
+                  />
                 ) : (
                   <div className="flex h-[340px] items-center justify-center rounded-lg border border-dashed text-sm text-slate-500">
                     This farm has no coordinates yet.

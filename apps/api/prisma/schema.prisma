@@ -126,28 +126,34 @@ model PcicPolicy {
   remarks       String?  @db.VarChar(500)
   createdAt     DateTime @default(now())
   owner         Owner    @relation(fields: [ownerId], references: [id])
+  /// The tagged animals (ear tags) this policy insures
+  animals       Animal[] @relation("PcicInsuredAnimals")
 }
 
 model Farm {
-  id           Int               @id @default(autoincrement())
-  code         String            @unique @db.VarChar(20)
-  name         String            @db.VarChar(150)
-  ownerId      Int
-  type         String            @db.VarChar(20)
-  barangay     String            @db.VarChar(60)
-  zone         String?           @db.VarChar(60)
-  address      String?           @db.VarChar(250)
-  pastureArea  Float?
-  lat          Float?
-  lng          Float?
-  remarks      String?           @db.Text
-  archived     Boolean           @default(false)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  owner        Owner             @relation(fields: [ownerId], references: [id])
-  groups       PopulationGroup[]
-  cases        DiseaseCase[]
-  vaccinations Vaccination[]
+  id              Int               @id @default(autoincrement())
+  code            String            @unique @db.VarChar(20)
+  name            String            @db.VarChar(150)
+  ownerId         Int
+  type            String            @db.VarChar(20)
+  barangay        String            @db.VarChar(60)
+  zone            String?           @db.VarChar(60)
+  address         String?           @db.VarChar(250)
+  pastureArea     Float?
+  /// Where the animals graze when the pasture is away from the farm
+  pastureLocation String?           @db.VarChar(250)
+  pastureLat      Float?
+  pastureLng      Float?
+  lat             Float?
+  lng             Float?
+  remarks         String?           @db.Text
+  archived        Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  owner           Owner             @relation(fields: [ownerId], references: [id])
+  groups          PopulationGroup[]
+  cases           DiseaseCase[]
+  vaccinations    Vaccination[]
 
   @@index([barangay])
   @@index([ownerId])
@@ -218,6 +224,7 @@ model Animal {
   group        PopulationGroup     @relation(fields: [groupId], references: [id])
   transfers    OwnershipTransfer[]
   vaccinations Vaccination[]
+  pcicPolicies PcicPolicy[]        @relation("PcicInsuredAnimals")
 
   @@index([groupId])
 }
@@ -241,26 +248,37 @@ model OwnershipTransfer {
 }
 
 model StrayIncident {
-  id           Int         @id @default(autoincrement())
-  code         String      @unique @db.VarChar(20)
-  discoveredAt DateTime
-  species      String      @db.VarChar(40)
-  earTag       String?     @db.VarChar(40)
-  animalId     Int?
-  ownerId      Int?
-  barangay     String      @db.VarChar(60)
-  location     String      @db.VarChar(200)
-  description  String?     @db.Text
-  lat          Float?
-  lng          Float?
-  photoKeys    Json?
-  status       StrayStatus @default(REPORTED)
-  violations   Int         @default(0)
-  remarks      String?     @db.Text
-  createdBy    String?     @db.VarChar(120)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  owner        Owner?      @relation(fields: [ownerId], references: [id])
+  id            Int         @id @default(autoincrement())
+  code          String      @unique @db.VarChar(20)
+  discoveredAt  DateTime
+  species       String      @db.VarChar(40)
+  earTag        String?     @db.VarChar(40)
+  animalId      Int?
+  ownerId       Int?
+  barangay      String      @db.VarChar(60)
+  location      String      @db.VarChar(200)
+  description   String?     @db.Text
+  lat           Float?
+  lng           Float?
+  photoKeys     Json?
+  status        StrayStatus @default(REPORTED)
+  violations    Int         @default(0)
+  violationType String?     @db.VarChar(80)
+  /// Penalty: fine and its official receipt
+  fineAmount    Decimal?    @db.Decimal(10, 2)
+  finePaid      Boolean     @default(false)
+  orNumber      String?     @db.VarChar(40)
+  paidAt        DateTime?   @db.Date
+  /// Impoundment and release
+  impoundedAt   DateTime?   @db.Date
+  impoundPlace  String?     @db.VarChar(200)
+  releasedAt    DateTime?   @db.Date
+  releasedTo    String?     @db.VarChar(150)
+  remarks       String?     @db.Text
+  createdBy     String?     @db.VarChar(120)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  owner         Owner?      @relation(fields: [ownerId], references: [id])
 }
 
 model DiseaseCase {

@@ -144,7 +144,11 @@ export function OwnerDialog({ open, onOpenChange, owner }: DialogProps & { owner
         <Field label="Contact number" error={err(e, 'contact')}>
           <Input {...form.register('contact')} inputMode="tel" placeholder="09XX-XXX-XXXX" />
         </Field>
-        <Field label="Certification number" error={err(e, 'rsbsa')} hint="RSBSA number, if registered">
+        <Field
+          label="RSBSA number"
+          error={err(e, 'rsbsa')}
+          hint="Registry System for Basic Sectors in Agriculture, if registered"
+        >
           <Input {...form.register('rsbsa')} />
         </Field>
         {editing && (
@@ -326,6 +330,18 @@ export interface PcicRecord {
   endDate: string;
   status: string;
   remarks: string | null;
+  /** Tagged animals insured by this policy. */
+  animals?: { id: number; code: string; earTag: string | null }[];
+}
+
+/** One of the owner's tagged animals, offered for linking to a policy. */
+export interface InsurableAnimal {
+  id: number;
+  code: string;
+  earTag: string | null;
+  species: string;
+  status: string;
+  farmName: string;
 }
 
 /** Record a PCIC policy, or update one (e.g. mark it claimed or cancelled). */
@@ -334,7 +350,8 @@ export function PcicDialog({
   onOpenChange,
   ownerId,
   policy,
-}: DialogProps & { ownerId: number; policy?: PcicRecord | null }) {
+  animals = [],
+}: DialogProps & { ownerId: number; policy?: PcicRecord | null; animals?: InsurableAnimal[] }) {
   const form = useZodForm(pcicCreateSchema, {});
   useResetOnOpen(open, form, {
     policyNo: policy?.policyNo ?? '',
@@ -345,7 +362,13 @@ export function PcicDialog({
     endDate: policy?.endDate ?? '',
     status: policy?.status ?? 'ACTIVE',
     remarks: policy?.remarks ?? '',
+    animalIds: (policy?.animals ?? []).map((a) => String(a.id)),
   } as any);
+  // The owner's active animals of the policy's species (plus any already on the policy).
+  const species = form.watch('species');
+  const linked = new Set((policy?.animals ?? []).map((a) => a.id));
+  const choices = animals.filter((a) => a.species === species && (a.status === 'ACTIVE' || linked.has(a.id)));
+  const chosen = (form.watch('animalIds') || []) as string[];
   const save = useSave<any>(
     policy ? 'PATCH' : 'POST',
     policy ? `/api/owners/pcic/${policy.id}` : `/api/owners/${ownerId}/pcic`,
@@ -375,7 +398,13 @@ export function PcicDialog({
       <form
         id="pcic-form"
         noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
+        onSubmit={form.handleSubmit((v) =>
+          save.mutate({
+            ...v,
+            // Animals of another species (ticked before the species changed) are not sent.
+            animalIds: ((v.animalIds ?? []) as number[]).filter((id) => choices.some((a) => a.id === id)),
+          }),
+        )}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
         <Field label="Policy number *" error={err(e, 'policyNo')}>
@@ -412,6 +441,40 @@ export function PcicDialog({
         <Field label="Remarks" error={err(e, 'remarks')}>
           <Input {...form.register('remarks')} />
         </Field>
+        <Field
+          label={`Insured animals (ear tags) · ${chosen.filter((id) => choices.some((a) => String(a.id) === String(id))).length} selected`}
+          hint="Tick the tagged animals this policy covers. Untagged heads can stay unlinked."
+          error={err(e, 'animalIds')}
+          className="sm:col-span-2"
+        >
+          {choices.length ? (
+            <div className="grid max-h-44 grid-cols-1 gap-1 overflow-y-auto rounded-md border border-slate-200 p-2 sm:grid-cols-2">
+              {choices.map((a) => (
+                <label key={a.id} className="flex items-center gap-2 text-[14px] text-slate-700">
+                  <input
+                    type="checkbox"
+                    value={String(a.id)}
+                    className="h-4 w-4 rounded border-slate-300 accent-[#1d6fd8]"
+                    {...form.register('animalIds')}
+                  />
+                  <span>
+                    {a.earTag ?? 'No tag'}{' '}
+                    <span className="text-slate-500">
+                      · {a.code} · {a.farmName}
+                    </span>
+                    {a.status !== 'ACTIVE' && (
+                      <span className="text-slate-500"> ({titleCase(a.status)})</span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-[13.5px] text-slate-500">
+              This owner has no active tagged {String(species).toLowerCase()}.
+            </p>
+          )}
+        </Field>
       </form>
     </Dialog>
   );
@@ -428,10 +491,20 @@ export interface FarmEditRecord {
   zone: string | null;
   address: string | null;
   pastureArea: number | null;
+  pastureLocation: string | null;
+  pastureLat: number | null;
+  pastureLng: number | null;
   lat: number | null;
   lng: number | null;
   remarks: string | null;
   ownerName: string;
+}
+
+/** A lat/lng pair from form values, or null when either is blank or not a number. */
+function pointOf(lat: unknown, lng: unknown) {
+  return lat !== '' && lng !== '' && lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))
+    ? { lat: Number(lat), lng: Number(lng) }
+    : null;
 }
 
 export function FarmDialog({
@@ -453,14 +526,22 @@ export function FarmDialog({
     barangay: farm?.barangay ?? '',
     zone: farm?.zone ?? '',
     pastureArea: farm?.pastureArea ?? '',
+    pastureLocation: farm?.pastureLocation ?? '',
+    pastureLat: farm?.pastureLat ?? '',
+    pastureLng: farm?.pastureLng ?? '',
     address: farm?.address ?? '',
     lat: farm?.lat ?? '',
     lng: farm?.lng ?? '',
     remarks: farm?.remarks ?? '',
   } as any);
   const geo = useAddressLookup(form, { address: 'address', barangay: 'barangay' });
+  // Which pin a map click places: the farm itself or its pasture (grazing area away from the farm).
+  const [pinFor, setPinFor] = useState<'farm' | 'pasture'>('farm');
   useEffect(() => {
-    if (open) geo.reset();
+    if (open) {
+      geo.reset();
+      setPinFor('farm');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const save = useSave<any, { id: number }>(
@@ -481,12 +562,8 @@ export function FarmDialog({
     },
   );
   const e = form.formState.errors;
-  const lat = form.watch('lat');
-  const lng = form.watch('lng');
-  const point =
-    lat !== '' && lng !== '' && lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))
-      ? { lat: Number(lat), lng: Number(lng) }
-      : null;
+  const point = pointOf(form.watch('lat'), form.watch('lng'));
+  const pasture = pointOf(form.watch('pastureLat'), form.watch('pastureLng'));
   const owners = (lookups?.owners ?? []).filter(
     (o) => !ownerQ || `${o.fullName} ${o.code} ${o.barangay}`.toLowerCase().includes(ownerQ.toLowerCase()),
   );
@@ -597,20 +674,66 @@ export function FarmDialog({
           <Field label="Longitude" error={err(e, 'lng')}>
             <Input inputMode="decimal" {...form.register('lng')} />
           </Field>
+          <Field
+            label="Pasture location"
+            hint="Where the animals graze, if away from the farm"
+            error={err(e, 'pastureLocation')}
+            className="sm:col-span-2"
+          >
+            <Input
+              placeholder="e.g. Communal pasture, Zone 3, Brgy. Carolina"
+              {...form.register('pastureLocation')}
+            />
+          </Field>
+          <Field label="Pasture latitude" error={err(e, 'pastureLat')}>
+            <Input inputMode="decimal" {...form.register('pastureLat')} />
+          </Field>
+          <Field label="Pasture longitude" error={err(e, 'pastureLng')}>
+            <Input inputMode="decimal" {...form.register('pastureLng')} />
+          </Field>
           <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
             <Input {...form.register('remarks')} />
           </Field>
         </div>
         <div>
+          <div
+            className="mb-2 inline-flex rounded-md border border-slate-300 p-0.5"
+            role="group"
+            aria-label="Pin to place"
+          >
+            {(['farm', 'pasture'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={pinFor === k}
+                onClick={() => setPinFor(k)}
+                className={
+                  pinFor === k
+                    ? 'rounded bg-brand-strong px-3 py-1 text-[13px] font-medium text-white'
+                    : 'rounded px-3 py-1 text-[13px] text-slate-600 hover:bg-slate-50'
+                }
+              >
+                {k === 'farm' ? 'Farm location' : 'Pasture location'}
+              </button>
+            ))}
+          </div>
           <p className="mb-2 text-[13px] text-slate-500">
-            Click the map to set the farm location; drag the pin to adjust. The address and barangay are
-            filled in automatically. Coordinates are optional.
+            {pinFor === 'farm'
+              ? 'Click the map to set the farm location; drag the pin to adjust. The address and barangay are filled in automatically. Coordinates are optional.'
+              : 'Click the map where the animals graze (shown as a green "P" on maps). Outbreak radius checks include the pasture.'}
           </p>
           <MapView
             className="h-64 sm:h-80"
+            farms={pinFor === 'pasture' && point ? [{ id: 0, name: 'Farm', ...point }] : []}
+            pastures={pinFor === 'farm' && pasture ? [{ id: 0, name: 'Pasture', ...pasture }] : []}
             pick={{
-              value: point,
+              value: pinFor === 'farm' ? point : pasture,
               onChange: (p) => {
+                if (pinFor === 'pasture') {
+                  form.setValue('pastureLat', String(p.lat) as any);
+                  form.setValue('pastureLng', String(p.lng) as any);
+                  return;
+                }
                 form.setValue('lat', String(p.lat) as any);
                 form.setValue('lng', String(p.lng) as any);
                 geo.lookup(p.lat, p.lng);

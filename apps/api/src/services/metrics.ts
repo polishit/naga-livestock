@@ -88,6 +88,8 @@ export function summarizeFarm(farm: LoadedFarm) {
     lat: farm.lat,
     lng: farm.lng,
     mapped: farm.lat != null && farm.lng != null,
+    pastureLat: farm.pastureLat,
+    pastureLng: farm.pastureLng,
     ownerId: farm.ownerId,
     ownerName: farm.owner.fullName,
     ownerContact: farm.owner.contact,
@@ -399,13 +401,22 @@ export async function radiusAnalysis(caseId: number, radiusMeters?: number) {
   });
   if (!c) return null;
   const farms = await loadFarms();
-  const excluded = farms.filter((x) => x.lat == null || x.lng == null);
+  // A farm is placed by its own pin, and also by its pasture when the animals graze elsewhere.
+  const hasFarm = (x: LoadedFarm) => x.lat != null && x.lng != null;
+  const hasPasture = (x: LoadedFarm) => x.pastureLat != null && x.pastureLng != null;
+  const excluded = farms.filter((x) => !hasFarm(x) && !hasPasture(x));
   if (c.lat == null || c.lng == null) {
     return { case: c, radius, geocoded: false as const, farms: [], totals: null, excluded: excluded.length };
   }
   const rows = farms
-    .filter((x) => x.lat != null && x.lng != null)
-    .map((x) => ({ farm: x, distance: distanceMeters(c.lat!, c.lng!, x.lat!, x.lng!) }))
+    .filter((x) => hasFarm(x) || hasPasture(x))
+    .map((x) => {
+      const toFarm = hasFarm(x) ? distanceMeters(c.lat!, c.lng!, x.lat!, x.lng!) : Infinity;
+      const toPasture = hasPasture(x)
+        ? distanceMeters(c.lat!, c.lng!, x.pastureLat!, x.pastureLng!)
+        : Infinity;
+      return { farm: x, distance: Math.min(toFarm, toPasture), viaPasture: toPasture < toFarm };
+    })
     .filter((r) => r.distance <= radius || r.farm.id === c.farmId)
     .sort((a, b) => a.distance - b.distance)
     .map((r) => {
@@ -414,7 +425,7 @@ export async function radiusAnalysis(caseId: number, radiusMeters?: number) {
       return {
         ...s,
         distance: isGz ? 0 : roundDistance(r.distance),
-        role: isGz ? 'Ground-zero farm' : 'Nearby farm',
+        role: isGz ? 'Ground-zero farm' : r.viaPasture ? 'Nearby farm (pasture)' : 'Nearby farm',
       };
     });
   const species = new Map<string, number>();

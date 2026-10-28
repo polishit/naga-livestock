@@ -11,6 +11,9 @@ export interface FarmSummary {
   lat: number | null;
   lng: number | null;
   mapped: boolean;
+  /** Pasture pin, when the animals graze away from the farm. */
+  pastureLat: number | null;
+  pastureLng: number | null;
   ownerId: number;
   ownerName: string;
   ownerContact: string | null;

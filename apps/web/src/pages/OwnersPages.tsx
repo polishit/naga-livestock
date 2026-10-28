@@ -1,6 +1,6 @@
 import { Archive, IdCard, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { BARANGAYS, OWNER_STATUSES, fmtDate, fmtDateTime, titleCase } from '@livestock/shared';
@@ -31,6 +31,7 @@ interface OwnerRow {
   fullName: string;
   barangay: string;
   contact: string | null;
+  rsbsa: string | null;
   farms: number;
   livestock: number;
   status: string;
@@ -42,9 +43,15 @@ export function OwnersPage() {
   const [barangay, setBarangay] = useState('');
   const [status, setStatus] = useState('');
   const [archived, setArchived] = useState(false);
+  const [rsbsa, setRsbsa] = useState('');
   const [open, setOpen] = useState(false);
-  const { data, isLoading, error } = useApi<OwnerRow[]>(`/api/owners${qs({ barangay, status, archived })}`);
-  const activeCount = data?.filter((o) => o.status !== 'ARCHIVED').length ?? 0;
+  const {
+    data: all,
+    isLoading,
+    error,
+  } = useApi<OwnerRow[]>(`/api/owners${qs({ barangay, status, archived })}`);
+  const data = all?.filter((o) => !rsbsa || (rsbsa === 'yes' ? !!o.rsbsa : !o.rsbsa));
+  const activeCount = all?.filter((o) => o.status !== 'ARCHIVED').length ?? 0;
 
   return (
     <div>
@@ -68,7 +75,7 @@ export function OwnersPage() {
             loading={isLoading}
             rowKey={(r) => r.id}
             onRowClick={(r) => navigate(`/owners/${r.id}`)}
-            searchText={(r) => `${r.code} ${r.fullName} ${r.barangay} ${r.contact ?? ''}`}
+            searchText={(r) => `${r.code} ${r.fullName} ${r.barangay} ${r.contact ?? ''} ${r.rsbsa ?? ''}`}
             toolbar={
               <>
                 <FilterSelect
@@ -87,6 +94,17 @@ export function OwnersPage() {
                   all="All statuses"
                   className="w-[calc(50%-4px)] sm:w-36"
                 />
+                <FilterSelect
+                  label="RSBSA"
+                  value={rsbsa}
+                  onChange={setRsbsa}
+                  options={[
+                    { value: 'yes', label: 'With RSBSA No.' },
+                    { value: 'no', label: 'No RSBSA No.' },
+                  ]}
+                  all="RSBSA: all"
+                  className="w-[calc(50%-4px)] sm:w-40"
+                />
                 <Checkbox label="Show archived" checked={archived} onChange={setArchived} />
               </>
             }
@@ -94,7 +112,12 @@ export function OwnersPage() {
               { key: 'code', header: 'Owner ID' },
               { key: 'fullName', header: 'Name', className: 'font-medium text-slate-900' },
               { key: 'barangay', header: 'Barangay' },
-              { key: 'contact', header: 'CONTACT', sort: false },
+              { key: 'contact', header: 'Contact', sort: false },
+              {
+                key: 'rsbsa',
+                header: 'RSBSA No.',
+                cell: (r) => r.rsbsa ?? <span className="text-slate-400">—</span>,
+              },
               { key: 'farms', header: 'Farms' },
               { key: 'livestock', header: 'Livestock' },
               { key: 'status', header: 'Status', cell: (r) => <ActiveBadge status={r.status} /> },
@@ -132,6 +155,8 @@ interface OwnerDetail {
     status: string;
     violations: number;
     barangay: string;
+    fineAmount: number | null;
+    finePaid: boolean;
   }[];
   pcic: PcicRecord[];
 }
@@ -380,7 +405,7 @@ export function OwnerDetailPage() {
               <DataTable
                 rows={data.strays}
                 rowKey={(r) => r.id}
-                onRowClick={() => navigate('/strays')}
+                onRowClick={(r) => navigate(`/strays?open=${r.id}`)}
                 pageSize={0}
                 columns={[
                   { key: 'code', header: 'Incident' },
@@ -389,6 +414,19 @@ export function OwnerDetailPage() {
                   { key: 'barangay', header: 'Barangay' },
                   { key: 'status', header: 'Status', cell: (r) => <StrayStatusBadge status={r.status} /> },
                   { key: 'violations', header: 'Violations' },
+                  {
+                    key: 'fineAmount',
+                    header: 'Fine',
+                    cell: (r) =>
+                      r.fineAmount ? (
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                          ₱{r.fineAmount.toLocaleString()}
+                          {r.finePaid ? <Badge tone="green">Paid</Badge> : <Badge tone="amber">Unpaid</Badge>}
+                        </span>
+                      ) : (
+                        '—'
+                      ),
+                  },
                 ]}
                 empty="No stray incidents."
               />
@@ -422,6 +460,23 @@ export function OwnerDetailPage() {
                 { key: 'policyNo', header: 'Policy No.' },
                 { key: 'species', header: 'Species' },
                 { key: 'heads', header: 'Heads' },
+                {
+                  key: 'animals',
+                  header: 'Insured animals',
+                  sort: false,
+                  cell: (r) =>
+                    r.animals?.length ? (
+                      <div className="flex max-w-[260px] flex-wrap gap-1">
+                        {r.animals.map((a) => (
+                          <Link key={a.id} to={`/animals/${a.id}`} className="link text-[13px]">
+                            {a.earTag ?? a.code}
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">Not linked</span>
+                    ),
+                },
                 {
                   key: 'amountCovered',
                   header: 'Amount covered',
@@ -484,7 +539,13 @@ export function OwnerDetailPage() {
       <OwnerDialog open={edit} onOpenChange={setEdit} owner={o} />
       {archive && <ArchiveOwnerDialog open={archive} onOpenChange={setArchive} owner={o} />}
       <FarmDialog open={addFarm} onOpenChange={setAddFarm} ownerId={o.id} />
-      <PcicDialog open={addPcic} onOpenChange={setAddPcic} ownerId={o.id} policy={pcicEdit} />
+      <PcicDialog
+        open={addPcic}
+        onOpenChange={setAddPcic}
+        ownerId={o.id}
+        policy={pcicEdit}
+        animals={data.animals}
+      />
     </div>
   );
 }

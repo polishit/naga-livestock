@@ -1,19 +1,25 @@
 import { Router } from 'express';
 import {
+  RESPONSE_TYPE_LABELS,
   SPECIES_ID_LETTER,
+  fmtDate,
+  isoDate,
   isoMonth,
+  strayErrors,
   animalCreateSchema,
   animalMoveSchema,
   animalUpdateSchema,
   strayCreateSchema,
   strayUpdateSchema,
   transferCreateSchema,
+  type ResponseType,
   type Species,
 } from '@livestock/shared';
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, dateTime, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr, sent } from '../lib/http';
+import { pcicStatus } from './owners';
 import { adjustGroupCount } from './population';
 import { serializeCase, serializeTransfer, serializeVaccination } from './serializers';
 
@@ -115,8 +121,22 @@ animalsRouter.get(
       where: { entity: 'animal', entityId: id },
       orderBy: { createdAt: 'desc' },
     });
+    const insurance = await prisma.pcicPolicy.findMany({
+      where: { animals: { some: { id } } },
+      include: { owner: true },
+      orderBy: { startDate: 'desc' },
+    });
     res.json({
       animal: serializeAnimal(a),
+      insurance: insurance.map((p) => ({
+        id: p.id,
+        policyNo: p.policyNo,
+        ownerId: p.ownerId,
+        ownerName: p.owner.fullName,
+        startDate: ymd(p.startDate),
+        endDate: ymd(p.endDate),
+        status: pcicStatus(p),
+      })),
       vaccinations: vaccinations.map(serializeVaccination),
       transfers: transfers.map((t) => serializeTransfer(t, farmNames)),
       cases: cases.map(serializeCase),
@@ -309,6 +329,26 @@ animalsRouter.post(
 
 /* ---------------- ownership transfers ---------------- */
 
+/**
+ * A quarantine or movement restriction in force on a farm on a given day: logged on an open case,
+ * not voided, already started (not just planned), and not yet lifted (no end date, or lifted later).
+ */
+export function activeRestriction(farmId: number, day: string) {
+  const d = dateOnly(day)!;
+  return prisma.responseActivity.findFirst({
+    where: {
+      voidedAt: null,
+      type: { in: ['QUARANTINE', 'MOVEMENT_RESTRICTION'] },
+      status: { not: 'PLANNED' },
+      date: { lte: d },
+      OR: [{ endDate: null }, { endDate: { gt: d } }],
+      case: { farmId, closedAt: null },
+    },
+    include: { case: { include: { farm: true } } },
+    orderBy: { date: 'asc' },
+  });
+}
+
 transfersRouter.get(
   '/',
   ah(async (_req, res) => {
@@ -354,6 +394,22 @@ transfersRouter.post(
           ],
         },
       });
+
+    // Animals may not leave or enter a farm under quarantine or movement restriction.
+    for (const [farmId, field] of [
+      [animal.group.farmId, 'date'],
+      [toFarm.id, 'toFarmId'],
+    ] as const) {
+      const r = await activeRestriction(farmId, d.date);
+      if (r)
+        throw badRequest('Validation failed', {
+          fieldErrors: {
+            [field]: [
+              `${r.case.farm.name} is under ${RESPONSE_TYPE_LABELS[r.type as ResponseType].toLowerCase()} for ${r.case.code} since ${fmtDate(ymd(r.date))}. Enter the date it was lifted on that response first.`,
+            ],
+          },
+        });
+    }
 
     const t = await prisma.$transaction(async (tx) => {
       let dest = await tx.populationGroup.findFirst({
@@ -446,7 +502,16 @@ function serializeStray(s: any) {
     photoKeys: (s.photoKeys as string[] | null) ?? [],
     status: s.status,
     violations: s.violations,
+    violationType: s.violationType,
     remarks: s.remarks,
+    fineAmount: s.fineAmount != null ? Number(s.fineAmount) : null,
+    finePaid: s.finePaid,
+    orNumber: s.orNumber,
+    paidAt: ymd(s.paidAt),
+    impoundedAt: ymd(s.impoundedAt),
+    impoundPlace: s.impoundPlace,
+    releasedAt: ymd(s.releasedAt),
+    releasedTo: s.releasedTo,
   };
 }
 
@@ -473,12 +538,23 @@ straysRouter.get(
     const rows = await prisma.strayIncident.findMany({
       where: { ownerId, ...(except ? { NOT: { id: except } } : {}) },
       orderBy: { discoveredAt: 'desc' },
-      select: { id: true, code: true, discoveredAt: true, violations: true, status: true },
+      select: {
+        id: true,
+        code: true,
+        discoveredAt: true,
+        violations: true,
+        status: true,
+        fineAmount: true,
+        finePaid: true,
+      },
     });
+    const unpaid = rows.filter((r) => r.fineAmount != null && Number(r.fineAmount) > 0 && !r.finePaid);
     res.json({
       incidents: rows.length,
       violations: rows.reduce((a, r) => a + r.violations, 0),
       open: rows.filter((r) => r.status === 'REPORTED' || r.status === 'IMPOUNDED').length,
+      unpaidFines: unpaid.length,
+      unpaidAmount: unpaid.reduce((a, r) => a + Number(r.fineAmount), 0),
       last: rows[0] ? { code: rows[0].code, discoveredAt: rows[0].discoveredAt } : null,
     });
   }),
@@ -564,22 +640,84 @@ straysRouter.patch(
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(strayUpdateSchema, req.body);
+    assertNotFuture({ paidAt: d.paidAt, impoundedAt: d.impoundedAt, releasedAt: d.releasedAt });
+    const before = await prisma.strayIncident.findUnique({
+      where: { id },
+      include: { owner: true },
+    });
+    if (!before) throw notFound('Incident');
+    // Only the fields sent change (a blank field clears it); "Unknown owner" clears a wrong owner.
+    const changes = {
+      ...(d.status ? { status: d.status } : {}),
+      ...(d.violations !== undefined ? { violations: d.violations } : {}),
+      ...(d.finePaid !== undefined ? { finePaid: d.finePaid } : {}),
+      ...sent(req.body, d, [
+        'ownerId',
+        'remarks',
+        'violationType',
+        'fineAmount',
+        'orNumber',
+        'impoundPlace',
+        'releasedTo',
+      ] as const),
+      ...(['paidAt', 'impoundedAt', 'releasedAt'] as const).reduce(
+        (o, k) => (k in (req.body ?? {}) ? { ...o, [k]: dateOnly(d[k]) ?? null } : o),
+        {} as Record<string, Date | null>,
+      ),
+    };
+    // A registered ear tag identifies the animal, so its owner is known.
+    if (changes.ownerId !== undefined && before.animalId) {
+      const a = await prisma.animal.findUnique({ where: { id: before.animalId }, include: animalInclude });
+      if (a && changes.ownerId !== a.group.farm.ownerId)
+        throw badRequest('Validation failed', {
+          fieldErrors: {
+            ownerId: [
+              `Tag ${before.earTag} is ${a.code}, owned by ${a.group.farm.owner.fullName}. Record a transfer first if it changed hands.`,
+            ],
+          },
+        });
+    }
+    const after = { ...before, ...changes };
+    const errors = strayErrors({
+      status: after.status,
+      foundOn: isoDate(before.discoveredAt),
+      fineAmount: after.fineAmount != null ? Number(after.fineAmount) : null,
+      finePaid: after.finePaid,
+      orNumber: after.orNumber,
+      paidAt: ymd(after.paidAt),
+      impoundedAt: ymd(after.impoundedAt),
+      impoundPlace: after.impoundPlace,
+      releasedAt: ymd(after.releasedAt),
+      releasedTo: after.releasedTo,
+    });
+    if (Object.keys(errors).length)
+      throw badRequest('Validation failed', {
+        fieldErrors: Object.fromEntries(Object.entries(errors).map(([k, m]) => [k, [m]])),
+      });
     const s = await prisma.strayIncident.update({
       where: { id },
-      data: {
-        ...(d.status ? { status: d.status } : {}),
-        ...(d.violations !== undefined ? { violations: d.violations } : {}),
-        // "Unknown owner" (blank) clears a wrongly assigned owner; blank remarks clear the remarks.
-        ...sent(req.body, d, ['ownerId', 'remarks'] as const),
-      },
+      data: changes,
+      include: { owner: true },
     });
+    const bits = [
+      before.status !== s.status ? `${before.status.toLowerCase()} → ${s.status.toLowerCase()}` : null,
+      !before.impoundedAt && s.impoundedAt
+        ? `impounded ${fmtDate(ymd(s.impoundedAt))} at ${s.impoundPlace}`
+        : null,
+      !before.releasedAt && s.releasedAt
+        ? `released to ${s.releasedTo} on ${fmtDate(ymd(s.releasedAt))}`
+        : null,
+      !before.finePaid && s.finePaid
+        ? `fine ₱${Number(s.fineAmount).toLocaleString()} paid, OR ${s.orNumber}`
+        : null,
+    ].filter(Boolean);
     await logActivity(
       'stray',
       id,
       'updated',
-      `Stray ${s.code} updated (${s.status.toLowerCase()}, ${s.violations} violation(s))`,
+      `Stray ${s.code} updated (${bits.length ? bits.join('; ') : `${s.status.toLowerCase()}, ${s.violations} violation(s)`})`,
       req.user?.name,
     );
-    res.json(s);
+    res.json(serializeStray(s));
   }),
 );

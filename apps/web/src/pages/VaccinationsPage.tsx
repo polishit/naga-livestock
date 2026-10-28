@@ -49,6 +49,29 @@ const columns: Column<VaccinationRow>[] = [
   { key: 'administeredBy', header: 'By' },
 ];
 
+/** The schedule: when each next dose is due (missed ones first, marked overdue). */
+const upcomingColumns: Column<VaccinationRow & { overdue?: boolean }>[] = [
+  {
+    key: 'nextDate',
+    header: 'Due',
+    cell: (r) => (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        {r.nextDate ? fmtDate(r.nextDate) : '—'} {r.overdue && <Badge tone="red">Overdue</Badge>}
+      </span>
+    ),
+  },
+  { key: 'vaccine', header: 'Vaccine' },
+  { key: 'farmName', header: 'Farm' },
+  { key: 'targetLabel', header: 'Target' },
+  {
+    key: 'doseNumber',
+    header: 'Next dose',
+    sort: (r) => r.doseNumber + 1,
+    cell: (r) => `Dose ${r.doseNumber + 1}`,
+  },
+  { key: 'date', header: 'Last given', cell: (r) => fmtDate(r.date) },
+];
+
 export default function VaccinationsPage() {
   const { canEdit, isAdmin } = useAuth();
   const [voiding, setVoiding] = useState<VaccinationRow | null>(null);
@@ -77,9 +100,11 @@ export default function VaccinationsPage() {
   const [to, setTo] = useState('');
   const [open, setOpen] = useState(false);
   const records = useApi<VaccinationRow[]>(`/api/vaccinations${qs({ barangay })}`);
-  const upcoming = useApi<{ days: number; rows: VaccinationRow[] }>(
-    `/api/vaccinations/upcoming${qs({ barangay })}`,
-  );
+  const upcoming = useApi<{
+    days: number;
+    overdueDays: number;
+    rows: (VaccinationRow & { overdue?: boolean })[];
+  }>(`/api/vaccinations/upcoming${qs({ barangay })}`);
   const coverage = useApi<{ from: string; to: string; rows: CoverageRow[] }>(
     tab === 'coverage' ? `/api/vaccinations/coverage${qs({ barangay, from, to })}` : null,
   );
@@ -167,7 +192,11 @@ export default function VaccinationsPage() {
           { id: 'records', label: 'Records' },
           {
             id: 'upcoming',
-            label: `Upcoming (${upcoming.data?.rows.length ?? 0} in ${upcoming.data?.days ?? 30} days)`,
+            label: `Upcoming (${upcoming.data?.rows.filter((r) => !r.overdue).length ?? 0} in ${upcoming.data?.days ?? 30} days${
+              upcoming.data?.rows.some((r) => r.overdue)
+                ? ` · ${upcoming.data.rows.filter((r) => r.overdue).length} overdue`
+                : ''
+            })`,
           },
           { id: 'coverage', label: 'Coverage' },
         ]}
@@ -224,12 +253,18 @@ export default function VaccinationsPage() {
               rows={upcoming.data?.rows}
               loading={upcoming.isLoading}
               rowKey={(r) => r.id}
-              columns={columns}
+              columns={upcomingColumns}
               pageSize={0}
               hideFooter
-              defaultSort={{ key: 'date', dir: 'desc' }}
-              empty="No vaccinations scheduled in the next 30 days."
+              defaultSort={{ key: 'nextDate', dir: 'asc' }}
+              empty={`No vaccinations due in the next ${upcoming.data?.days ?? 30} days.`}
             />
+            {!!upcoming.data?.overdueDays && (
+              <p className="border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-500">
+                Overdue: the next dose was due in the last {upcoming.data.overdueDays} days and no later dose
+                of the same vaccine has been recorded.
+              </p>
+            )}
           </Card>
         )}
         {tab === 'coverage' &&
