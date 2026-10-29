@@ -163,21 +163,19 @@ function ReportFilters({
   setType,
   f,
   setF,
-  label = 'Report type',
 }: {
   types: { id: string; title: string }[];
   type: string;
   setType: (v: string) => void;
   f: { barangay: string; species: string; from: string; to: string };
   setF: (v: { barangay: string; species: string; from: string; to: string }) => void;
-  label?: string;
 }) {
   return (
     <Card className="p-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(240px,320px)_190px_140px_150px_150px]">
-        <Field label={label} className="col-span-2 md:col-span-1">
+        <Field label="Report type" className="col-span-2 md:col-span-1">
           <FilterSelect
-            label={label}
+            label="Report type"
             value={type}
             onChange={setType}
             options={types.map((t) => ({ value: t.id, label: t.title }))}
@@ -304,7 +302,7 @@ export function ReportsPage() {
     <div>
       <PageHeader
         title="Reports"
-        subtitle="All figures are computed from the same metrics used by the dashboard."
+        subtitle={`${REPORT_TYPES.length} ready-made reports — view, print or download as Excel, CSV or PDF (with letterhead).`}
       />
       <Tabs
         value={tab}
@@ -322,32 +320,6 @@ export function ReportsPage() {
             <ReportFilters types={types} type={type} setType={setType} f={f} setF={setF} />
             {error ? <ErrorBox error={error} /> : <ReportTable report={data} loading={isLoading} />}
           </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export function ReportExportPage() {
-  const all = REPORT_TYPES;
-  const [type, setType] = useState(all[0].id);
-  const [f, setF] = useState({ barangay: '', species: '', from: '', to: '' });
-  const outbreak = type === 'outbreak-area';
-  const { data, isLoading, error } = useApi<ReportResult>(!outbreak ? `/api/reports/${type}${qs(f)}` : null);
-  return (
-    <div>
-      <PageHeader
-        title="Report Export"
-        subtitle={`${all.length} report types · CSV, XLSX, PDF (with letterhead) and print`}
-      />
-      <ReportFilters label="Report" types={all} type={type} setType={setType} f={f} setF={setF} />
-      <div className="mt-4">
-        {outbreak ? (
-          <OutbreakReport />
-        ) : error ? (
-          <ErrorBox error={error} />
-        ) : (
-          <ReportTable report={data} loading={isLoading} />
         )}
       </div>
     </div>

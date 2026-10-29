@@ -6,14 +6,11 @@ import {
   CircleAlert,
   CircleDot,
   ClipboardList,
-  Download,
   FileText,
   FileWarning,
   Home,
   LayoutGrid,
-  ListChecks,
   Map,
-  MapPin,
   MapPinned,
   Microscope,
   Radar,
@@ -84,7 +81,7 @@ export const NAV: NavSection[] = [
     short: 'Mapping',
     icon: Map,
     items: [
-      { to: '/geotagging', label: 'Farm Geotagging', icon: MapPin, hint: 'Pin farms on the map' },
+
       { to: '/gis-map', label: 'Livestock GIS Map', icon: Map, hint: 'Where the animals are' },
       {
         to: '/outbreak-map',
@@ -107,19 +104,23 @@ export const NAV: NavSection[] = [
     short: 'Disease',
     icon: Activity,
     items: [
-      { to: '/cases', label: 'Incident Reports', icon: FileWarning, hint: 'Report and list disease cases' },
-      { to: '/case-tracking', label: 'Case Tracking', icon: ListChecks, hint: 'Every case by stage' },
+      {
+        to: '/cases',
+        label: 'Incident Reports',
+        icon: FileWarning,
+        hint: 'Report disease cases; table or board by stage',
+      },
       {
         to: '/investigation',
         label: 'Investigation & Lab',
         icon: Microscope,
-        hint: 'Site visits and lab samples',
+        hint: 'Lab results awaited and field visits due',
       },
       {
         to: '/response',
         label: 'Response Activities',
         icon: ShieldCheck,
-        hint: 'Quarantine, culling, disinfection',
+        hint: 'Quarantines and checkpoints in force',
       },
       { to: '/vaccinations', label: 'Vaccinations', icon: Syringe, hint: 'Vaccination records and coverage' },
     ],
@@ -131,8 +132,12 @@ export const NAV: NavSection[] = [
     icon: BarChart3,
     items: [
       { to: '/analytics', label: 'Analytics', icon: BarChart3, hint: 'Charts and trends' },
-      { to: '/reports', label: 'Reports', icon: FileText, hint: 'Ready-made reports' },
-      { to: '/export', label: 'Report Export', icon: Download, hint: 'Download as Excel, CSV or PDF' },
+      {
+        to: '/reports',
+        label: 'Reports',
+        icon: FileText,
+        hint: 'Ready-made reports; download as Excel, CSV or PDF',
+      },
     ],
   },
   {

@@ -28,6 +28,47 @@ function checkPairs(d: {
   if (Object.keys(fieldErrors).length) throw badRequest('Validation failed', { fieldErrors });
 }
 
+/**
+ * Open cases copy the farm's pin, barangay and zone when reported. When the farm record is corrected
+ * (moved pin, fixed barangay), the open cases that still carry the old farm values follow it, so the
+ * case maps and barangay figures stay right. Closed cases keep their history; a case pinned to its own
+ * spot on the map is left alone.
+ */
+async function syncOpenCases(
+  before: { id: number; lat: number | null; lng: number | null; barangay: string; zone: string | null },
+  after: { lat: number | null; lng: number | null; barangay: string; zone: string | null },
+) {
+  let moved = 0;
+  if (before.lat !== after.lat || before.lng !== after.lng) {
+    moved = (
+      await prisma.diseaseCase.updateMany({
+        where: {
+          farmId: before.id,
+          closedAt: null,
+          locationSource: 'Farm Coordinates',
+          lat: before.lat,
+          lng: before.lng,
+        },
+        data:
+          after.lat != null && after.lng != null
+            ? { lat: after.lat, lng: after.lng }
+            : { lat: null, lng: null, locationSource: null },
+      })
+    ).count;
+  }
+  if (before.barangay !== after.barangay)
+    await prisma.diseaseCase.updateMany({
+      where: { farmId: before.id, closedAt: null, barangay: before.barangay },
+      data: { barangay: after.barangay },
+    });
+  if (before.zone !== after.zone)
+    await prisma.diseaseCase.updateMany({
+      where: { farmId: before.id, closedAt: null, zone: before.zone },
+      data: { zone: after.zone },
+    });
+  return moved;
+}
+
 /** Open cases on this farm that still have no map location. */
 const unmappedCaseCount = (farmId: number) =>
   prisma.diseaseCase.count({ where: { farmId, closedAt: null, OR: [{ lat: null }, { lng: null }] } });
@@ -209,7 +250,14 @@ farmsRouter.patch(
     };
     checkPairs({ ...before, ...changes });
     const f = await prisma.farm.update({ where: { id }, data: changes });
-    await logActivity('farm', id, 'updated', `Farm ${f.code} updated`, req.user?.name);
+    const moved = await syncOpenCases(before, f);
+    await logActivity(
+      'farm',
+      id,
+      'updated',
+      `Farm ${f.code} updated${moved ? ` (${moved} open case pin(s) moved with the farm)` : ''}`,
+      req.user?.name,
+    );
     res.json({ ...f, unmappedCases: f.lat != null ? await unmappedCaseCount(id) : 0 });
   }),
 );
@@ -219,7 +267,10 @@ farmsRouter.patch(
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(farmLocationSchema, req.body);
+    const before = await prisma.farm.findUnique({ where: { id } });
+    if (!before) throw notFound('Farm');
     const f = await prisma.farm.update({ where: { id }, data: { lat: d.lat, lng: d.lng } });
+    await syncOpenCases(before, f);
     await logActivity(
       'farm',
       id,
@@ -249,6 +300,8 @@ farmsRouter.post(
     });
     const f = await prisma.$transaction(async (tx) => {
       const updated = await tx.farm.update({ where: { id }, data: { ownerId } });
+      // Open cases on the farm now list the new owner (the person to inform and coordinate with).
+      await tx.diseaseCase.updateMany({ where: { farmId: id, closedAt: null }, data: { ownerId } });
       // The tagged animals change owner with the farm: give each one an ownership record.
       for (const a of animals) {
         const created = await tx.ownershipTransfer.create({

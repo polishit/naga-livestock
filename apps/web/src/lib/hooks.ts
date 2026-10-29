@@ -72,6 +72,16 @@ export function speciesOnFarm(lookups: Lookups | undefined, farmId: number | str
  * Mutation wrapper: performs the write (queueing offline), refreshes all queries,
  * shows a toast and maps server-side field errors onto the form.
  */
+/**
+ * A field the user emptied in an edit form is sent as null, so the update clears it. (The form turns
+ * an empty box into "no value", which would otherwise be left out of the request and keep the old value.)
+ */
+function withClearedFields<T>(body: T, raw: Record<string, unknown>): T {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const out: Record<string, unknown> = { ...(body as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(raw)) if (v === '' && out[k] === undefined) out[k] = null;
+  return out as T;
+}
 export function useSave<TBody, TRes = unknown>(
   method: 'POST' | 'PATCH' | 'PUT',
   url: string | ((body: TBody) => string),
@@ -87,7 +97,8 @@ export function useSave<TBody, TRes = unknown>(
 ) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: TBody) => {
+    mutationFn: (input: TBody) => {
+      const body = method === 'PATCH' && opts.form ? withClearedFields(input, opts.form.getValues()) : input;
       const u = typeof url === 'function' ? url(body) : url;
       const mo: MutateOptions = {
         label: opts.label ? opts.label(body) : opts.success,

@@ -21,7 +21,13 @@ import { PhotoGallery } from '@/components/forms';
 import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
-import { AnimalDialog, MoveGroupDialog, TransferDialog, type AnimalRecord } from '@/dialogs/animals';
+import {
+  AnimalDialog,
+  hasCowlick,
+  MoveGroupDialog,
+  TransferDialog,
+  type AnimalRecord,
+} from '@/dialogs/animals';
 import type { CaseRow, TransferRow, VaccinationRow } from './types';
 
 type AnimalRow = AnimalRecord & { groupCode: string; barangay: string };
@@ -236,7 +242,9 @@ export function AnimalDetailPage() {
                 ['Sex', a.sex],
                 ['Age', a.estimatedAge ?? (a.dob ? `Born ${fmtDate(a.dob)}` : null)],
                 ['Markings', a.markings],
-                ['Cowlick', a.cowlick],
+                ...(hasCowlick(a.species) || a.cowlick
+                  ? [['Cowlick', a.cowlick] as [string, string | null]]
+                  : []),
                 ['Health', a.health],
                 [
                   'PCIC insurance',

@@ -1,8 +1,6 @@
-import { ChevronLeft, ChevronRight, FileText, Info, Pause, Play, Plus, Radar, Save } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, Info, Pause, Play, Plus, Radar } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import {
   BARANGAYS,
   CASE_STATUSES,
@@ -19,165 +17,17 @@ import {
   titleCase,
   type ReportResult,
 } from '@livestock/shared';
-import { ApiError, isQueued, mutate } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { offerFarmLocationForCases, useApi, useBarangayShapes } from '@/lib/hooks';
+import { useApi, useBarangayShapes } from '@/lib/hooks';
 import { cn, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { ExportButtons } from '@/components/ExportButtons';
-import { MapView, type LatLng } from '@/components/MapView';
+import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, PageHeader, StatCard } from '@/components/page';
 import { CaseLegend, CaseStatusBadge, SpeciesChip } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Checkbox, Input, Tabs } from '@/components/ui';
 import { CaseLocationDialog } from '@/dialogs/surveillance';
 import type { CaseRow, FarmSummary, RadiusResult } from './types';
-
-/* ---------------- Farm geotagging ---------------- */
-
-export function GeotaggingPage() {
-  const [params] = useSearchParams();
-  const { canEdit } = useAuth();
-  const qc = useQueryClient();
-  const [q, setQ] = useState('');
-  const [filter, setFilter] = useState('');
-  const [selectedId, setSelectedId] = useState<number | null>(Number(params.get('farm')) || null);
-  const [point, setPoint] = useState<LatLng | null>(null);
-  const [saving, setSaving] = useState(false);
-  const { data: farms } = useApi<FarmSummary[]>('/api/farms');
-  const selected = farms?.find((f) => f.id === selectedId) ?? null;
-
-  useEffect(() => {
-    setPoint(
-      selected && selected.lat != null && selected.lng != null
-        ? { lat: selected.lat, lng: selected.lng }
-        : null,
-    );
-  }, [selected?.id, selected?.lat, selected?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const list = (farms ?? []).filter(
-    (f) =>
-      (!filter || (filter === 'mapped' ? f.mapped : !f.mapped)) &&
-      (!q || `${f.name} ${f.code} ${f.ownerName} ${f.barangay}`.toLowerCase().includes(q.toLowerCase())),
-  );
-  const dirty = selected && point && (point.lat !== selected.lat || point.lng !== selected.lng);
-
-  const save = async (value: LatLng | null) => {
-    if (!selected) return;
-    setSaving(true);
-    try {
-      const r = await mutate(
-        'PATCH',
-        `/api/farms/${selected.id}/location`,
-        value ?? { lat: null, lng: null },
-        { label: `Geotag ${selected.name}` },
-      );
-      toast[isQueued(r) ? 'info' : 'success'](
-        isQueued(r)
-          ? 'Saved offline — will sync when online.'
-          : value
-            ? `${selected.name} location saved.`
-            : 'Location cleared.',
-      );
-      qc.invalidateQueries();
-      if (value && !isQueued(r))
-        offerFarmLocationForCases(selected.id, (r as { unmappedCases?: number }).unmappedCases, () =>
-          qc.invalidateQueries(),
-        );
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Could not save location');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div>
-      <PageHeader
-        title="Farm Geotagging"
-        subtitle="Select a record, then click the map or drag the pin to set its location."
-      />
-      <Tabs value="farms" onChange={() => undefined} tabs={[{ id: 'farms', label: 'Farms' }]} />
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
-        <Card className="overflow-hidden">
-          <div className="flex gap-2 border-b-2 border-slate-700/80 p-3">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search farm / owner / barangay"
-              aria-label="Search farms"
-            />
-            <FilterSelect
-              label="Mapped filter"
-              value={filter}
-              onChange={setFilter}
-              all="All"
-              options={[
-                { value: 'mapped', label: 'Mapped' },
-                { value: 'unmapped', label: 'Unmapped' },
-              ]}
-              className="w-32 shrink-0"
-            />
-          </div>
-          <ul className="max-h-[300px] overflow-y-auto lg:max-h-[560px]">
-            {list.map((f) => (
-              <li key={f.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(f.id)}
-                  className={cn(
-                    'flex w-full items-start justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left hover:bg-slate-50',
-                    selectedId === f.id && 'bg-brand-light',
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[15px] text-slate-900">{f.name}</span>
-                    <span className="block truncate text-[12.5px] text-slate-500">
-                      {f.code} · {f.barangay} · {f.ownerName}
-                    </span>
-                  </span>
-                  {f.mapped ? <Badge tone="green">Mapped</Badge> : <Badge tone="red">Unmapped</Badge>}
-                </button>
-              </li>
-            ))}
-            {!list.length && <li className="p-4 text-sm text-slate-500">No farms match.</li>}
-          </ul>
-        </Card>
-        <div>
-          <MapView
-            className="h-[380px] lg:h-[480px]"
-            farms={(farms ?? []).filter((f) => f.id !== selectedId)}
-            pick={selected && canEdit ? { value: point, onChange: setPoint } : undefined}
-            fitKey={selectedId ?? 'none'}
-          />
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {selected ? (
-              <div className="text-[15px] text-slate-700">
-                <b className="font-medium text-slate-900">{selected.name}</b> ·{' '}
-                {point
-                  ? `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`
-                  : 'No coordinates yet — click the map to place the pin.'}
-              </div>
-            ) : (
-              <div className="text-[15px] text-slate-600">Select a farm from the list to begin.</div>
-            )}
-            {selected && canEdit && (
-              <div className="flex gap-2">
-                {selected.mapped && (
-                  <Button variant="outline" onClick={() => save(null)} loading={saving}>
-                    Clear
-                  </Button>
-                )}
-                <Button disabled={!dirty} loading={saving} onClick={() => save(point)}>
-                  <Save /> Save location
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ---------------- Livestock GIS map ---------------- */
 
@@ -1008,8 +858,8 @@ export function RadiusPage() {
             <div className="mt-4 flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[14.5px] text-slate-700">
               <Info className="h-4 w-4 text-sky-600" /> {data.excluded} active farm(s) excluded — no
               coordinates.{' '}
-              <Link to="/geotagging?filter=unmapped" className="underline">
-                Geotag
+              <Link to="/farms?location=unmapped" className="underline">
+                Set their locations
               </Link>
             </div>
           )}

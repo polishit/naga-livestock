@@ -507,6 +507,15 @@ function pointOf(lat: unknown, lng: unknown) {
     : null;
 }
 
+/** A farm has a pasture when any pasture detail was recorded. */
+export function farmHasPasture(f?: {
+  pastureArea: number | null;
+  pastureLocation: string | null;
+  pastureLat: number | null;
+}) {
+  return !!f && (f.pastureArea != null || !!f.pastureLocation || f.pastureLat != null);
+}
+
 export function FarmDialog({
   open,
   onOpenChange,
@@ -535,15 +544,22 @@ export function FarmDialog({
     remarks: farm?.remarks ?? '',
   } as any);
   const geo = useAddressLookup(form, { address: 'address', barangay: 'barangay' });
-  // Which pin a map click places: the farm itself or its pasture (grazing area away from the farm).
-  const [pinFor, setPinFor] = useState<'farm' | 'pasture'>('farm');
+  // A map click on the pasture map fills in the pasture's address the same way.
+  const pastureGeo = useAddressLookup(form, { address: 'pastureLocation' });
+  // Pasture details are asked only when the animals graze on a pasture.
+  const [hasPasture, setHasPasture] = useState(false);
+  const type = form.watch('type');
   useEffect(() => {
     if (open) {
       geo.reset();
-      setPinFor('farm');
+      pastureGeo.reset();
+      setHasPasture(farmHasPasture(farm) || farm?.type === 'pasture');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  useEffect(() => {
+    if (open && type === 'pasture') setHasPasture(true);
+  }, [open, type]);
   const save = useSave<any, { id: number }>(
     editing ? 'PATCH' : 'POST',
     editing ? `/api/farms/${farm!.id}` : '/api/farms',
@@ -577,6 +593,22 @@ export function FarmDialog({
     }
   };
 
+  const submit = form.handleSubmit((v) => {
+    if (!hasPasture) {
+      // No pasture: any pasture details entered before are removed.
+      save.mutate({ ...v, pastureArea: null, pastureLocation: null, pastureLat: null, pastureLng: null });
+      return;
+    }
+    if (!v.pastureLocation && v.pastureLat == null) {
+      form.setError('pastureLocation', {
+        type: 'manual',
+        message: 'Describe where the pasture is, or click its spot on the pasture map',
+      });
+      return;
+    }
+    save.mutate(v);
+  });
+
   return (
     <Dialog
       open={open}
@@ -594,12 +626,7 @@ export function FarmDialog({
         </>
       }
     >
-      <form
-        id="farm-form"
-        noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
-        className="grid grid-cols-1 gap-5 lg:grid-cols-2"
-      >
+      <form id="farm-form" noValidate onSubmit={submit} className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {editing ? (
             <Field
@@ -659,11 +686,8 @@ export function FarmDialog({
               ))}
             </Select>
           </Field>
-          <Field label="Zone / Purok" error={err(e, 'zone')}>
+          <Field label="Zone / Purok" error={err(e, 'zone')} className="sm:col-span-2">
             <Input {...form.register('zone')} />
-          </Field>
-          <Field label="Pasture area (ha)" error={err(e, 'pastureArea')}>
-            <Input type="number" step="0.01" min={0} {...form.register('pastureArea')} />
           </Field>
           <Field label="Farm address" error={err(e, 'address')} className="sm:col-span-2">
             <Input {...form.register('address')} />
@@ -672,68 +696,23 @@ export function FarmDialog({
             <Input inputMode="decimal" {...form.register('lat')} />
           </Field>
           <Field label="Longitude" error={err(e, 'lng')}>
-            <Input inputMode="decimal" {...form.register('lng')} />
-          </Field>
-          <Field
-            label="Pasture location"
-            hint="Where the animals graze, if away from the farm"
-            error={err(e, 'pastureLocation')}
-            className="sm:col-span-2"
-          >
-            <Input
-              placeholder="e.g. Communal pasture, Zone 3, Brgy. Carolina"
-              {...form.register('pastureLocation')}
-            />
-          </Field>
-          <Field label="Pasture latitude" error={err(e, 'pastureLat')}>
-            <Input inputMode="decimal" {...form.register('pastureLat')} />
-          </Field>
-          <Field label="Pasture longitude" error={err(e, 'pastureLng')}>
-            <Input inputMode="decimal" {...form.register('pastureLng')} />
+             <Input inputMode="decimal" {...form.register('lng')} />
           </Field>
           <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
             <Input {...form.register('remarks')} />
           </Field>
         </div>
         <div>
-          <div
-            className="mb-2 inline-flex rounded-md border border-slate-300 p-0.5"
-            role="group"
-            aria-label="Pin to place"
-          >
-            {(['farm', 'pasture'] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={pinFor === k}
-                onClick={() => setPinFor(k)}
-                className={
-                  pinFor === k
-                    ? 'rounded bg-brand-strong px-3 py-1 text-[13px] font-medium text-white'
-                    : 'rounded px-3 py-1 text-[13px] text-slate-600 hover:bg-slate-50'
-                }
-              >
-                {k === 'farm' ? 'Farm location' : 'Pasture location'}
-              </button>
-            ))}
-          </div>
           <p className="mb-2 text-[13px] text-slate-500">
-            {pinFor === 'farm'
-              ? 'Click the map to set the farm location; drag the pin to adjust. The address and barangay are filled in automatically. Coordinates are optional.'
-              : 'Click the map where the animals graze (shown as a green "P" on maps). Outbreak radius checks include the pasture.'}
+            Click the map to set the farm location; drag the pin to adjust. The address and barangay are
+            filled in automatically. Coordinates are optional.
           </p>
           <MapView
             className="h-64 sm:h-80"
-            farms={pinFor === 'pasture' && point ? [{ id: 0, name: 'Farm', ...point }] : []}
-            pastures={pinFor === 'farm' && pasture ? [{ id: 0, name: 'Pasture', ...pasture }] : []}
+            pastures={hasPasture && pasture ? [{ id: 0, name: 'Pasture', ...pasture }] : []}
             pick={{
-              value: pinFor === 'farm' ? point : pasture,
+              value: point,
               onChange: (p) => {
-                if (pinFor === 'pasture') {
-                  form.setValue('pastureLat', String(p.lat) as any);
-                  form.setValue('pastureLng', String(p.lng) as any);
-                  return;
-                }
                 form.setValue('lat', String(p.lat) as any);
                 form.setValue('lng', String(p.lng) as any);
                 geo.lookup(p.lat, p.lng);
@@ -743,6 +722,61 @@ export function FarmDialog({
           />
           <AddressLookupHint state={geo.state} onApplySuggestion={geo.applySuggestion} />
         </div>
+
+        <section aria-label="Pasture" className="rounded-lg border border-slate-200 p-4 lg:col-span-2">
+          <Checkbox
+            label="The animals graze on a pasture (grazing area)"
+            checked={hasPasture}
+            onChange={setHasPasture}
+          />
+          {hasPasture && (
+            <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Pasture area (ha)" error={err(e, 'pastureArea')}>
+                  <Input type="number" step="0.01" min={0} {...form.register('pastureArea')} />
+                </Field>
+                <Field
+                  label="Pasture location *"
+                  hint="Filled in when you click the pasture map"
+                  error={err(e, 'pastureLocation')}
+                  className="sm:col-span-2"
+                >
+                  <Input
+                    placeholder="e.g. Communal pasture, Zone 3, Brgy. Carolina"
+                    {...form.register('pastureLocation')}
+                  />
+                </Field>
+                <Field label="Pasture latitude" error={err(e, 'pastureLat')}>
+                  <Input inputMode="decimal" {...form.register('pastureLat')} />
+                </Field>
+                <Field label="Pasture longitude" error={err(e, 'pastureLng')}>
+                  <Input inputMode="decimal" {...form.register('pastureLng')} />
+                </Field>
+              </div>
+              <div>
+                <p className="mb-2 text-[13px] text-slate-500">
+                  Click where the animals graze (a green &quot;P&quot; on maps). Outbreak radius checks
+                  include the pasture.
+                </p>
+                <MapView
+                  className="h-56 sm:h-64"
+                  farms={point ? [{ id: 0, name: 'Farm', ...point }] : []}
+                  pick={{
+                    value: pasture,
+                    onChange: (p) => {
+                      form.setValue('pastureLat', String(p.lat) as any);
+                      form.setValue('pastureLng', String(p.lng) as any);
+                      form.clearErrors('pastureLocation');
+                      pastureGeo.lookup(p.lat, p.lng);
+                    },
+                  }}
+                  fitKey={hasPasture ? 'pasture' : 'none'}
+                />
+                <AddressLookupHint state={pastureGeo.state} onApplySuggestion={pastureGeo.applySuggestion} />
+              </div>
+            </div>
+          )}
+        </section>
       </form>
     </Dialog>
   );

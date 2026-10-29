@@ -55,6 +55,9 @@ export interface AnimalRecord {
   ownerName: string;
 }
 
+/** Species whose cowlicks (hair whorls) are recorded for identification. */
+export const hasCowlick = (species?: string | null) => species === 'Cattle' || species === 'Carabao';
+
 export function AnimalDialog({
   open,
   onOpenChange,
@@ -105,6 +108,8 @@ export function AnimalDialog({
   );
   const e = form.formState.errors;
   const selectedGroup = lookups?.groups.find((g) => String(g.id) === String(form.watch('groupId')));
+  // Cowlicks (hair whorls) identify cattle and carabao on ownership papers; other species skip it.
+  const showCowlick = hasCowlick(selectedGroup?.species ?? animal?.species) || !!animal?.cowlick;
   return (
     <Dialog
       open={open}
@@ -125,7 +130,13 @@ export function AnimalDialog({
       <form
         id="animal-form"
         noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate({ ...v, photoKeys: kept }))}
+        onSubmit={form.handleSubmit((v) =>
+          save.mutate({
+            ...v,
+            ...(showCowlick ? {} : { cowlick: editing ? null : undefined }),
+            photoKeys: kept,
+          }),
+        )}
         className="grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
         {!editing && (
@@ -179,9 +190,16 @@ export function AnimalDialog({
         <Field label="Health status" error={err(e, 'health')}>
           <Input {...form.register('health')} />
         </Field>
-        <Field label="Cowlick / distinguishing marks" error={err(e, 'cowlick')} className="sm:col-span-2">
-          <Input {...form.register('cowlick')} />
-        </Field>
+        {showCowlick && (
+          <Field
+            label="Cowlick (hair whorl) pattern"
+            hint="Number and position of the whorls, as on the ownership certificate"
+            error={err(e, 'cowlick')}
+            className="sm:col-span-2"
+          >
+            <Input {...form.register('cowlick')} placeholder="e.g. 2 on forehead, 1 on back" />
+          </Field>
+        )}
         {editing && (
           <Field label="Status" error={err(e, 'status')}>
             <Select {...form.register('status')}>
@@ -638,9 +656,24 @@ export function StrayUpdateDialog({
   if (!stray) return null;
   const status = form.watch('status');
   const finePaid = form.watch('finePaid');
-  const unpaidRelease =
-    (status === 'RELEASED' || status === 'CLOSED') && Number(form.watch('fineAmount') || 0) > 0 && !finePaid;
+  const hasFine = Number(form.watch('fineAmount') || 0) > 0;
+  // Show each part only when it applies: impoundment once the animal is impounded (or later),
+  // release once it is released or closed, payment details once there is a fine and it is paid.
+  const showImpound = status !== 'REPORTED';
+  const showRelease = status === 'RELEASED' || status === 'CLOSED';
+  const unpaidRelease = showRelease && hasFine && !finePaid;
   const today = isoDate();
+  // Hidden parts are emptied before saving so the record holds only what applies.
+  const clearHidden = () => {
+    const v = form.getValues() as Record<string, unknown>;
+    const set = (k: string, val: unknown) => form.setValue(k as any, val as any);
+    if (v.status === 'REPORTED') ['impoundedAt', 'impoundPlace'].forEach((k) => set(k, ''));
+    if (v.status !== 'RELEASED' && v.status !== 'CLOSED')
+      ['releasedAt', 'releasedTo'].forEach((k) => set(k, ''));
+    const fine = Number(v.fineAmount || 0) > 0;
+    if (!fine) set('finePaid', false);
+    if (!fine || !v.finePaid) ['orNumber', 'paidAt'].forEach((k) => set(k, ''));
+  };
   return (
     <Dialog
       open={open}
@@ -678,7 +711,14 @@ export function StrayUpdateDialog({
         </div>
         <PhotoGallery keys={stray.photoKeys} className="sm:max-w-[264px]" />
       </div>
-      <form id="stray-update" noValidate onSubmit={form.handleSubmit((v) => save.mutate(v))}>
+      <form
+        id="stray-update"
+        noValidate
+        onSubmit={(ev) => {
+          clearHidden();
+          return form.handleSubmit((v) => save.mutate(v))(ev);
+        }}
+      >
         <fieldset disabled={!canEdit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Status" error={err(e, 'status')}>
             <Select {...form.register('status')}>
@@ -714,45 +754,68 @@ export function StrayUpdateDialog({
             <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />
           </div>
 
-          <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Impoundment and release</h3>
-          <Field label={`Impound date${status === 'IMPOUNDED' ? ' *' : ''}`} error={err(e, 'impoundedAt')}>
-            <Input type="date" min={foundOn} max={today} {...form.register('impoundedAt')} />
-          </Field>
-          <Field label={`Impound place${status === 'IMPOUNDED' ? ' *' : ''}`} error={err(e, 'impoundPlace')}>
-            <Input placeholder="e.g. City pound, Brgy. hall" {...form.register('impoundPlace')} />
-          </Field>
-          <Field label={`Release date${status === 'RELEASED' ? ' *' : ''}`} error={err(e, 'releasedAt')}>
-            <Input
-              type="date"
-              min={form.watch('impoundedAt') || foundOn}
-              max={today}
-              {...form.register('releasedAt')}
-            />
-          </Field>
-          <Field label={`Released to${status === 'RELEASED' ? ' *' : ''}`} error={err(e, 'releasedTo')}>
-            <Input placeholder="Name of the person who claimed it" {...form.register('releasedTo')} />
-          </Field>
+          {showImpound && (
+            <>
+              <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Impoundment</h3>
+              <Field
+                label={`Impound date${status === 'IMPOUNDED' ? ' *' : ''}`}
+                error={err(e, 'impoundedAt')}
+              >
+                <Input type="date" min={foundOn} max={today} {...form.register('impoundedAt')} />
+              </Field>
+              <Field
+                label={`Impound place${status === 'IMPOUNDED' ? ' *' : ''}`}
+                error={err(e, 'impoundPlace')}
+              >
+                <Input placeholder="e.g. City pound, Brgy. hall" {...form.register('impoundPlace')} />
+              </Field>
+            </>
+          )}
+          {showRelease && (
+            <>
+              <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Release</h3>
+              <Field label={`Release date${status === 'RELEASED' ? ' *' : ''}`} error={err(e, 'releasedAt')}>
+                <Input
+                  type="date"
+                  min={form.watch('impoundedAt') || foundOn}
+                  max={today}
+                  {...form.register('releasedAt')}
+                />
+              </Field>
+              <Field label={`Released to${status === 'RELEASED' ? ' *' : ''}`} error={err(e, 'releasedTo')}>
+                <Input placeholder="Name of the person who claimed it" {...form.register('releasedTo')} />
+              </Field>
+            </>
+          )}
 
           <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Penalty</h3>
           <Field label="Fine (₱)" error={err(e, 'fineAmount')}>
             <Input type="number" min={0} step="0.01" {...form.register('fineAmount')} />
           </Field>
-          <Field label="Payment" error={err(e, 'finePaid')}>
-            <label className="flex h-10 items-center gap-2 text-[15px] text-slate-700">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 accent-[#1d6fd8]"
-                {...form.register('finePaid')}
-              />
-              Fine paid
-            </label>
-          </Field>
-          <Field label={`Official receipt (OR) no.${finePaid ? ' *' : ''}`} error={err(e, 'orNumber')}>
-            <Input {...form.register('orNumber')} />
-          </Field>
-          <Field label="Date paid" error={err(e, 'paidAt')}>
-            <Input type="date" min={foundOn} max={today} {...form.register('paidAt')} />
-          </Field>
+          {hasFine ? (
+            <Field label="Payment" error={err(e, 'finePaid')}>
+              <label className="flex h-10 items-center gap-2 text-[15px] text-slate-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300 accent-[#1d6fd8]"
+                  {...form.register('finePaid')}
+                />
+                Fine paid
+              </label>
+            </Field>
+          ) : (
+            <p className="self-end pb-2.5 text-[13px] text-slate-500">Leave blank if no fine was imposed.</p>
+          )}
+          {hasFine && finePaid && (
+            <>
+              <Field label="Official receipt (OR) no. *" error={err(e, 'orNumber')}>
+                <Input {...form.register('orNumber')} />
+              </Field>
+              <Field label="Date paid" error={err(e, 'paidAt')}>
+                <Input type="date" min={foundOn} max={today} {...form.register('paidAt')} />
+              </Field>
+            </>
+          )}
           {unpaidRelease && (
             <p
               role="status"

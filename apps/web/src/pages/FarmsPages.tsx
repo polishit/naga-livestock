@@ -1,6 +1,6 @@
 import { Archive, ClipboardList, MapPin, Pencil, Plus, Printer, Syringe } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { BARANGAYS, FARM_TYPES, fmtDate, fmtMonth, titleCase } from '@livestock/shared';
@@ -16,16 +16,24 @@ import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/com
 import { ActiveBadge, CaseStatusBadge, RecordStatusBadge, SpeciesChip } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Tabs } from '@/components/ui';
 import { AnimalDialog } from '@/dialogs/animals';
-import { FarmDialog, GroupDialog, GroupEditDialog, PopulationUpdateDialog } from '@/dialogs/registry';
+import {
+  FarmDialog,
+  GroupDialog,
+  GroupEditDialog,
+  PopulationUpdateDialog,
+  farmHasPasture,
+} from '@/dialogs/registry';
 import { VaccinationDialog } from '@/dialogs/surveillance';
 import type { CaseRow, FarmSummary, VaccinationRow } from './types';
 
 export function FarmsPage() {
   const navigate = useNavigate();
   const { canEdit } = useAuth();
+  const [params] = useSearchParams();
   const [barangay, setBarangay] = useState('');
   const [type, setType] = useState('');
-  const [location, setLocation] = useState('');
+  // ?location=unmapped lists the farms that still need a map pin.
+  const [location, setLocation] = useState(params.get('location') ?? '');
   const [open, setOpen] = useState(false);
   const { data, isLoading, error } = useApi<FarmSummary[]>(`/api/farms${qs({ barangay, type, location })}`);
   return (
@@ -232,11 +240,6 @@ export function FarmDetailPage() {
             </Button>
             {canEdit && !f.archived && (
               <>
-                <Button variant="outline" asChild>
-                  <Link to={`/geotagging?farm=${f.id}`}>
-                    <MapPin /> {f.mapped ? 'Edit location' : 'Geotag'}
-                  </Link>
-                </Button>
                 <Button variant="outline" onClick={() => setDlg('vax')}>
                   <Syringe /> Vaccination
                 </Button>
@@ -292,18 +295,21 @@ export function FarmDetailPage() {
                     ['Type', titleCase(f.type)],
                     ['Barangay / Zone', `${f.barangay}${f.zone ? ` · ${f.zone}` : ''}`],
                     ['Address', f.address],
-                    ['Pasture area', f.pastureArea != null ? `${f.pastureArea} ha` : null],
-                    [
-                      'Pasture location',
-                      f.pastureLocation || f.pastureLat != null
-                        ? [
-                            f.pastureLocation,
-                            f.pastureLat != null ? `${f.pastureLat}, ${f.pastureLng}` : null,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')
-                        : null,
-                    ],
+                    // Pasture details appear only for farms whose animals graze on a pasture.
+                    ...(farmHasPasture(f)
+                      ? ([
+                          ['Pasture area', f.pastureArea != null ? `${f.pastureArea} ha` : null],
+                          [
+                            'Pasture location',
+                            [
+                              f.pastureLocation,
+                              f.pastureLat != null ? `${f.pastureLat}, ${f.pastureLng}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · '),
+                          ],
+                        ] as [string, string | null][])
+                      : []),
                     [
                       'Coordinates',
                       f.mapped ? `${f.lat}, ${f.lng}` : <Badge tone="red">No coordinates</Badge>,
@@ -336,8 +342,13 @@ export function FarmDetailPage() {
                     }
                   />
                 ) : (
-                  <div className="flex h-[340px] items-center justify-center rounded-lg border border-dashed text-sm text-slate-500">
+                  <div className="flex h-[340px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-sm text-slate-500">
                     This farm has no coordinates yet.
+                    {canEdit && !f.archived && (
+                      <Button variant="outline" size="sm" onClick={() => setDlg('edit')}>
+                        <MapPin /> Set location
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

@@ -9,6 +9,7 @@ import {
   CASE_STATUSES,
   ASF_RESPONSE_STEPS,
   CASE_STATUS_LABELS,
+  RESPONSE_TYPES_WITH_END,
   checkCaseStatus,
   isAsfDisease,
   MAX_PHOTOS,
@@ -18,7 +19,6 @@ import {
   fmtDate,
   fmtDateTime,
   isoDate,
-  titleCase,
   type CaseOutcome,
   type CaseStatus,
   type ResponseType,
@@ -32,7 +32,18 @@ import { PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
 import { CaseStatusBadge, ClosedBadge, GeotagBadge, LabResultBadge } from '@/components/status';
-import { Badge, Button, Card, CardHeader, Field, Input, Select, Tabs, Textarea } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Field,
+  Input,
+  Select,
+  Tabs,
+  Textarea,
+  type Tone,
+} from '@/components/ui';
 import { PopulationUpdateDialog, type GroupRow } from '@/dialogs/registry';
 import {
   CaseCloseDialog,
@@ -54,24 +65,90 @@ import type { CaseRow } from './types';
 export function CasesPage() {
   const navigate = useNavigate();
   const { canEdit } = useAuth();
+  const [params, setParams] = useSearchParams();
+  // Table (list) or Board (one column per surveillance stage); ?view=board opens the board.
+  const view = params.get('view') === 'board' ? 'board' : 'table';
+  const setView = (v: 'table' | 'board') => setParams(v === 'board' ? { view: v } : {}, { replace: true });
   const [barangay, setBarangay] = useState('');
   const [location, setLocation] = useState('');
   const [state, setState] = useState('open');
   const { data, isLoading, error } = useApi<CaseRow[]>(`/api/cases${qs({ barangay, location, state })}`);
+  const filters = (
+    <>
+      <FilterSelect
+        label="Barangay"
+        value={barangay}
+        onChange={setBarangay}
+        options={BARANGAYS}
+        all="All barangays"
+        className="w-[calc(50%-4px)] sm:w-48"
+      />
+      <FilterSelect
+        label="Location status"
+        value={location}
+        onChange={setLocation}
+        options={[
+          { value: 'mapped', label: 'Mapped' },
+          { value: 'unmapped', label: 'Awaiting geotagging' },
+        ]}
+        all="Any location status"
+        className="w-[calc(50%-4px)] sm:w-56"
+      />
+      <FilterSelect
+        label="Case state"
+        value={state}
+        onChange={setState}
+        options={[
+          { value: 'open', label: 'Open cases' },
+          { value: 'closed', label: 'Closed cases' },
+        ]}
+        all="All cases"
+        className="w-full sm:w-44"
+      />
+    </>
+  );
   return (
     <div>
       <PageHeader
         title="Disease Incident Reports"
         actions={
-          canEdit && (
-            <Button onClick={() => navigate('/cases/new')}>
-              <Plus /> Report incident
-            </Button>
-          )
+          <>
+            <div
+              className="inline-flex rounded-md border border-slate-300 p-0.5"
+              role="group"
+              aria-label="View"
+            >
+              {(['table', 'board'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={view === v}
+                  onClick={() => setView(v)}
+                  className={
+                    view === v
+                      ? 'rounded bg-brand-strong px-3 py-1.5 text-[13.5px] font-medium text-white'
+                      : 'rounded px-3 py-1.5 text-[13.5px] text-slate-600 hover:bg-slate-50'
+                  }
+                >
+                  {v === 'table' ? 'Table' : 'Board'}
+                </button>
+              ))}
+            </div>
+            {canEdit && (
+              <Button onClick={() => navigate('/cases/new')}>
+                <Plus /> Report incident
+              </Button>
+            )}
+          </>
         }
       />
       {error ? (
         <ErrorBox error={error} />
+      ) : view === 'board' ? (
+        <>
+          <Card className="mb-3 flex flex-wrap gap-2 p-3">{filters}</Card>
+          {isLoading ? <Loading /> : <CaseBoard cases={data ?? []} showClosed={state !== 'open'} />}
+        </>
       ) : (
         <Card>
           <DataTable
@@ -85,50 +162,18 @@ export function CasesPage() {
             mobileTitle="disease"
             minWidth={980}
             defaultSort={{ key: 'reportedAt', dir: 'desc' }}
-            toolbar={
-              <>
-                <FilterSelect
-                  label="Barangay"
-                  value={barangay}
-                  onChange={setBarangay}
-                  options={BARANGAYS}
-                  all="All barangays"
-                  className="w-[calc(50%-4px)] sm:w-48"
-                />
-                <FilterSelect
-                  label="Location status"
-                  value={location}
-                  onChange={setLocation}
-                  options={[
-                    { value: 'mapped', label: 'Mapped' },
-                    { value: 'unmapped', label: 'Awaiting geotagging' },
-                  ]}
-                  all="Any location status"
-                  className="w-[calc(50%-4px)] sm:w-56"
-                />
-                <FilterSelect
-                  label="Case state"
-                  value={state}
-                  onChange={setState}
-                  options={[
-                    { value: 'open', label: 'Open cases' },
-                    { value: 'closed', label: 'Closed cases' },
-                  ]}
-                  all="All cases"
-                  className="w-full sm:w-44"
-                />
-              </>
-            }
+            toolbar={filters}
             columns={[
               { key: 'code', header: 'Case' },
               { key: 'reportedAt', header: 'Reported', cell: (r) => fmtDate(r.reportedAt) },
               { key: 'disease', header: 'Disease' },
               { key: 'farmName', header: 'Farm' },
               { key: 'species', header: 'Species' },
+              { key: 'assignedToName', header: 'Assigned to', cell: (r) => r.assignedToName ?? '—' },
               {
                 key: 'status',
                 header: 'Status',
-                sort: (r) => CASE_STATUSES.indexOf(r.status),
+                sort: (r) => (r.closed ? 99 : CASE_STATUSES.indexOf(r.status)),
                 cell: (r) => (
                   <div className="flex flex-wrap gap-1.5">
                     <CaseStatusBadge status={r.status} />
@@ -141,6 +186,70 @@ export function CasesPage() {
           />
         </Card>
       )}
+    </div>
+  );
+}
+
+/** Cases as cards, one column per surveillance stage (plus Closed), oldest report first. */
+function CaseBoard({ cases, showClosed }: { cases: CaseRow[]; showClosed: boolean }) {
+  const navigate = useNavigate();
+  const columns = [
+    ...CASE_STATUSES.map((s) => ({
+      key: s as string,
+      label: CASE_STATUS_LABELS[s],
+      items: cases.filter((c) => c.status === s && !c.closed),
+    })),
+    ...(showClosed ? [{ key: 'CLOSED', label: 'Closed', items: cases.filter((c) => c.closed) }] : []),
+  ].map((col) => ({
+    ...col,
+    items: [...col.items].sort((a, b) => a.reportedAt.localeCompare(b.reportedAt)),
+  }));
+  return (
+    <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+      <div
+        className="grid min-w-[1150px] gap-3"
+        style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
+      >
+        {columns.map(({ key, label, items }) => (
+          <div
+            key={key}
+            className={cn(
+              'min-h-[320px] rounded-lg p-2',
+              key === 'CLOSED' ? 'bg-slate-200/60' : 'bg-slate-100/80',
+            )}
+          >
+            <div className="flex items-center justify-between px-1.5 pb-2 pt-1 text-[13.5px] font-medium text-slate-700">
+              {label} <span className="text-slate-500">{items.length}</span>
+            </div>
+            <div className="space-y-2">
+              {items.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => navigate(`/cases/${c.id}`)}
+                  className="w-full rounded-md border border-slate-200 bg-white p-2.5 text-left shadow-sm hover:border-brand"
+                >
+                  <div className="text-[13.5px] font-semibold text-slate-900">{c.code}</div>
+                  <div className="text-[13px] text-slate-700">{c.disease}</div>
+                  <div className="mt-1 text-[12px] text-slate-400">
+                    {c.barangay} · {fmtDate(c.reportedAt)}
+                  </div>
+                  {key === 'CLOSED' && (
+                    <div className="mt-1.5">
+                      <CaseStatusBadge status={c.status} />
+                    </div>
+                  )}
+                  {!c.mapped && !c.closed && (
+                    <div className="mt-1.5">
+                      <GeotagBadge />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -567,13 +676,19 @@ export function CaseStepper({ status }: { status: CaseStatus }) {
   );
 }
 
-type CaseTab = 'overview' | 'investigation' | 'laboratory' | 'response' | 'map' | 'history';
+const CASE_TABS = ['overview', 'investigation', 'laboratory', 'response', 'map', 'history'] as const;
+type CaseTab = (typeof CASE_TABS)[number];
 
 export function CaseDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { canEdit: canWrite, isAdmin } = useAuth();
-  const [tab, setTab] = useState<CaseTab>('overview');
+  const [params] = useSearchParams();
+  // Work lists link straight to a tab, e.g. /cases/12?tab=laboratory.
+  const [tab, setTab] = useState<CaseTab>(() => {
+    const t = params.get('tab');
+    return CASE_TABS.includes(t as CaseTab) ? (t as CaseTab) : 'overview';
+  });
   const [dlg, setDlg] = useState<
     null | 'status' | 'location' | 'inv' | 'lab' | 'resp' | 'close' | 'edit' | 'pop' | 'void'
   >(null);

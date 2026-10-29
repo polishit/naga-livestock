@@ -5,6 +5,7 @@ import {
   CASE_STATUS_LABELS,
   INVESTIGATION_VISIT_LABELS,
   RESPONSE_STATUS_LABELS,
+  RESPONSE_TYPES_WITH_END,
   RESPONSE_TYPE_LABELS,
   caseCloseSchema,
   caseCreateSchema,
@@ -861,6 +862,112 @@ labsRouter.patch(
       return updated;
     });
     res.json(u);
+  }),
+);
+
+/** Whole days from a date column to today (negative when the date is still ahead). */
+const daysSince = (d: Date) => Math.round((Date.parse(today()) - Date.parse(ymd(d)!)) / 86400_000);
+
+/**
+ * The surveillance work across all open cases, for the Investigation & Lab and Response Activities
+ * pages: laboratory samples still awaiting a result, field visits that are due (including cases not
+ * visited yet), and response measures in force, ongoing or planned.
+ */
+recordsRouter.get(
+  '/case-worklist',
+  ah(async (_req, res) => {
+    const open = { closedAt: null };
+    const caseInfo = (c: {
+      id: number;
+      code: string;
+      disease: string;
+      barangay: string;
+      farm: { name: string };
+    }) => ({
+      caseId: c.id,
+      caseCode: c.code,
+      disease: c.disease,
+      barangay: c.barangay,
+      farmName: c.farm.name,
+    });
+    const labs = await prisma.labRecord.findMany({
+      where: { voidedAt: null, result: 'PENDING', case: open },
+      include: { case: { include: { farm: true } } },
+      orderBy: [{ sentAt: 'asc' }, { id: 'asc' }],
+    });
+    const cases = await prisma.diseaseCase.findMany({
+      where: open,
+      include: {
+        farm: true,
+        investigations: { where: { voidedAt: null }, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
+      },
+      orderBy: { reportedAt: 'asc' },
+    });
+    const visits = cases
+      .map((c) => {
+        const last = c.investigations[0];
+        // Not visited yet: the initial visit is due from the day the case was reported.
+        if (!last) return { ...caseInfo(c), kind: 'INITIAL', due: ymd(c.reportedAt)!, lastVisit: null };
+        if (!last.nextVisit) return null;
+        return { ...caseInfo(c), kind: 'FOLLOW_UP', due: ymd(last.nextVisit)!, lastVisit: ymd(last.date) };
+      })
+      .filter((v) => v !== null)
+      .map((v) => ({ ...v, overdue: v.due < today() }))
+      .sort((a, b) => a.due.localeCompare(b.due));
+    const responses = await prisma.responseActivity.findMany({
+      where: { voidedAt: null, case: open },
+      include: { case: { include: { farm: true } } },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+    const t = today();
+    const measures = responses
+      .map((r) => {
+        const withEnd = RESPONSE_TYPES_WITH_END.includes(r.type as ResponseType);
+        const started = ymd(r.date)! <= t;
+        const lifted = r.endDate != null && ymd(r.endDate)! <= t;
+        // Quarantine, movement restriction and checkpoints stay in force until their end date.
+        const state =
+          r.status === 'PLANNED'
+            ? 'PLANNED'
+            : withEnd && started && !lifted
+              ? 'IN_FORCE'
+              : r.status === 'ONGOING'
+                ? 'ONGOING'
+                : null;
+        if (!state) return null;
+        return {
+          id: r.id,
+          ...caseInfo(r.case),
+          type: r.type,
+          typeLabel: RESPONSE_TYPE_LABELS[r.type as ResponseType] ?? r.type,
+          state,
+          status: r.status,
+          date: ymd(r.date),
+          endDate: ymd(r.endDate),
+          location: r.location,
+          personnel: r.personnel,
+          // A planned measure whose date has passed, or one that should have ended, needs an update.
+          late: (r.status === 'PLANNED' && started) || (r.status === 'ONGOING' && lifted),
+        };
+      })
+      .filter((m) => m !== null);
+    res.json({
+      labs: labs.map((l) => ({
+        id: l.id,
+        ...caseInfo(l.case),
+        sampleId: l.sampleId,
+        sampleType: l.sampleType,
+        testMethod: l.testMethod,
+        laboratory: l.laboratory,
+        collectedAt: ymd(l.collectedAt),
+        sentAt: ymd(l.sentAt),
+        // Days since the sample was sent (or collected, if not sent yet).
+        waitingDays: l.sentAt ? daysSince(l.sentAt) : l.collectedAt ? daysSince(l.collectedAt) : null,
+        sent: l.sentAt != null,
+      })),
+      visits,
+      measures,
+    });
   }),
 );
 

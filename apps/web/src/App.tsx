@@ -19,7 +19,6 @@ const AnimalDetailPage = lazy(() =>
 );
 const OwnershipPage = lazy(() => import('@/pages/AnimalsPages').then((m) => ({ default: m.OwnershipPage })));
 const StraysPage = lazy(() => import('@/pages/StraysPage'));
-const GeotaggingPage = lazy(() => import('@/pages/GisPages').then((m) => ({ default: m.GeotaggingPage })));
 const GisMapPage = lazy(() => import('@/pages/GisPages').then((m) => ({ default: m.GisMapPage })));
 const OutbreakMapPage = lazy(() => import('@/pages/GisPages').then((m) => ({ default: m.OutbreakMapPage })));
 const RadiusPage = lazy(() => import('@/pages/GisPages').then((m) => ({ default: m.RadiusPage })));
@@ -27,9 +26,6 @@ const BarangayMapPage = lazy(() => import('@/pages/GisPages').then((m) => ({ def
 const CasesPage = lazy(() => import('@/pages/CasesPages').then((m) => ({ default: m.CasesPage })));
 const CaseNewPage = lazy(() => import('@/pages/CasesPages').then((m) => ({ default: m.CaseNewPage })));
 const CaseDetailPage = lazy(() => import('@/pages/CasesPages').then((m) => ({ default: m.CaseDetailPage })));
-const CaseTrackingPage = lazy(() =>
-  import('@/pages/CasesPages').then((m) => ({ default: m.CaseTrackingPage })),
-);
 const InvestigationPage = lazy(() =>
   import('@/pages/CasesPages').then((m) => ({ default: m.InvestigationPage })),
 );
@@ -39,9 +35,6 @@ const ResponseActivitiesPage = lazy(() =>
 const VaccinationsPage = lazy(() => import('@/pages/VaccinationsPage'));
 const AnalyticsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.AnalyticsPage })));
 const ReportsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.ReportsPage })));
-const ReportExportPage = lazy(() =>
-  import('@/pages/ReportsPages').then((m) => ({ default: m.ReportExportPage })),
-);
 const UsersPage = lazy(() => import('@/pages/AdminPages').then((m) => ({ default: m.UsersPage })));
 const SettingsPage = lazy(() => import('@/pages/AdminPages').then((m) => ({ default: m.SettingsPage })));
 
@@ -81,7 +74,8 @@ export default function App() {
           <Route path="animals/:id" element={<AnimalDetailPage />} />
           <Route path="ownership" element={<OwnershipPage />} />
           <Route path="strays" element={<StraysPage />} />
-          <Route path="geotagging" element={<GeotaggingPage />} />
+          {/* Merged pages: old links and bookmarks land on the page that replaced them. */}
+          <Route path="geotagging" element={<Navigate to="/farms?location=unmapped" replace />} />
           <Route path="gis-map" element={<GisMapPage />} />
           <Route path="outbreak-map" element={<OutbreakMapPage />} />
           <Route path="radius" element={<RadiusPage />} />
@@ -96,13 +90,13 @@ export default function App() {
             }
           />
           <Route path="cases/:id" element={<CaseDetailPage />} />
-          <Route path="case-tracking" element={<CaseTrackingPage />} />
+          <Route path="case-tracking" element={<Navigate to="/cases?view=board" replace />} />
           <Route path="investigation" element={<InvestigationPage />} />
           <Route path="response" element={<ResponseActivitiesPage />} />
           <Route path="vaccinations" element={<VaccinationsPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="reports" element={<ReportsPage />} />
-          <Route path="export" element={<ReportExportPage />} />
+          <Route path="export" element={<Navigate to="/reports" replace />} />
           <Route
             path="users"
             element={
