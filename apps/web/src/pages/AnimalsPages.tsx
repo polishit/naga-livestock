@@ -67,6 +67,7 @@ export function AnimalsPage() {
           </div>
           <DataTable
             rows={data}
+            empty="No tagged animals found. Select “Register animal” to give an animal its ID / ear tag."
             loading={isLoading}
             rowKey={(r) => r.id}
             onRowClick={(r) => navigate(`/animals/${r.id}`)}

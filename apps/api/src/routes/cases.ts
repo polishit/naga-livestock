@@ -102,6 +102,8 @@ casesRouter.get(
     ).map(serializeCase);
     if (location === 'mapped') rows = rows.filter((r) => r.mapped);
     if (location === 'unmapped') rows = rows.filter((r) => !r.mapped);
+    const disease = qstr(req.query.disease);
+    if (disease) rows = rows.filter((r) => r.disease === disease);
     // state=open → active cases only; state=closed → finished cases only; anything else → all.
     const state = qstr(req.query.state);
     if (state === 'open') rows = rows.filter((r) => !r.closed);

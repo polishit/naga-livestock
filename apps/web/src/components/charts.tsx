@@ -21,20 +21,41 @@ const AXIS = { fontSize: 11, fill: '#475569' };
 const GRID = <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" vertical={false} />;
 const LEGEND = <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />;
 
+/** Click handler for a bar or slice: passes the clicked row to `onSelect`. */
+type OnSelect<T> = ((row: T) => void) | undefined;
+const pick = <T,>(onSelect: OnSelect<T>) =>
+  onSelect
+    ? {
+        cursor: 'pointer',
+        onClick: (e: unknown) => {
+          const row = (e as { payload?: T } | undefined)?.payload;
+          if (row) onSelect(row);
+        },
+      }
+    : {};
+
 export function ChartCard({
   title,
   children,
   note,
   className,
+  clickable,
 }: {
   title: ReactNode;
   children: ReactNode;
   note?: ReactNode;
   className?: string;
+  /** Show that clicking the chart opens the matching records. */
+  clickable?: boolean;
 }) {
   return (
     <Card className={className}>
-      <CardHeader title={title} />
+      <CardHeader
+        title={title}
+        actions={
+          clickable ? <span className="text-[12px] text-slate-400">Click to see the records</span> : undefined
+        }
+      />
       <div className="px-3 pb-3 pt-4">
         <div className="h-[260px]">{children}</div>
         {note && <p className="mt-2 px-1 text-[12px] text-slate-500">{note}</p>}
@@ -43,7 +64,13 @@ export function ChartCard({
   );
 }
 
-export function SpeciesDonut({ data }: { data: { species: string; count: number }[] }) {
+export function SpeciesDonut({
+  data,
+  onSelect,
+}: {
+  data: { species: string; count: number }[];
+  onSelect?: (row: { species: string; count: number }) => void;
+}) {
   const sorted = [...data].sort((a, b) => a.species.localeCompare(b.species));
   return (
     <ResponsiveContainer>
@@ -57,6 +84,7 @@ export function SpeciesDonut({ data }: { data: { species: string; count: number 
           paddingAngle={1}
           stroke="#fff"
           strokeWidth={2}
+          {...pick(onSelect)}
         >
           {sorted.map((d) => (
             <Cell key={d.species} fill={SPECIES_COLORS[d.species as Species] ?? '#9ca3af'} />
@@ -125,7 +153,13 @@ export function CasesLine({ data }: { data: { label: string; reported: number; p
   );
 }
 
-export function BarangayBars({ data }: { data: { barangay: string; count: number }[] }) {
+export function BarangayBars({
+  data,
+  onSelect,
+}: {
+  data: { barangay: string; count: number }[];
+  onSelect?: (row: { barangay: string; count: number }) => void;
+}) {
   return (
     <ResponsiveContainer>
       <BarChart data={data} margin={{ left: -8, right: 8, top: 6, bottom: 26 }}>
@@ -140,7 +174,7 @@ export function BarangayBars({ data }: { data: { barangay: string; count: number
         />
         <YAxis tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
         <Tooltip formatter={(v: number) => v.toLocaleString()} />
-        <Bar dataKey="count" name="Head" fill="#16a34a" radius={[2, 2, 0, 0]} />
+        <Bar dataKey="count" name="Head" fill="#16a34a" radius={[2, 2, 0, 0]} {...pick(onSelect)} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -183,11 +217,17 @@ export function CoverageBars({
 }
 
 const STATUS_COLORS = ['#166534', '#7c3aed', '#dc2626', '#16a34a', '#0ea5e9', '#f59e0b'];
-export function StatusPie({ data }: { data: { label: string; count: number }[] }) {
+export function StatusPie<T extends { label: string; count: number }>({
+  data,
+  onSelect,
+}: {
+  data: T[];
+  onSelect?: (row: T) => void;
+}) {
   return (
     <ResponsiveContainer>
       <PieChart>
-        <Pie data={data} dataKey="count" nameKey="label" outerRadius="80%" stroke="#fff">
+        <Pie data={data} dataKey="count" nameKey="label" outerRadius="80%" stroke="#fff" {...pick(onSelect)}>
           {data.map((d, i) => (
             <Cell key={d.label} fill={STATUS_COLORS[i % STATUS_COLORS.length]} />
           ))}
@@ -199,7 +239,13 @@ export function StatusPie({ data }: { data: { label: string; count: number }[] }
   );
 }
 
-export function DiseaseBars({ data }: { data: { disease: string; count: number }[] }) {
+export function DiseaseBars({
+  data,
+  onSelect,
+}: {
+  data: { disease: string; count: number }[];
+  onSelect?: (row: { disease: string; count: number }) => void;
+}) {
   return (
     <ResponsiveContainer>
       <BarChart data={data} layout="vertical" margin={{ left: 10, right: 16 }}>
@@ -213,7 +259,7 @@ export function DiseaseBars({ data }: { data: { disease: string; count: number }
           tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 21)}…` : v)}
         />
         <Tooltip />
-        <Bar dataKey="count" name="Cases" fill="#dc2626" barSize={18} />
+        <Bar dataKey="count" name="Cases" fill="#dc2626" barSize={18} {...pick(onSelect)} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -256,11 +302,25 @@ const TYPE_COLORS: Record<string, string> = {
   pasture: '#0ea5e9',
   poultry: '#dc2626',
 };
-export function FarmTypeDonut({ data }: { data: { type: string; count: number }[] }) {
+export function FarmTypeDonut({
+  data,
+  onSelect,
+}: {
+  data: { type: string; count: number }[];
+  onSelect?: (row: { type: string; count: number }) => void;
+}) {
   return (
     <ResponsiveContainer>
       <PieChart>
-        <Pie data={data} dataKey="count" nameKey="type" innerRadius="45%" outerRadius="80%" stroke="#fff">
+        <Pie
+          data={data}
+          dataKey="count"
+          nameKey="type"
+          innerRadius="45%"
+          outerRadius="80%"
+          stroke="#fff"
+          {...pick(onSelect)}
+        >
           {data.map((d) => (
             <Cell key={d.type} fill={TYPE_COLORS[d.type] ?? '#94a3b8'} />
           ))}
@@ -272,7 +332,13 @@ export function FarmTypeDonut({ data }: { data: { type: string; count: number }[
   );
 }
 
-export function LargestFarmsBars({ data }: { data: { name: string; total: number }[] }) {
+export function LargestFarmsBars<T extends { name: string; total: number }>({
+  data,
+  onSelect,
+}: {
+  data: T[];
+  onSelect?: (row: T) => void;
+}) {
   return (
     <ResponsiveContainer>
       <BarChart data={data} margin={{ left: -8, right: 8, top: 6, bottom: 30 }}>
@@ -288,7 +354,7 @@ export function LargestFarmsBars({ data }: { data: { name: string; total: number
         />
         <YAxis tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
         <Tooltip />
-        <Bar dataKey="total" name="Head" fill="#166534" />
+        <Bar dataKey="total" name="Head" fill="#166534" {...pick(onSelect)} />
       </BarChart>
     </ResponsiveContainer>
   );

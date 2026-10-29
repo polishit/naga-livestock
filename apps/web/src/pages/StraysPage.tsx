@@ -15,13 +15,14 @@ export default function StraysPage() {
   const { canEdit } = useAuth();
   const [barangay, setBarangay] = useState('');
   const [status, setStatus] = useState('');
-  const [open, setOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  // ?new=1 (from the "+ New" menu) opens the report form straight away.
+  const [open, setOpen] = useState(params.get('new') === '1');
   const [selected, setSelected] = useState<StrayRecord | null>(null);
   const { data, isLoading, error } = useApi<(StrayRecord & { mapped: boolean })[]>(
     `/api/strays${qs({ barangay, status })}`,
   );
   // Opened from an owner's page: /strays?open=<incident id>
-  const [params, setParams] = useSearchParams();
   const openId = Number(params.get('open')) || 0;
   useEffect(() => {
     const s = openId && data?.find((r) => r.id === openId);
@@ -48,6 +49,7 @@ export default function StraysPage() {
         <Card>
           <DataTable
             rows={data}
+            empty="No stray incidents found. Select “Report incident” when an animal is found wandering."
             loading={isLoading}
             rowKey={(r) => r.id}
             onRowClick={(r) => setSelected(r)}

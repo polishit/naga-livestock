@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
   MIN_DATE,
@@ -26,6 +26,7 @@ import {
 } from '@/components/charts';
 import { DataTable } from '@/components/DataTable';
 import { ExportButtons } from '@/components/ExportButtons';
+import { CompareKpis, DataQualityCard, HotspotsCard, TargetsCard } from '@/components/insights';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, Loading, PageHeader, SummaryChips } from '@/components/page';
 import { Card, Field, Input, Tabs } from '@/components/ui';
@@ -34,6 +35,7 @@ import type { CaseRow, FarmSummary, Overview } from './types';
 /* ---------------- Analytics ---------------- */
 
 export function AnalyticsPage() {
+  const navigate = useNavigate();
   const [barangay, setBarangay] = useState('');
   const [species, setSpecies] = useState('');
   const [months, setMonths] = useState('6');
@@ -42,7 +44,7 @@ export function AnalyticsPage() {
     <div>
       <PageHeader
         title="Analytics"
-        subtitle="Interactive charts — all derived from the authoritative metrics module."
+        subtitle="How the city is doing over the chosen period. Click a bar or slice to open the records behind it."
         actions={
           <>
             <FilterSelect
@@ -80,47 +82,70 @@ export function AnalyticsPage() {
       ) : isLoading || !data ? (
         <Loading />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <ChartCard
-            title="Monthly population trend"
-            note="Carried-forward values are not field-verified for that month."
-          >
-            <TrendBars data={data.trend} />
-          </ChartCard>
-          <ChartCard title="Livestock by species">
-            <SpeciesDonut data={data.bySpecies} />
-          </ChartCard>
-          <ChartCard title="Population by barangay">
-            <BarangayBars data={data.byBarangay} />
-          </ChartCard>
-          <ChartCard title="Disease cases per month">
-            <CasesLine data={data.casesPerMonth} />
-          </ChartCard>
-          <ChartCard title="Cases by status">
-            <StatusPie data={data.casesByStatus} />
-          </ChartCard>
-          <ChartCard title="Cases by suspected disease">
-            <DiseaseBars data={data.casesByDisease} />
-          </ChartCard>
-          <ChartCard
-            title="Vaccination coverage by species"
-            note="Estimated coverage is based on aggregate events; exact applies to tagged animals only."
-          >
-            <CoverageBars data={data.coverage} />
-          </ChartCard>
-          <ChartCard
-            title="Vaccination activity"
-            note="Events and doses are raw totals, not distinct animals."
-          >
-            <VaccinationLine data={data.vaccinationActivity} />
-          </ChartCard>
-          <ChartCard title="Farms by type">
-            <FarmTypeDonut data={data.farmsByType} />
-          </ChartCard>
-          <ChartCard title="Largest farms (current population)">
-            <LargestFarmsBars data={data.largestFarms} />
-          </ChartCard>
-        </div>
+        <>
+          <CompareKpis barangay={barangay} species={species} months={months} />
+          <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <HotspotsCard />
+            <TargetsCard />
+            <DataQualityCard barangay={barangay} />
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ChartCard
+              title="Monthly population trend"
+              note="Carried-forward values are not field-verified for that month."
+            >
+              <TrendBars data={data.trend} />
+            </ChartCard>
+            <ChartCard title="Livestock by species" clickable>
+              <SpeciesDonut
+                data={data.bySpecies}
+                onSelect={(r) => navigate(`/population${qs({ species: r.species, barangay })}`)}
+              />
+            </ChartCard>
+            <ChartCard title="Population by barangay" clickable>
+              <BarangayBars
+                data={data.byBarangay}
+                onSelect={(r) => navigate(`/farms${qs({ barangay: r.barangay })}`)}
+              />
+            </ChartCard>
+            <ChartCard title="Disease cases per month">
+              <CasesLine data={data.casesPerMonth} />
+            </ChartCard>
+            <ChartCard title="Cases by status" clickable>
+              <StatusPie
+                data={data.casesByStatus}
+                onSelect={(r) => navigate(`/cases${qs({ status: r.status, barangay, state: 'all' })}`)}
+              />
+            </ChartCard>
+            <ChartCard title="Cases by suspected disease" clickable>
+              <DiseaseBars
+                data={data.casesByDisease}
+                onSelect={(r) => navigate(`/cases${qs({ disease: r.disease, barangay, state: 'all' })}`)}
+              />
+            </ChartCard>
+            <ChartCard
+              title="Vaccination coverage by species"
+              note="Estimated coverage is based on aggregate events; exact applies to tagged animals only."
+            >
+              <CoverageBars data={data.coverage} />
+            </ChartCard>
+            <ChartCard
+              title="Vaccination activity"
+              note="Events and doses are raw totals, not distinct animals."
+            >
+              <VaccinationLine data={data.vaccinationActivity} />
+            </ChartCard>
+            <ChartCard title="Farms by type" clickable>
+              <FarmTypeDonut
+                data={data.farmsByType}
+                onSelect={(r) => navigate(`/farms${qs({ type: r.type, barangay })}`)}
+              />
+            </ChartCard>
+            <ChartCard title="Largest farms (current population)" clickable>
+              <LargestFarmsBars data={data.largestFarms} onSelect={(r) => navigate(`/farms/${r.id}`)} />
+            </ChartCard>
+          </div>
+        </>
       )}
     </div>
   );
@@ -287,12 +312,16 @@ function OutbreakReport({ initialCase, initialRadius }: { initialCase?: string; 
 
 export function ReportsPage() {
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as ReportCategory) ?? 'population';
+  // Opens on the accomplishment report; links can pick a tab and report, e.g. ?tab=population&type=...
+  const tab = (params.get('tab') as ReportCategory) ?? 'summary';
   const types = REPORT_TYPES.filter((t) => t.category === tab && t.id !== 'outbreak-area');
-  const [type, setType] = useState(types[0]?.id ?? '');
+  const wanted = params.get('type');
+  const [type, setType] = useState(types.find((t) => t.id === wanted)?.id ?? types[0]?.id ?? '');
   const [f, setF] = useState({ barangay: '', species: '', from: '', to: '' });
   useEffect(() => {
-    setType(REPORT_TYPES.filter((t) => t.category === tab && t.id !== 'outbreak-area')[0]?.id ?? '');
+    const list = REPORT_TYPES.filter((t) => t.category === tab && t.id !== 'outbreak-area');
+    setType(list.find((t) => t.id === wanted)?.id ?? list[0]?.id ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   const { data, isLoading, error } = useApi<ReportResult>(
     tab !== 'outbreak' && type ? `/api/reports/${type}${qs(f)}` : null,

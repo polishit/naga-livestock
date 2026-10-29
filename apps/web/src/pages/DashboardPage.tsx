@@ -33,6 +33,7 @@ import {
 } from '@/components/charts';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, Loading, PageHeader, StatCard } from '@/components/page';
+import { HotspotBanner, MyTasksCard, WelcomeCard } from '@/components/insights';
 import { CaseLegend } from '@/components/status';
 import { Badge, Button, Card, CardHeader } from '@/components/ui';
 import type { Overview } from './types';
@@ -101,6 +102,8 @@ export default function DashboardPage() {
         <Loading />
       ) : (
         <>
+          <WelcomeCard />
+          <HotspotBanner />
           <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <StatCard label="Registered owners" value={fmtNumber(data.stats.owners)} icon={Users} />
             <StatCard
@@ -136,6 +139,10 @@ export default function DashboardPage() {
               icon={MapPinOff}
               tone="red"
             />
+          </div>
+
+          <div className="mt-4">
+            <MyTasksCard />
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
@@ -209,22 +216,6 @@ export default function DashboardPage() {
             >
               <CoverageBars data={data.coverage} />
             </ChartCard>
-            <Card>
-              <CardHeader title="Attention needed" />
-              <ul className="max-h-[300px] space-y-2.5 overflow-y-auto px-4 py-4">
-                {data.attention.length === 0 && (
-                  <li className="text-sm text-slate-500">Nothing needs attention.</li>
-                )}
-                {data.attention.map((a, i) => (
-                  <li key={i} className="flex items-center justify-between gap-3">
-                    <Link to={a.href} className="truncate text-[15px] text-brand-dark hover:underline">
-                      {a.label}
-                    </Link>
-                    <Badge tone={a.kind === 'Overdue' ? 'orange' : 'red'}>{a.kind}</Badge>
-                  </li>
-                ))}
-              </ul>
-            </Card>
           </div>
         </>
       )}

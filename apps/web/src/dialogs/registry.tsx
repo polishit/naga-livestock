@@ -59,7 +59,21 @@ export interface OwnerRecord {
   status: string;
 }
 
-export function OwnerDialog({ open, onOpenChange, owner }: DialogProps & { owner?: OwnerRecord }) {
+/** Used by the "Register a raiser" guide to chain the owner → farm → animals forms. */
+interface WizardProps {
+  /** e.g. "Step 1 of 3", shown in the title. */
+  step?: string;
+  /** Called with the new record's id instead of opening its page. */
+  onCreated?: (id: number) => void;
+}
+
+export function OwnerDialog({
+  open,
+  onOpenChange,
+  owner,
+  step,
+  onCreated,
+}: DialogProps & WizardProps & { owner?: OwnerRecord }) {
   const navigate = useNavigate();
   const editing = !!owner;
   const form = useZodForm(editing ? ownerUpdateSchema : ownerCreateSchema, {});
@@ -83,6 +97,7 @@ export function OwnerDialog({ open, onOpenChange, owner }: DialogProps & { owner
       label: (b) => `${editing ? 'Update' : 'Register'} owner ${b.fullName}`,
       form,
       onDone: (res) => {
+        if (!editing && !isQueued(res) && onCreated) return onCreated((res as { id: number }).id);
         onOpenChange(false);
         if (!editing && !isQueued(res)) navigate(`/owners/${(res as { id: number }).id}`);
       },
@@ -93,7 +108,7 @@ export function OwnerDialog({ open, onOpenChange, owner }: DialogProps & { owner
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? `Edit ${owner!.code}` : 'Register livestock owner'}
+      title={editing ? `Edit ${owner!.code}` : `${step ? `${step}: ` : ''}Register livestock owner`}
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -521,7 +536,9 @@ export function FarmDialog({
   onOpenChange,
   ownerId,
   farm,
-}: DialogProps & { ownerId?: number; farm?: FarmEditRecord }) {
+  step,
+  onCreated,
+}: DialogProps & WizardProps & { ownerId?: number; farm?: FarmEditRecord }) {
   const navigate = useNavigate();
   const { data: lookups } = useLookups();
   const [ownerQ, setOwnerQ] = useState('');
@@ -568,6 +585,7 @@ export function FarmDialog({
       label: (b) => `${editing ? 'Update' : 'Register'} farm ${b.name}`,
       form,
       onDone: (res) => {
+        if (!editing && !isQueued(res) && onCreated) return onCreated((res as { id: number }).id);
         onOpenChange(false);
         if (!editing && !isQueued(res)) navigate(`/farms/${(res as { id: number }).id}`);
         if (editing && !isQueued(res))
@@ -613,7 +631,7 @@ export function FarmDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? `Edit ${farm!.code}` : 'Register farm'}
+      title={editing ? `Edit ${farm!.code}` : `${step ? `${step}: ` : ''}Register farm`}
       size="lg"
       footer={
         <>
@@ -784,7 +802,13 @@ export function FarmDialog({
 
 /* ---------------- population ---------------- */
 
-export function GroupDialog({ open, onOpenChange, farmId }: DialogProps & { farmId: number }) {
+export function GroupDialog({
+  open,
+  onOpenChange,
+  farmId,
+  step,
+  onCreated,
+}: DialogProps & WizardProps & { farmId: number }) {
   const form = useZodForm(groupCreateSchema, {});
   useResetOnOpen(open, form, {
     farmId: String(farmId),
@@ -801,14 +825,17 @@ export function GroupDialog({ open, onOpenChange, farmId }: DialogProps & { farm
     success: 'Population group added.',
     label: (b) => `Add ${b.species} group`,
     form,
-    onDone: () => onOpenChange(false),
+    onDone: (res) => {
+      if (onCreated) return onCreated(isQueued(res) ? 0 : (res as { id: number }).id);
+      onOpenChange(false);
+    },
   });
   const e = form.formState.errors;
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Add population group"
+      title={`${step ? `${step}: ` : ''}Add population group (head count)`}
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

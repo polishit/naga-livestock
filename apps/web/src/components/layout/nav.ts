@@ -30,6 +30,8 @@ export interface NavItem {
   /** One plain-language line shown in the phone menu and as a tooltip. */
   hint: string;
   adminOnly?: boolean;
+  /** Reached from a tab on another page; kept here only for the page title and breadcrumbs. */
+  hidden?: boolean;
 }
 export interface NavSection {
   id: string;
@@ -82,7 +84,12 @@ export const NAV: NavSection[] = [
     icon: Map,
     items: [
 
-      { to: '/gis-map', label: 'Livestock GIS Map', icon: Map, hint: 'Where the animals are' },
+      {
+        to: '/gis-map',
+        label: 'Livestock Map',
+        icon: Map,
+        hint: 'Farms, cases and barangays on the map',
+      },
       {
         to: '/outbreak-map',
         label: 'Disease Outbreak Map',
@@ -95,6 +102,7 @@ export const NAV: NavSection[] = [
         label: 'Barangay Map',
         icon: MapPinned,
         hint: 'Barangays shaded by livestock or cases',
+        hidden: true,
       },
     ],
   },

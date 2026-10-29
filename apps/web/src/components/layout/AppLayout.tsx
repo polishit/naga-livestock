@@ -28,6 +28,8 @@ import { useApi, useOnline, usePendingCount } from '@/lib/hooks';
 import { dismissInstall, installDismissed, useInstall } from '@/lib/install';
 import { cn } from '@/lib/utils';
 import { Logo } from '../Logo';
+import { PageHelp } from '../PageHelp';
+import { QuickNew } from '../QuickNew';
 import { Button, Dialog } from '../ui';
 import { NAV, crumbsFor, sectionFor, type NavSection } from './nav';
 

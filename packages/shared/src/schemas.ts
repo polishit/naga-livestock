@@ -631,6 +631,25 @@ export const settingsSchema = z.object({
 });
 export type SettingsInput = z.infer<typeof settingsSchema>;
 
+/** Yearly vaccination targets (doses to give per vaccine and species), set by an admin. */
+export const vaccinationTargetsSchema = z.object({
+  year: intField(2000, undefined, 2100),
+  targets: z
+    .array(
+      z.object({
+        vaccine: reqText(120),
+        species: z.enum(SPECIES, { errorMap: () => ({ message: 'Select a species' }) }),
+        target: intField(1, undefined, 10_000_000),
+      }),
+    )
+    .max(50)
+    .refine(
+      (ts) => new Set(ts.map((t) => `${t.vaccine.trim().toLowerCase()}|${t.species}`)).size === ts.length,
+      { message: 'Each vaccine and species can have only one target' },
+    ),
+});
+export type VaccinationTargetsInput = z.infer<typeof vaccinationTargetsSchema>;
+
 /* ---------- reports ---------- */
 
 export const reportQuerySchema = z

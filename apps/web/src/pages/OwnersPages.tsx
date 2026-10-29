@@ -1,6 +1,6 @@
-import { Archive, IdCard, Pencil, Plus, RotateCcw } from 'lucide-react';
+import { Archive, IdCard, Pencil, Plus, RotateCcw, UserPlus } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { BARANGAYS, OWNER_STATUSES, fmtDate, fmtDateTime, titleCase } from '@livestock/shared';
@@ -23,6 +23,7 @@ import {
   type OwnerRecord,
   type PcicRecord,
 } from '@/dialogs/registry';
+import { RegisterRaiser } from '@/dialogs/RegisterRaiser';
 import type { CaseRow, FarmSummary, TransferRow, VaccinationRow } from './types';
 
 interface OwnerRow {
@@ -43,8 +44,11 @@ export function OwnersPage() {
   const [barangay, setBarangay] = useState('');
   const [status, setStatus] = useState('');
   const [archived, setArchived] = useState(false);
-  const [rsbsa, setRsbsa] = useState('');
+  const [params] = useSearchParams();
+  // ?rsbsa=no lists the owners still without an RSBSA number (linked from Record completeness).
+  const [rsbsa, setRsbsa] = useState(params.get('rsbsa') ?? '');
   const [open, setOpen] = useState(false);
+  const [raiser, setRaiser] = useState(false);
   const {
     data: all,
     isLoading,
@@ -60,9 +64,15 @@ export function OwnersPage() {
         subtitle={`${activeCount} registered owners`}
         actions={
           canEdit && (
-            <Button onClick={() => setOpen(true)}>
-              <Plus /> Register owner
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setOpen(true)}>
+                <Plus /> Register owner
+              </Button>
+              {/* Owner, farm and animals in one guided flow. */}
+              <Button onClick={() => setRaiser(true)}>
+                <UserPlus /> Register raiser
+              </Button>
+            </>
           )
         }
       />
@@ -72,6 +82,7 @@ export function OwnersPage() {
         <Card>
           <DataTable
             rows={data}
+            empty="No owners found. Clear the filters, or select “Register raiser” to add the first one."
             loading={isLoading}
             rowKey={(r) => r.id}
             onRowClick={(r) => navigate(`/owners/${r.id}`)}
@@ -126,6 +137,7 @@ export function OwnersPage() {
         </Card>
       )}
       <OwnerDialog open={open} onOpenChange={setOpen} />
+      <RegisterRaiser open={raiser} onOpenChange={setRaiser} />
     </div>
   );
 }
@@ -308,7 +320,7 @@ export function OwnerDetailPage() {
                 },
                 { key: 'tagged', header: 'Tagged' },
               ]}
-              empty="No farms registered for this owner."
+              empty="No farms yet. Select “Add farm” and pin it on the map."
             />
           </Card>
         )}

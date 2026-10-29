@@ -12,6 +12,7 @@ import { env } from './env';
 import { HttpError } from './lib/http';
 import { animalsRouter, straysRouter, transfersRouter } from './routes/animals';
 import { casesRouter, labsRouter, radiusRouter, recordsRouter } from './routes/cases';
+import { insightsRouter } from './routes/insights';
 import { farmsRouter } from './routes/farms';
 import {
   authRouter,
@@ -69,6 +70,7 @@ export function createApp() {
   api.use('/vaccinations', vaccinationsRouter);
   api.use('/users', requireRole('ADMIN'), usersRouter);
   api.use('/settings', settingsRouter);
+  api.use('/insights', insightsRouter);
   api.use('/uploads', uploadsRouter);
   api.use('/files', filesRouter);
   api.use('/', metricsRouter);

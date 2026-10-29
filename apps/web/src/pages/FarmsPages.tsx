@@ -30,8 +30,9 @@ export function FarmsPage() {
   const navigate = useNavigate();
   const { canEdit } = useAuth();
   const [params] = useSearchParams();
-  const [barangay, setBarangay] = useState('');
-  const [type, setType] = useState('');
+  // Filters can come from a link (e.g. a chart on Analytics): ?barangay=…&type=…&location=unmapped
+  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
+  const [type, setType] = useState(params.get('type') ?? '');
   // ?location=unmapped lists the farms that still need a map pin.
   const [location, setLocation] = useState(params.get('location') ?? '');
   const [open, setOpen] = useState(false);
@@ -55,6 +56,7 @@ export function FarmsPage() {
         <Card>
           <DataTable
             rows={data}
+            empty="No farms found. Clear the filters, or select “Register farm” (or “+ New → Register a raiser”)."
             loading={isLoading}
             rowKey={(r) => r.id}
             onRowClick={(r) => navigate(`/farms/${r.id}`)}
@@ -419,7 +421,7 @@ export function FarmDetailPage() {
                     ]
                   : []),
               ]}
-              empty="No population groups yet."
+              empty="No animals counted yet. Select “Add group” for each species kept on this farm, then update the count every month."
             />
           </Card>
         )}
@@ -438,7 +440,7 @@ export function FarmDetailPage() {
                 { key: 'groupCode', header: 'Group' },
                 { key: 'status', header: 'Status', cell: (r) => <ActiveBadge status={r.status} /> },
               ]}
-              empty="No tagged animals on this farm."
+              empty="No tagged animals. Tag cattle, carabao and breeders with “Register animal”; others are counted in groups."
             />
           </Card>
         )}

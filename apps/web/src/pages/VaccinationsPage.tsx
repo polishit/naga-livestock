@@ -98,7 +98,8 @@ export default function VaccinationsPage() {
   const [barangay, setBarangay] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [open, setOpen] = useState(false);
+  // ?new=1 (from the "+ New" menu) opens the vaccination form straight away.
+  const [open, setOpen] = useState(params.get('new') === '1');
   const records = useApi<VaccinationRow[]>(`/api/vaccinations${qs({ barangay })}`);
   const upcoming = useApi<{
     days: number;
@@ -240,6 +241,7 @@ export default function VaccinationsPage() {
             <Card>
               <DataTable
                 rows={records.data}
+                empty="No vaccinations recorded. Select “Record vaccination” after each vaccination activity."
                 loading={records.isLoading}
                 rowKey={(r) => r.id}
                 columns={recordColumns}
@@ -257,7 +259,7 @@ export default function VaccinationsPage() {
               pageSize={0}
               hideFooter
               defaultSort={{ key: 'nextDate', dir: 'asc' }}
-              empty={`No vaccinations due in the next ${upcoming.data?.days ?? 30} days.`}
+              empty={`No vaccinations due in the next ${upcoming.data?.days ?? 30} days. Enter a next dose date when recording a vaccination to see it here.`}
             />
             {!!upcoming.data?.overdueDays && (
               <p className="border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-500">

@@ -31,6 +31,22 @@ import type { CaseRow, FarmSummary, RadiusResult } from './types';
 
 /* ---------------- Livestock GIS map ---------------- */
 
+/** Livestock Map and Barangay Map are one menu item with two tabs. */
+function MapTabs({ value }: { value: 'farms' | 'barangays' }) {
+  const navigate = useNavigate();
+  return (
+    <Tabs
+      className="mb-4"
+      value={value}
+      onChange={(t) => navigate(t === 'farms' ? '/gis-map' : '/barangay-map')}
+      tabs={[
+        { id: 'farms', label: 'Farms & cases' },
+        { id: 'barangays', label: 'By barangay' },
+      ]}
+    />
+  );
+}
+
 export function GisMapPage() {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -60,9 +76,10 @@ export function GisMapPage() {
   return (
     <div>
       <PageHeader
-        title="Livestock GIS Map"
+        title="Livestock Map"
         subtitle={`${shownFarms.length} farms · ${fmtNumber(head)} head · ${mappedCases.length} mapped cases (current filters)`}
       />
+      <MapTabs value="farms" />
       <Card className="p-3 sm:p-4">
         <div className="flex flex-wrap items-center gap-2">
           <Input
@@ -633,6 +650,7 @@ export function BarangayMapPage() {
           </>
         }
       />
+      <MapTabs value="barangays" />
       {shapeError && <ErrorBox error={shapeError} />}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
         <div>

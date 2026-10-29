@@ -1,4 +1,4 @@
-export type ReportCategory = 'population' | 'disease' | 'outbreak' | 'vaccination' | 'ownership';
+export type ReportCategory = 'summary' | 'population' | 'disease' | 'outbreak' | 'vaccination' | 'ownership';
 
 export interface ReportTypeDef {
   id: string;
@@ -7,6 +7,7 @@ export interface ReportTypeDef {
 }
 
 export const REPORT_CATEGORIES: { id: ReportCategory; label: string }[] = [
+  { id: 'summary', label: 'Accomplishment' },
   { id: 'population', label: 'Population' },
   { id: 'disease', label: 'Disease Monitoring' },
   { id: 'outbreak', label: 'Outbreak' },
@@ -16,6 +17,7 @@ export const REPORT_CATEGORIES: { id: ReportCategory; label: string }[] = [
 
 /** All exportable report types. */
 export const REPORT_TYPES: ReportTypeDef[] = [
+  { id: 'accomplishment', title: 'Accomplishment Report', category: 'summary' },
   { id: 'population-by-barangay', title: 'Current Recorded Population by Barangay', category: 'population' },
   { id: 'population-by-species', title: 'Current Recorded Population by Species', category: 'population' },
   { id: 'population-by-farm', title: 'Current Recorded Population by Farm', category: 'population' },

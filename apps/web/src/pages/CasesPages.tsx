@@ -1591,131 +1591,48 @@ function AsfSteps({ detail, onLog }: { detail: CaseDetail; onLog?: (type?: Respo
   );
 }
 
-/* ---------------- Case tracking (board / table) ---------------- */
+/* ---------------- Work lists across open cases ---------------- */
 
-export function CaseTrackingPage() {
-  const navigate = useNavigate();
-  const [stage, setStage] = useState('');
-  const [view, setView] = useState<'board' | 'table'>('board');
-  const { data, isLoading, error } = useApi<CaseRow[]>('/api/cases');
-  // Open cases are shown by stage; finished cases move to the "Closed" column.
-  const stages = CASE_STATUSES.filter((s) => !stage || s === stage);
-  const showClosed = !stage || stage === 'CLOSED';
-  const columns: { key: string; label: string; items: CaseRow[] }[] = [
-    ...(stage === 'CLOSED' ? [] : stages).map((s) => ({
-      key: s,
-      label: CASE_STATUS_LABELS[s],
-      items: (data ?? []).filter((c) => c.status === s && !c.closed),
-    })),
-    ...(showClosed ? [{ key: 'CLOSED', label: 'Closed', items: (data ?? []).filter((c) => c.closed) }] : []),
-  ].map((col) => ({ ...col, items: col.items.sort((a, b) => a.reportedAt.localeCompare(b.reportedAt)) }));
-  const rows = (data ?? []).filter((c) =>
-    !stage ? true : stage === 'CLOSED' ? c.closed : c.status === stage && !c.closed,
-  );
+type WorkCase = { caseId: number; caseCode: string; disease: string; barangay: string; farmName: string };
+export type CaseWorklist = {
+  labs: (WorkCase & {
+    id: number;
+    sampleId: string;
+    sampleType: string;
+    testMethod: string | null;
+    laboratory: string;
+    collectedAt: string | null;
+    sentAt: string | null;
+    waitingDays: number | null;
+    sent: boolean;
+  })[];
+  visits: (WorkCase & {
+    kind: 'INITIAL' | 'FOLLOW_UP';
+    due: string;
+    lastVisit: string | null;
+    overdue: boolean;
+  })[];
+  measures: (WorkCase & {
+    id: number;
+    type: ResponseType;
+    typeLabel: string;
+    state: 'PLANNED' | 'IN_FORCE' | 'ONGOING';
+    status: string;
+    date: string;
+    endDate: string | null;
+    location: string | null;
+    personnel: string | null;
+    late: boolean;
+  })[];
+};
+
+function CaseCell({ r }: { r: WorkCase }) {
   return (
     <div>
-      <PageHeader
-        title="Case Tracking"
-        subtitle="Follow each case through the surveillance stages."
-        actions={
-          <>
-            <FilterSelect
-              label="Stage"
-              value={stage}
-              onChange={setStage}
-              options={[
-                ...CASE_STATUSES.map((s) => ({ value: s, label: CASE_STATUS_LABELS[s] })),
-                { value: 'CLOSED', label: 'Closed' },
-              ]}
-              all="All stages"
-              className="w-[calc(100%-120px)] sm:w-48"
-            />
-            <Button variant="outline" onClick={() => setView(view === 'board' ? 'table' : 'board')}>
-              {view === 'board' ? 'Table view' : 'Board view'}
-            </Button>
-          </>
-        }
-      />
-      {error && <ErrorBox error={error} />}
-      {isLoading ? (
-        <Loading />
-      ) : view === 'board' ? (
-        <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-          <div
-            className="grid min-w-[1150px] gap-3"
-            style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
-          >
-            {columns.map(({ key, label, items }) => {
-              return (
-                <div
-                  key={key}
-                  className={cn(
-                    'min-h-[320px] rounded-lg p-2',
-                    key === 'CLOSED' ? 'bg-slate-200/60' : 'bg-slate-100/80',
-                  )}
-                >
-                  <div className="flex items-center justify-between px-1.5 pb-2 pt-1 text-[13.5px] font-medium text-slate-700">
-                    {label} <span className="text-slate-500">{items.length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {items.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => navigate(`/cases/${c.id}`)}
-                        className="w-full rounded-md border border-slate-200 bg-white p-2.5 text-left shadow-sm hover:border-brand"
-                      >
-                        <div className="text-[13.5px] font-semibold text-slate-900">{c.code}</div>
-                        <div className="text-[13px] text-slate-700">{c.disease}</div>
-                        <div className="mt-1 text-[12px] text-slate-400">
-                          {c.barangay} · {fmtDate(c.reportedAt)}
-                        </div>
-                        {key === 'CLOSED' && (
-                          <div className="mt-1.5">
-                            <CaseStatusBadge status={c.status} />
-                          </div>
-                        )}
-                        {!c.mapped && !c.closed && (
-                          <div className="mt-1.5">
-                            <GeotagBadge />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <Card>
-          <DataTable
-            rows={rows}
-            rowKey={(r) => r.id}
-            onRowClick={(r) => navigate(`/cases/${r.id}`)}
-            pageSize={0}
-            columns={[
-              { key: 'code', header: 'Case' },
-              { key: 'disease', header: 'Disease' },
-              { key: 'barangay', header: 'Barangay' },
-              { key: 'reportedAt', header: 'Reported', cell: (r) => fmtDate(r.reportedAt) },
-              { key: 'assignedToName', header: 'Assigned to' },
-              {
-                key: 'status',
-                header: 'Stage',
-                sort: (r) => (r.closed ? 99 : CASE_STATUSES.indexOf(r.status)),
-                cell: (r) => (
-                  <div className="flex flex-wrap gap-1.5">
-                    <CaseStatusBadge status={r.status} />
-                    {r.closed && <ClosedBadge />}
-                  </div>
-                ),
-              },
-            ]}
-          />
-        </Card>
-      )}
+      <div className="font-medium text-slate-900">{r.caseCode}</div>
+      <div className="text-[12.5px] text-slate-500">
+        {r.disease} · {r.farmName}, {r.barangay}
+      </div>
     </div>
   );
 }
@@ -1724,284 +1641,181 @@ export function CaseTrackingPage() {
 
 export function InvestigationPage() {
   const navigate = useNavigate();
-  const { canEdit: canWrite, isAdmin } = useAuth();
-  const [caseId, setCaseId] = useState('');
-  const [dlg, setDlg] = useState<null | 'inv' | 'lab' | 'void'>(null);
-  const [labEdit, setLabEdit] = useState<LabEditRecord | null>(null);
-  const [voidTarget, setVoidTarget] = useState<{ url: string; what: string } | null>(null);
-  const { data: cases } = useApi<CaseRow[]>('/api/cases');
-  const { data: labs, isLoading } =
-    useApi<(CaseDetail['labs'][number] & { caseId: number; caseCode: string; caseClosed?: boolean })[]>(
-      '/api/labs',
-    );
-  const { data: detail } = useApi<CaseDetail>(caseId ? `/api/cases/${caseId}` : null);
-  const closed = !!detail?.case.closed;
-  const canEdit = canWrite && !closed;
-  const caseStart = detail ? (detail.case.symptomsDate ?? detail.case.reportedAt) : undefined;
-  const afterLabSaved = (v: { result: string }) => {
-    if (!detail || (v.result !== 'POSITIVE' && v.result !== 'NEGATIVE') || v.result === detail.case.status)
-      return;
-    toast(
-      `Result recorded. Update ${detail.case.code}'s status to ${titleCase(v.result)} on the case page.`,
-      {
-        duration: 12000,
-        action: { label: 'Open case', onClick: () => navigate(`/cases/${detail.case.id}`) },
-      },
-    );
-  };
+  const { data, isLoading, error } = useApi<CaseWorklist>('/api/case-worklist');
+  if (error) return <ErrorBox error={error} />;
+  const overdue = data?.visits.filter((v) => v.overdue).length ?? 0;
   return (
     <div>
       <PageHeader
         title="Investigation & Laboratory"
-        subtitle="Site investigations and laboratory sample tracking per case."
-        actions={
-          <FilterSelect
-            label="Case"
-            value={caseId}
-            onChange={setCaseId}
-            all="Select case..."
-            options={[...(cases ?? [])]
-              .sort((a, b) => a.id - b.id)
-              .map((c) => ({
-                value: String(c.id),
-                label: `${c.code} · ${c.disease}${c.closed ? ' (closed)' : ''}`,
-              }))}
-            className="w-full sm:w-80"
-          />
-        }
+        subtitle="What is waiting on open cases: lab results not back yet and field visits that are due. Select a row to work on it in the case."
       />
-      {!caseId ? (
+      <div className="space-y-4">
         <Card>
-          <CardHeader title="All laboratory records" className="border-b-0" />
+          <CardHeader
+            title={`Lab samples awaiting results${data ? ` (${data.labs.length})` : ''}`}
+            className="border-b-0"
+          />
           <DataTable
-            rows={labs}
+            rows={data?.labs}
             loading={isLoading}
             rowKey={(r) => r.id}
-            onRowClick={(r) => setCaseId(String(r.caseId))}
+            onRowClick={(r) => navigate(`/cases/${r.caseId}?tab=laboratory`)}
             pageSize={0}
             hideFooter
+            mobileTitle="sampleId"
             minWidth={820}
+            defaultSort={{ key: 'waitingDays', dir: 'desc' }}
             columns={[
+              { key: 'sampleId', header: 'Sample ID' },
+              { key: 'caseCode', header: 'Case', cell: (r) => <CaseCell r={r} /> },
               {
-                key: 'sampleId',
-                header: 'Sample ID',
-                cell: (r) => <VoidAware r={r}>{r.sampleId}</VoidAware>,
+                key: 'sampleType',
+                header: 'Sample / test',
+                cell: (r) => (r.testMethod ? `${r.sampleType} · ${r.testMethod}` : r.sampleType),
+              },
+              { key: 'laboratory', header: 'Laboratory' },
+              {
+                key: 'sentAt',
+                header: 'Sent',
+                cell: (r) => (r.sent ? fmtDate(r.sentAt) : <Badge tone="amber">Not sent yet</Badge>),
               },
               {
-                key: 'caseCode',
-                header: 'Case',
+                key: 'waitingDays',
+                header: 'Waiting',
+                sort: (r) => r.waitingDays ?? -1,
+                cell: (r) =>
+                  r.waitingDays == null ? '—' : `${r.waitingDays} day${r.waitingDays === 1 ? '' : 's'}`,
+              },
+            ]}
+            empty="No samples are waiting for results."
+          />
+        </Card>
+        <Card>
+          <CardHeader
+            title={`Field visits due${data ? ` (${data.visits.length})` : ''}`}
+            actions={overdue ? <Badge tone="red">{overdue} overdue</Badge> : undefined}
+            className="border-b-0"
+          />
+          <DataTable
+            rows={data?.visits}
+            loading={isLoading}
+            rowKey={(r) => `${r.caseId}-${r.kind}`}
+            onRowClick={(r) => navigate(`/cases/${r.caseId}?tab=investigation`)}
+            pageSize={0}
+            hideFooter
+            mobileTitle="caseCode"
+            minWidth={720}
+            defaultSort={{ key: 'due', dir: 'asc' }}
+            columns={[
+              { key: 'caseCode', header: 'Case', cell: (r) => <CaseCell r={r} /> },
+              {
+                key: 'kind',
+                header: 'Visit',
+                cell: (r) => (r.kind === 'INITIAL' ? 'Initial investigation' : 'Follow-up'),
+              },
+              {
+                key: 'lastVisit',
+                header: 'Last visit',
+                cell: (r) => (r.lastVisit ? fmtDate(r.lastVisit) : '—'),
+              },
+              {
+                key: 'due',
+                header: 'Due',
                 cell: (r) => (
-                  <span className="inline-flex items-center gap-1.5">
-                    {r.caseCode}
-                    {r.caseClosed && <ClosedBadge />}
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    {fmtDate(r.due)}
+                    {r.overdue && <Badge tone="red">Overdue</Badge>}
                   </span>
                 ),
               },
-              { key: 'sampleType', header: 'Type' },
-              { key: 'testMethod', header: 'Test', cell: (r) => r.testMethod ?? '—' },
-              { key: 'laboratory', header: 'Laboratory' },
-              { key: 'sentAt', header: 'Sent', cell: (r) => fmtDate(r.sentAt) },
-              { key: 'result', header: 'Result', cell: (r) => <LabResultBadge result={r.result} /> },
-              { key: 'resultDate', header: 'Result date', cell: (r) => fmtDate(r.resultDate) },
             ]}
-            empty="No laboratory records yet."
+            empty="No field visits are due. Set a next visit date when recording an investigation."
           />
-          <p className="border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-500">
-            Select a record (or a case above) to add investigations, enter results or edit lab records.
-          </p>
         </Card>
-      ) : !detail ? (
-        <Loading />
-      ) : (
-        <div className="space-y-4">
-          <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-[17px] font-semibold text-slate-900">{detail.case.code}</span>
-              <CaseStatusBadge status={detail.case.status} />
-              {closed && <ClosedBadge />}
-              <span className="text-[15px] text-slate-600">
-                {detail.case.farmName} · {detail.case.barangay}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="text-[14px] text-slate-700 hover:underline"
-              onClick={() => navigate(`/cases/${detail.case.id}`)}
-            >
-              Open case profile
-            </button>
-          </Card>
-          <InvestigationTable
-            rows={detail.investigations}
-            closed={closed}
-            onAdd={canEdit ? () => setDlg('inv') : undefined}
-            onVoid={
-              isAdmin && !closed
-                ? (r) => {
-                    setVoidTarget({
-                      url: `/api/investigations/${r.id}/void`,
-                      what: `investigation of ${fmtDate(r.date)}`,
-                    });
-                    setDlg('void');
-                  }
-                : undefined
-            }
-          />
-          <LabTable
-            labs={detail.labs}
-            closed={closed}
-            onAdd={
-              canEdit
-                ? () => {
-                    setLabEdit(null);
-                    setDlg('lab');
-                  }
-                : undefined
-            }
-            onEdit={
-              canEdit
-                ? (l) => {
-                    setLabEdit(l);
-                    setDlg('lab');
-                  }
-                : undefined
-            }
-            onVoid={
-              isAdmin && !closed
-                ? (l) => {
-                    setVoidTarget({ url: `/api/labs/${l.id}/void`, what: `lab record ${l.sampleId}` });
-                    setDlg('void');
-                  }
-                : undefined
-            }
-          />
-          <InvestigationDialog
-            open={dlg === 'inv'}
-            onOpenChange={(o) => setDlg((d) => (o ? 'inv' : d === 'inv' ? null : d))}
-            caseId={detail.case.id}
-            code={detail.case.code}
-            minDate={caseStart}
-            caseDeaths={detail.case.deaths}
-            onMoreDeaths={(dead) =>
-              toast(`This visit found ${dead} dead, but ${detail.case.code} records ${detail.case.deaths}.`, {
-                duration: 15000,
-                action: { label: 'Open case', onClick: () => navigate(`/cases/${detail.case.id}`) },
-              })
-            }
-          />
-          <LabDialog
-            open={dlg === 'lab'}
-            onOpenChange={(o) => setDlg((d) => (o ? 'lab' : d === 'lab' ? null : d))}
-            caseId={detail.case.id}
-            code={detail.case.code}
-            lab={labEdit}
-            minDate={caseStart}
-            onSaved={afterLabSaved}
-          />
-          {voidTarget && (
-            <VoidDialog
-              open={dlg === 'void'}
-              onOpenChange={(o) => setDlg(o ? 'void' : null)}
-              url={voidTarget.url}
-              what={voidTarget.what}
-            />
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
 
 /* ---------------- Response activities ---------------- */
 
+const MEASURE_STATE: Record<
+  CaseWorklist['measures'][number]['state'],
+  { label: string; tone: Tone; order: number }
+> = {
+  IN_FORCE: { label: 'In force', tone: 'red', order: 0 },
+  ONGOING: { label: 'Ongoing', tone: 'orange', order: 1 },
+  PLANNED: { label: 'Planned', tone: 'blue', order: 2 },
+};
+
 export function ResponseActivitiesPage() {
   const navigate = useNavigate();
-  const { canEdit } = useAuth();
-  const { data: lookups } = useLookups();
-  const { data: cases, isLoading: casesLoading, error: casesError } = useApi<CaseRow[]>('/api/cases');
-  const sorted = [...(cases ?? [])].sort(
-    (a, b) => (a.status === 'POSITIVE' ? -1 : 0) - (b.status === 'POSITIVE' ? -1 : 0) || a.id - b.id,
-  );
-  const [caseId, setCaseId] = useState('');
-  const effective = caseId || (sorted[0] ? String(sorted[0].id) : '');
-  const [open, setOpen] = useState(false);
-  const [respEdit, setRespEdit] = useState<ResponseEditRecord | null>(null);
-  const [respType, setRespType] = useState<ResponseType | undefined>();
-  const { data: detail, error: detailError } = useApi<CaseDetail>(
-    effective ? `/api/cases/${effective}` : null,
-  );
-  const writable = canEdit && !!detail && !detail.case.closed;
+  const { data, isLoading, error } = useApi<CaseWorklist>('/api/case-worklist');
+  if (error) return <ErrorBox error={error} />;
+  const count = (st: keyof typeof MEASURE_STATE) => data?.measures.filter((m) => m.state === st).length ?? 0;
   return (
     <div>
       <PageHeader
         title="Response Activities"
-        subtitle="Documentation of response actions for confirmed cases."
-        actions={
-          <FilterSelect
-            label="Case"
-            value={effective}
-            onChange={setCaseId}
-            options={sorted.map((c) => ({
-              value: String(c.id),
-              label: `${c.code} · ${c.disease} (${c.closed ? 'closed' : CASE_STATUS_LABELS[c.status]})`,
-            }))}
-            className="w-full sm:w-96"
-          />
-        }
+        subtitle="Quarantines, movement restrictions and checkpoints in force, plus measures still ongoing or planned on open cases. Log and edit them on the case."
       />
-      {casesError || detailError ? (
-        <ErrorBox error={casesError ?? detailError} />
-      ) : casesLoading ? (
-        <Loading />
-      ) : !sorted.length ? (
-        <Card className="p-8 text-center text-sm text-slate-500">
-          No disease cases yet. Response activities are logged on a case — report an incident first.
-        </Card>
-      ) : !detail ? (
-        <Loading />
-      ) : (
-        <>
-          <ResponsePanel
-            detail={detail}
-            onLog={
-              writable
-                ? (type) => {
-                    setRespEdit(null);
-                    setRespType(type);
-                    setOpen(true);
-                  }
-                : undefined
-            }
-            onEdit={
-              writable
-                ? (r) => {
-                    setRespEdit(r);
-                    setOpen(true);
-                  }
-                : undefined
-            }
-          />
-          <ResponseDialog
-            open={open}
-            onOpenChange={setOpen}
-            caseId={detail.case.id}
-            code={detail.case.code}
-            response={respEdit}
-            presetType={respType}
-            minDate={detail.case.symptomsDate ?? detail.case.reportedAt}
-            maxHeads={
-              speciesOnFarm(lookups, detail.case.farmId).find((s) => s.species === detail.case.species)?.head
-            }
-            onSaved={(v) => {
-              if (v.type === 'CULLING_DEPOPULATION' && v.status !== 'PLANNED' && v.added > 0)
-                toast(`${v.added} culled. Update the farm's population from the case page.`, {
-                  duration: 12000,
-                  action: { label: 'Open case', onClick: () => navigate(`/cases/${detail.case.id}`) },
-                });
-            }}
-          />
-        </>
-      )}
+      <Card>
+        <CardHeader
+          title="Measures on open cases"
+          actions={
+            data ? (
+              <>
+                {(['IN_FORCE', 'ONGOING', 'PLANNED'] as const).map((st) => (
+                  <Badge key={st} tone={MEASURE_STATE[st].tone}>
+                    {count(st)} {MEASURE_STATE[st].label.toLowerCase()}
+                  </Badge>
+                ))}
+              </>
+            ) : undefined
+          }
+          className="border-b-0"
+        />
+        <DataTable
+          rows={data?.measures}
+          loading={isLoading}
+          rowKey={(r) => r.id}
+          onRowClick={(r) => navigate(`/cases/${r.caseId}?tab=response`)}
+          pageSize={0}
+          hideFooter
+          mobileTitle="typeLabel"
+          minWidth={900}
+          defaultSort={{ key: 'state', dir: 'asc' }}
+          columns={[
+            {
+              key: 'state',
+              header: 'State',
+              sort: (r) => MEASURE_STATE[r.state].order,
+              cell: (r) => (
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <Badge tone={MEASURE_STATE[r.state].tone}>{MEASURE_STATE[r.state].label}</Badge>
+                  {r.late && <Badge tone="amber">Needs update</Badge>}
+                </span>
+              ),
+            },
+            { key: 'typeLabel', header: 'Measure' },
+            { key: 'caseCode', header: 'Case', cell: (r) => <CaseCell r={r} /> },
+            { key: 'location', header: 'Location', cell: (r) => r.location ?? '—' },
+            { key: 'date', header: 'From', cell: (r) => fmtDate(r.date) },
+            {
+              key: 'endDate',
+              header: 'Until',
+              cell: (r) =>
+                r.endDate
+                  ? fmtDate(r.endDate)
+                  : RESPONSE_TYPES_WITH_END.includes(r.type)
+                    ? 'Until lifted'
+                    : '—',
+            },
+          ]}
+          empty="No measures in force, ongoing or planned on open cases."
+        />
+      </Card>
     </div>
   );
 }

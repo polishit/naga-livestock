@@ -36,8 +36,8 @@ export default function PopulationPage() {
   const [params, setParams] = useSearchParams();
   const farmParam = params.get('farm') ?? '';
   const [tab, setTab] = useState<'groups' | 'totals'>('groups');
-  const [barangay, setBarangay] = useState('');
-  const [species, setSpecies] = useState('');
+  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
+  const [species, setSpecies] = useState(params.get('species') ?? '');
   const [dlg, setDlg] = useState<null | 'group' | 'update'>(null);
   const { data: lookups } = useLookups();
   const groups = useApi<GroupRow[]>(`/api/population/groups${qs({ barangay, species, farmId: farmParam })}`);
@@ -100,6 +100,7 @@ export default function PopulationPage() {
             <Card>
               <DataTable
                 rows={groups.data}
+                empty="No animal groups found. Choose a farm above, then select “Add group” for each species it keeps."
                 loading={groups.isLoading}
                 rowKey={(r) => r.id}
                 searchText={(r) => `${r.code} ${r.farmName} ${r.ownerName} ${r.species} ${r.breed ?? ''}`}

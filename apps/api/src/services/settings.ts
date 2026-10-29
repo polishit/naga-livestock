@@ -15,6 +15,8 @@ export async function getSettings(): Promise<SettingsInput> {
   const rows = await prisma.setting.findMany();
   const out: Record<string, unknown> = { ...DEFAULT_SETTINGS };
   for (const r of rows) {
+    // Other stored values (such as vaccination targets) are not part of the settings form.
+    if (!(r.key in DEFAULT_SETTINGS)) continue;
     try {
       out[r.key] = JSON.parse(r.value);
     } catch {

@@ -30,6 +30,7 @@ import {
   summarizeFarm,
   vaccinationCoverage,
 } from './metrics';
+import { accomplishmentReport } from './insights';
 import { getSettings } from './settings';
 import { OVERDUE_DAYS, liveReminder } from '../routes/vaccinations';
 
@@ -65,6 +66,8 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
   const base = { id, title: def.title, subtitle: await subtitle(p) };
 
   switch (id) {
+    case 'accomplishment':
+      return accomplishmentReport(p, base);
     case 'population-by-barangay': {
       const t = populationTotals(await loadFarms(p));
       return {
