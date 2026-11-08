@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // All "today"/"this month" logic is evaluated in the city's local time.
-process.env.TZ = process.env.TZ || 'Asia/Manila';
+process.env.TZ = process.env.APP_TZ || 'Asia/Manila';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
