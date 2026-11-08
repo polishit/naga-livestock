@@ -22,6 +22,8 @@ export interface Filters {
   barangay?: string;
   species?: string;
   caseStatus?: string;
+  /** Farms: list the archived ones instead of the active ones. */
+  archived?: boolean;
 }
 
 export type RecordStatus = 'verified' | 'overdue' | 'outdated' | 'no_groups';
@@ -36,8 +38,7 @@ export const RECORD_STATUS_LABEL: Record<RecordStatus, string> = {
 export async function loadFarms(f: Filters = {}) {
   const farms = await prisma.farm.findMany({
     where: {
-      archived: false,
-      owner: { status: { not: 'ARCHIVED' } },
+      ...(f.archived ? { archived: true } : { archived: false, owner: { status: { not: 'ARCHIVED' } } }),
       ...(f.barangay ? { barangay: f.barangay } : {}),
     },
     include: {
@@ -241,9 +242,11 @@ export async function vaccinationCoverage(
   return { from, to, rows, overallPct: totalPop ? Math.round((totalEst / totalPop) * 100) : 0 };
 }
 
-export async function loadCases(f: Filters = {}) {
+/** Disease cases. Voided cases (reported in error) are left out unless asked for. */
+export async function loadCases(f: Filters & { voided?: 'exclude' | 'only' } = {}) {
   return prisma.diseaseCase.findMany({
     where: {
+      voidedAt: f.voided === 'only' ? { not: null } : null,
       ...(f.barangay ? { barangay: f.barangay } : {}),
       ...(f.species ? { species: f.species } : {}),
       ...(f.caseStatus && (CASE_STATUSES as readonly string[]).includes(f.caseStatus)

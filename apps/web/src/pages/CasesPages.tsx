@@ -1,4 +1,16 @@
-import { AlertTriangle, Check, Link2, Lock, MapPin, Pencil, Plus, RotateCcw } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Ban,
+  Check,
+  Link2,
+  Lock,
+  MapPin,
+  Pencil,
+  Plus,
+  RotateCcw,
+  X,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -30,6 +42,7 @@ import { cn, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
 import { MapView } from '@/components/MapView';
+import { MoreMenu } from '@/components/MoreMenu';
 import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
 import { CaseStatusBadge, ClosedBadge, GeotagBadge, LabResultBadge } from '@/components/status';
 import {
@@ -54,6 +67,7 @@ import {
   LabDialog,
   ResponseDialog,
   VoidDialog,
+  type InvestigationEditRecord,
   type LabEditRecord,
   type LabLite,
   type ResponseEditRecord,
@@ -68,13 +82,36 @@ export function CasesPage() {
   const [params, setParams] = useSearchParams();
   // Table (list) or Board (one column per surveillance stage); ?view=board opens the board.
   const view = params.get('view') === 'board' ? 'board' : 'table';
-  const setView = (v: 'table' | 'board') => setParams(v === 'board' ? { view: v } : {}, { replace: true });
-  const [barangay, setBarangay] = useState('');
-  const [location, setLocation] = useState('');
-  const [state, setState] = useState('open');
-  const { data, isLoading, error } = useApi<CaseRow[]>(`/api/cases${qs({ barangay, location, state })}`);
+  // Changing the view keeps the other link filters.
+  const setParam = (k: string, v: string) =>
+    setParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        if (v) n.set(k, v);
+        else n.delete(k);
+        return n;
+      },
+      { replace: true },
+    );
+  const setView = (v: 'table' | 'board') => setParam('view', v === 'board' ? v : '');
+  // Filters can come from a link (a chart on Analytics, a hotspot, Record completeness).
+  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
+  const [location, setLocation] = useState(params.get('location') ?? '');
+  const [state, setState] = useState(params.get('state') === 'all' ? '' : (params.get('state') ?? 'open'));
+  const status = params.get('status') ?? '';
+  const disease = params.get('disease') ?? '';
+  const { data, isLoading, error } = useApi<CaseRow[]>(
+    `/api/cases${qs({ barangay, location, state, status, disease })}`,
+  );
   const filters = (
     <>
+      {status && (
+        <LinkFilter
+          label={`Stage: ${CASE_STATUS_LABELS[status as CaseStatus] ?? status}`}
+          onClear={() => setParam('status', '')}
+        />
+      )}
+      {disease && <LinkFilter label={`Disease: ${disease}`} onClear={() => setParam('disease', '')} />}
       <FilterSelect
         label="Barangay"
         value={barangay}
@@ -101,6 +138,7 @@ export function CasesPage() {
         options={[
           { value: 'open', label: 'Open cases' },
           { value: 'closed', label: 'Closed cases' },
+          { value: 'voided', label: 'Voided (reported in error)' },
         ]}
         all="All cases"
         className="w-full sm:w-44"
@@ -153,6 +191,7 @@ export function CasesPage() {
         <Card>
           <DataTable
             rows={data}
+            empty="No cases found. Clear the filters, or select “Report incident” when sick or dead animals are reported."
             loading={isLoading}
             rowKey={(r) => r.id}
             onRowClick={(r) => navigate(`/cases/${r.id}`)}
@@ -177,7 +216,7 @@ export function CasesPage() {
                 cell: (r) => (
                   <div className="flex flex-wrap gap-1.5">
                     <CaseStatusBadge status={r.status} />
-                    {r.closed && <ClosedBadge />}
+                    {r.voided ? <Badge tone="red">Voided</Badge> : r.closed && <ClosedBadge />}
                     {!r.mapped && !r.closed && <GeotagBadge />}
                   </div>
                 ),
@@ -187,6 +226,23 @@ export function CasesPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+/** A filter that came from a link, shown as a chip the user can remove. */
+function LinkFilter({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-brand/40 bg-brand-light/50 pl-3 pr-1.5 text-[13.5px] text-slate-800">
+      {label}
+      <button
+        type="button"
+        aria-label={`Remove filter ${label}`}
+        onClick={onClear}
+        className="rounded p-1 text-slate-500 hover:bg-white hover:text-slate-800"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </span>
   );
 }
 
@@ -676,6 +732,143 @@ export function CaseStepper({ status }: { status: CaseStatus }) {
   );
 }
 
+/* ---------------- What to do next on a case ---------------- */
+
+interface NextStepActions {
+  visit: () => void;
+  addLab: () => void;
+  editLab: (l: LabEditRecord) => void;
+  status: () => void;
+  respond: (type?: ResponseType) => void;
+  showResponses: () => void;
+  population: () => void;
+  close: () => void;
+  location: () => void;
+}
+
+/** The single next thing to do on an open case, worked out from its records. */
+export function caseNextStep(d: CaseDetail, pending: number, a: NextStepActions) {
+  const c = d.case;
+  const visits = d.investigations.filter((v) => !v.voided);
+  const labs = d.labs.filter((l) => !l.voided);
+  const waiting = labs.filter((l) => l.result === 'PENDING');
+  const notSent = waiting.find((l) => !l.sentAt);
+  const sent = waiting.find((l) => l.sentAt);
+  const decided = labs.find((l) => l.result === 'POSITIVE' || l.result === 'NEGATIVE');
+  const final = c.status === 'POSITIVE' || c.status === 'NEGATIVE';
+  const responses = d.responses.filter((r) => !r.voided);
+  const today = isoDate();
+  // Planned or ongoing, or a quarantine / restriction / checkpoint not yet lifted.
+  const running = responses.filter(
+    (r) =>
+      r.status === 'PLANNED' ||
+      r.status === 'ONGOING' ||
+      (RESPONSE_TYPES_WITH_END.includes(r.type as ResponseType) && (!r.endDate || r.endDate > today)),
+  );
+  const asfMissing = isAsfDisease(c.disease)
+    ? ASF_RESPONSE_STEPS.findIndex((st) => !responses.some((r) => r.type === st.type))
+    : -1;
+  type Step = { title: string; detail: string; action?: { label: string; run: () => void } };
+  let step: Step;
+  if (!visits.length)
+    step = {
+      title: 'Record the first site visit',
+      detail: 'Go to the farm, examine the animals, then record what you found (sick, dead, biosecurity).',
+      action: { label: 'Record visit', run: a.visit },
+    };
+  else if (!labs.length && !final)
+    step = {
+      title: 'Collect samples and add a lab record',
+      detail: 'Add the sample ID and type. Enter the date sent once it goes to the laboratory.',
+      action: { label: 'Add lab record', run: a.addLab },
+    };
+  else if (notSent && !final)
+    step = {
+      title: `Send sample ${notSent.sampleId} to the laboratory`,
+      detail: 'When it is sent, open the lab record and enter the date sent and the laboratory.',
+      action: { label: 'Enter date sent', run: () => a.editLab(notSent) },
+    };
+  else if (sent && !final)
+    step = {
+      title: `Waiting for the result of ${sent.sampleId}`,
+      detail: `Sent ${fmtDate(sent.sentAt)}${sent.laboratory ? ` to ${sent.laboratory}` : ''}. Enter the result as soon as it arrives.`,
+      action: { label: 'Enter result', run: () => a.editLab(sent) },
+    };
+  else if (!final)
+    step = decided
+      ? {
+          title: `Update the status to ${CASE_STATUS_LABELS[decided.result as CaseStatus]}`,
+          detail: 'The laboratory result is in. Set the case status to match it.',
+          action: { label: 'Update status', run: a.status },
+        }
+      : {
+          title: 'Move the case to its next stage',
+          detail: 'Update the status as the samples move through the laboratory.',
+          action: { label: 'Update status', run: a.status },
+        };
+  else if (c.status === 'POSITIVE' && asfMissing >= 0)
+    step = {
+      title: `ASF step ${asfMissing + 1} of ${ASF_RESPONSE_STEPS.length}: ${ASF_RESPONSE_STEPS[asfMissing].label}`,
+      detail: 'Confirmed ASF. Log each response step as it is done (the list is on the Response tab).',
+      action: { label: 'Log this step', run: () => a.respond(ASF_RESPONSE_STEPS[asfMissing].type) },
+    };
+  else if (c.status === 'POSITIVE' && !responses.length)
+    step = {
+      title: 'Start the response',
+      detail:
+        'Confirmed positive: log the quarantine or movement restriction, then disinfection or culling as needed.',
+      action: { label: 'Log quarantine', run: () => a.respond('QUARANTINE') },
+    };
+  else if (pending > 0)
+    step = {
+      title: 'Update the farm’s head count',
+      detail: `${pending} animal(s) died or were culled and are still counted in the farm’s population.`,
+      action: { label: 'Update population', run: a.population },
+    };
+  else if (running.length)
+    step = {
+      title: 'Keep the response measures up to date',
+      detail: `${running.length} measure(s) still planned or in force. When the outbreak is contained, mark them done or enter the date they were lifted, then close the case.`,
+      action: { label: 'Review measures', run: a.showResponses },
+    };
+  else
+    step = {
+      title: 'Close the case',
+      detail:
+        c.status === 'NEGATIVE'
+          ? 'The laboratory result is negative. Close the case with the outcome "Not confirmed".'
+          : 'Every step is recorded. Close the case once the outbreak is contained.',
+      action: { label: 'Close case', run: a.close },
+    };
+  return { ...step, needsLocation: !c.mapped };
+}
+
+function NextStepBanner({ step, canEdit }: { step: ReturnType<typeof caseNextStep>; canEdit: boolean }) {
+  return (
+    <div
+      role="status"
+      aria-label="Next step"
+      className="mb-4 flex flex-col gap-3 rounded-lg border border-brand/40 bg-brand-light/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="min-w-0">
+        <div className="text-[12px] font-semibold uppercase tracking-wide text-brand-dark">Next step</div>
+        <div className="text-[15.5px] font-semibold text-slate-900">{step.title}</div>
+        <div className="text-[13.5px] text-slate-600">{step.detail}</div>
+        {step.needsLocation && (
+          <div className="mt-1 text-[13px] text-amber-700">
+            Also: add the case location so it appears on the maps and radius checks.
+          </div>
+        )}
+      </div>
+      {canEdit && step.action && (
+        <Button className="shrink-0" onClick={step.action.run}>
+          {step.action.label} <ArrowRight />
+        </Button>
+      )}
+    </div>
+  );
+}
+
 const CASE_TABS = ['overview', 'investigation', 'laboratory', 'response', 'map', 'history'] as const;
 type CaseTab = (typeof CASE_TABS)[number];
 
@@ -693,12 +886,23 @@ export function CaseDetailPage() {
     null | 'status' | 'location' | 'inv' | 'lab' | 'resp' | 'close' | 'edit' | 'pop' | 'void'
   >(null);
   const [labEdit, setLabEdit] = useState<LabEditRecord | null>(null);
+  const [invEdit, setInvEdit] = useState<InvestigationEditRecord | null>(null);
   const [respEdit, setRespEdit] = useState<ResponseEditRecord | null>(null);
   const [respType, setRespType] = useState<ResponseType | undefined>();
   const [suggest, setSuggest] = useState<{ status: CaseStatus; lab: LabLite } | null>(null);
   const [voidTarget, setVoidTarget] = useState<{ url: string; what: string } | null>(null);
   const [popExtra, setPopExtra] = useState(0);
   const { data, isLoading, error } = useApi<CaseDetail>(`/api/cases/${id}`);
+  // Links from My tasks can open a form straight away: ?do=visit or ?do=location.
+  const doParam = params.get('do');
+  const [didDo, setDidDo] = useState(false);
+  useEffect(() => {
+    if (!data || didDo || !doParam) return;
+    setDidDo(true);
+    if (!canWrite || data.case.closed) return;
+    if (doParam === 'visit') setDlg('inv');
+    if (doParam === 'location') setDlg('location');
+  }, [data, didDo, doParam, canWrite]);
   const { data: lookups } = useLookups();
   const { data: farmDetail } = useApi<{ groups: GroupRow[] }>(
     dlg === 'pop' && data ? `/api/farms/${data.case.farmId}` : null,
@@ -768,7 +972,7 @@ export function CaseDetailPage() {
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-2">
             {c.farmName} · {c.barangay} <CaseStatusBadge status={c.status} />
-            {c.closed && <ClosedBadge />}
+            {c.voided ? <Badge tone="red">Voided</Badge> : c.closed && <ClosedBadge />}
             {!c.mapped && !c.closed && <GeotagBadge />}
           </span>
         }
@@ -794,13 +998,44 @@ export function CaseDetailPage() {
             )}
             {c.closed && isAdmin && (
               <Button variant="outline" loading={reopen.isPending} onClick={() => reopen.mutate({})}>
-                <RotateCcw /> Reopen case
+                <RotateCcw /> {c.voided ? 'Undo void' : 'Reopen case'}
               </Button>
             )}
+            <MoreMenu
+              items={[
+                isAdmin &&
+                  !c.voided && {
+                    label: 'Void case (reported in error)',
+                    icon: Ban,
+                    danger: true,
+                    hint: 'A duplicate or wrong report; kept, but no longer counted',
+                    onSelect: () => {
+                      setVoidTarget({ url: `/api/cases/${c.id}/void`, what: `case ${c.code}` });
+                      setDlg('void');
+                    },
+                  },
+              ]}
+            />
           </>
         }
       />
-      {c.closed && (
+      {c.voided && (
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-[14.5px] text-red-800"
+        >
+          <Ban className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <b className="font-medium">Voided</b>
+            {c.voidedBy ? ` by ${c.voidedBy}` : ''}: {c.voidReason}. This report does not count in any figure,
+            map or report.
+            {isAdmin && (
+              <div className="mt-0.5 text-[13px]">If it was voided by mistake, select “Undo void”.</div>
+            )}
+          </div>
+        </div>
+      )}
+      {c.closed && !c.voided && (
         <div className="mb-4 flex items-start gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2.5 text-[14.5px] text-slate-700">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
           <div>
@@ -849,6 +1084,39 @@ export function CaseDetailPage() {
             </Button>
           </div>
         </div>
+      )}
+      {!c.closed && (
+        <NextStepBanner
+          canEdit={canEdit}
+          step={caseNextStep(data, pending, {
+            visit: () => {
+              setTab('investigation');
+              setInvEdit(null);
+              setDlg('inv');
+            },
+            addLab: () => {
+              setTab('laboratory');
+              setLabEdit(null);
+              setDlg('lab');
+            },
+            editLab: (l) => {
+              setTab('laboratory');
+              setLabEdit(l);
+              setDlg('lab');
+            },
+            status: () => setDlg('status'),
+            respond: (type) => {
+              setTab('response');
+              setRespEdit(null);
+              setRespType(type);
+              setDlg('resp');
+            },
+            showResponses: () => setTab('response'),
+            population: () => setDlg('pop'),
+            close: () => setDlg('close'),
+            location: () => setDlg('location'),
+          })}
+        />
       )}
       <CaseStepper status={c.status} />
       <Tabs
@@ -964,7 +1232,22 @@ export function CaseDetailPage() {
           <InvestigationTable
             rows={data.investigations}
             closed={c.closed}
-            onAdd={canEdit ? () => setDlg('inv') : undefined}
+            onAdd={
+              canEdit
+                ? () => {
+                    setInvEdit(null);
+                    setDlg('inv');
+                  }
+                : undefined
+            }
+            onEdit={
+              canEdit
+                ? (r) => {
+                    setInvEdit(r);
+                    setDlg('inv');
+                  }
+                : undefined
+            }
             onVoid={
               isAdmin && !c.closed
                 ? (r) => {
@@ -1133,6 +1416,7 @@ export function CaseDetailPage() {
         onOpenChange={(o) => setDlg((d) => (o ? 'inv' : d === 'inv' ? null : d))}
         caseId={c.id}
         code={c.code}
+        investigation={invEdit}
         minDate={caseStart}
         caseDeaths={c.deaths}
         onMoreDeaths={askMoreDeaths}
@@ -1204,11 +1488,14 @@ export function InvestigationTable({
   rows,
   closed,
   onAdd,
+  onEdit,
   onVoid,
 }: {
   rows: (InvestigationRow & VoidInfo)[];
   closed?: boolean;
   onAdd?: () => void;
+  /** Fix a typo in a visit record. */
+  onEdit?: (r: InvestigationRow & VoidInfo) => void;
   onVoid?: (r: InvestigationRow & VoidInfo) => void;
 }) {
   return (
@@ -1266,7 +1553,7 @@ export function InvestigationTable({
               </VoidAware>
             ),
           },
-          ...(onVoid
+          ...(onVoid || (onEdit && !closed)
             ? [
                 {
                   key: 'actions',
@@ -1274,9 +1561,18 @@ export function InvestigationTable({
                   sort: false as const,
                   cell: (r: InvestigationRow & VoidInfo) =>
                     !r.voided && (
-                      <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
-                        Void
-                      </Button>
+                      <span className="inline-flex gap-1">
+                        {onEdit && !closed && (
+                          <Button size="xs" variant="ghost" onClick={() => onEdit(r)}>
+                            Edit
+                          </Button>
+                        )}
+                        {onVoid && (
+                          <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
+                            Void
+                          </Button>
+                        )}
+                      </span>
                     ),
                 },
               ]

@@ -377,6 +377,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         where: {
           voidedAt: null,
           case: {
+            voidedAt: null,
             ...(p.barangay ? { barangay: p.barangay } : {}),
             ...(p.species ? { species: p.species } : {}),
           },
@@ -421,6 +422,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         where: {
           voidedAt: null,
           case: {
+            voidedAt: null,
             ...(p.barangay ? { barangay: p.barangay } : {}),
             ...(p.species ? { species: p.species } : {}),
           },
@@ -483,6 +485,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         where: {
           voidedAt: null,
           case: {
+            voidedAt: null,
             ...(p.barangay ? { barangay: p.barangay } : {}),
             ...(p.species ? { species: p.species } : {}),
           },
@@ -789,6 +792,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
     case 'stray-incidents': {
       const s = await prisma.strayIncident.findMany({
         where: {
+          voidedAt: null,
           ...(p.barangay ? { barangay: p.barangay } : {}),
           ...(p.species ? { species: p.species } : {}),
         },

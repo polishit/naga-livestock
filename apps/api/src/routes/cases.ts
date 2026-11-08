@@ -93,8 +93,11 @@ casesRouter.get(
   '/',
   ah(async (req, res) => {
     const location = qstr(req.query.location);
+    // state=voided lists the cases voided as reported in error; every other list leaves them out.
+    const voided = qstr(req.query.state) === 'voided';
     let rows = (
       await loadCases({
+        voided: voided ? 'only' : 'exclude',
         barangay: qstr(req.query.barangay),
         caseStatus: qstr(req.query.status),
         species: qstr(req.query.species),
@@ -673,12 +676,26 @@ casesRouter.post(
     if (!c) throw notFound('Case');
     if (!c.closedAt) throw badRequest('This case is not closed');
     const updated = await prisma.$transaction(async (tx) => {
+      // Reopening a voided case also undoes the void (it was voided by mistake).
       const u = await tx.diseaseCase.update({
         where: { id },
-        data: { closedAt: null, closedBy: null, closureNote: null, closureOutcome: null },
+        data: {
+          closedAt: null,
+          closedBy: null,
+          closureNote: null,
+          closureOutcome: null,
+          voidedAt: null,
+          voidedBy: null,
+          voidReason: null,
+        },
       });
       await tx.caseStatusHistory.create({
-        data: { caseId: id, status: c.status, note: 'Case reopened', byName: req.user?.name },
+        data: {
+          caseId: id,
+          status: c.status,
+          note: c.voidedAt ? 'Void undone, case reopened' : 'Case reopened',
+          byName: req.user?.name,
+        },
       });
       await logActivity('case', id, 'reopened', `${c.code} reopened`, req.user?.name, tx);
       return u;

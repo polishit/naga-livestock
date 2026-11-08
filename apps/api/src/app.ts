@@ -13,6 +13,7 @@ import { HttpError } from './lib/http';
 import { animalsRouter, straysRouter, transfersRouter } from './routes/animals';
 import { casesRouter, labsRouter, radiusRouter, recordsRouter } from './routes/cases';
 import { insightsRouter } from './routes/insights';
+import { recordActionsRouter } from './routes/recordActions';
 import { farmsRouter } from './routes/farms';
 import {
   authRouter,
@@ -57,6 +58,8 @@ export function createApp() {
 
   const api = express.Router();
   api.use(requireAuth, writeGuard);
+  // Delete (entered by mistake), void, restore and edit actions on the records below.
+  api.use('/', recordActionsRouter);
   api.use('/owners', ownersRouter);
   api.use('/farms', farmsRouter);
   api.use('/population', populationRouter);

@@ -13,6 +13,13 @@ interface Help {
   terms?: [string, string][];
 }
 
+/** How records are removed, explained the same way wherever it applies. */
+const REMOVE_TERMS: [string, string][] = [
+  ['Archive', 'Put away a record that is no longer active. It can be restored.'],
+  ['Void', 'Cross out a wrong entry with the reason. It stays visible but no longer counts.'],
+  ['Delete', 'Remove for good. Only for a record entered by mistake that nothing depends on.'],
+];
+
 /** "How to use this page", keyed by route ("/farms", "/farms/:id", "/cases/new"). */
 const HELP: Record<string, Help> = {
   '/': {
@@ -51,7 +58,9 @@ const HELP: Record<string, Help> = {
       'Check the details; select "Edit" to correct them.',
       'Select "Add farm" for each place where they keep animals.',
       'Add PCIC insurance policies and link the insured ear tags.',
+      '"More" holds Archive (stopped raising livestock) and, for administrators, Delete — only for an owner entered by mistake with no records yet.',
     ],
+    terms: REMOVE_TERMS,
   },
   '/farms': {
     title: 'Farms',
@@ -75,7 +84,9 @@ const HELP: Record<string, Help> = {
       'No map pin yet? Select "Set location" and click the map.',
       'Add a group for each species (head count), or register animals one by one with ear tags.',
       'Select "Print profile" for a paper copy with the letterhead.',
+      '"More" holds Archive / Restore farm and Delete (entered by mistake). Archived groups can be restored at the bottom of the Groups tab.',
     ],
+    terms: REMOVE_TERMS,
   },
   '/population': {
     title: 'Population Monitoring',
@@ -198,6 +209,7 @@ const HELP: Record<string, Help> = {
       'Investigation tab: record each site visit. Laboratory tab: samples and results. Response tab: quarantine, disinfection, culling.',
       'When the lab result comes back, the system offers the matching status.',
       'Close the case when it is contained. A closed case is read-only.',
+      'A duplicate or wrong report: an administrator selects "More → Void case". It stays visible but stops counting.',
     ],
     terms: [
       ['In force', 'A quarantine, movement restriction or checkpoint that has started and not been lifted.'],

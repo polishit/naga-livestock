@@ -72,7 +72,10 @@ export default function StraysPage() {
                   label="Status"
                   value={status}
                   onChange={setStatus}
-                  options={STRAY_STATUSES.map((s) => ({ value: s, label: titleCase(s) }))}
+                  options={[
+                    ...STRAY_STATUSES.map((s) => ({ value: s, label: titleCase(s) })),
+                    { value: 'VOIDED', label: 'Voided (reported in error)' },
+                  ]}
                   all="All statuses"
                   className="w-[calc(50%-4px)] sm:w-32"
                 />
@@ -92,7 +95,12 @@ export default function StraysPage() {
                 cell: (r) =>
                   r.mapped ? <Badge tone="green">Pinned</Badge> : <Badge tone="red">No location</Badge>,
               },
-              { key: 'status', header: 'Status', cell: (r) => <StrayStatusBadge status={r.status} /> },
+              {
+                key: 'status',
+                header: 'Status',
+                cell: (r) =>
+                  r.voided ? <Badge tone="red">Voided</Badge> : <StrayStatusBadge status={r.status} />,
+              },
               { key: 'violations', header: 'Violations' },
               {
                 key: 'fineAmount',

@@ -60,6 +60,10 @@ export interface CaseRow {
   closureOutcome: string | null;
   relatedCaseId: number | null;
   relatedCaseCode: string | null;
+  /** Voided: reported in error or a duplicate. */
+  voided: boolean;
+  voidedBy: string | null;
+  voidReason: string | null;
 }
 
 export interface VaccinationRow {
@@ -75,6 +79,7 @@ export interface VaccinationRow {
   doseNumber: number;
   batch: string | null;
   administeredBy: string | null;
+  remarks: string | null;
   farmId: number;
   farmName: string | null;
   barangay: string | null;

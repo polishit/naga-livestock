@@ -26,6 +26,8 @@ import { useAddressLookup, useApi, useLookups, useResetOnOpen, useSave } from '@
 import { MapView } from '@/components/MapView';
 import { AddressLookupHint, PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
 import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
+import { DeleteDialog } from './corrections';
+import { VoidDialog } from './surveillance';
 
 interface DialogProps {
   open: boolean;
@@ -620,6 +622,10 @@ export interface StrayRecord {
   impoundPlace: string | null;
   releasedAt: string | null;
   releasedTo: string | null;
+  /** Voided: reported in error. Kept, read-only, and left out of every figure. */
+  voided?: boolean;
+  voidedBy?: string | null;
+  voidReason?: string | null;
 }
 
 /** Incident details, violation, impoundment / release and penalty. Read-only users can view it. */
@@ -629,7 +635,8 @@ export function StrayUpdateDialog({
   stray,
 }: DialogProps & { stray: StrayRecord | null }) {
   const { data: lookups } = useLookups();
-  const { canEdit } = useAuth();
+  const { canEdit: canWrite, isAdmin } = useAuth();
+  const [action, setAction] = useState<null | 'void' | 'delete'>(null);
   const foundOn = stray ? isoDate(new Date(stray.discoveredAt)) : undefined;
   const form = useZodForm(strayFormSchema(foundOn), {});
   useResetOnOpen(open, form, {
@@ -654,6 +661,10 @@ export function StrayUpdateDialog({
   });
   const e = form.formState.errors;
   if (!stray) return null;
+  // A voided report is read-only. A fresh report nobody acted on yet can be deleted; otherwise void it.
+  const canEdit = canWrite && !stray.voided;
+  const deletable =
+    stray.status === 'REPORTED' && !stray.impoundedAt && !(stray.fineAmount && stray.fineAmount > 0);
   const status = form.watch('status');
   const finePaid = form.watch('finePaid');
   const hasFine = Number(form.watch('fineAmount') || 0) > 0;
@@ -682,6 +693,15 @@ export function StrayUpdateDialog({
       size="lg"
       footer={
         <>
+          {isAdmin && !stray.voided && (
+            <Button
+              variant="ghost"
+              className="text-red-600 sm:mr-auto"
+              onClick={() => setAction(deletable ? 'delete' : 'void')}
+            >
+              {deletable ? 'Delete (entered by mistake)' : 'Void (reported in error)'}
+            </Button>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
@@ -693,6 +713,34 @@ export function StrayUpdateDialog({
         </>
       }
     >
+      {stray.voided && (
+        <p
+          role="status"
+          className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[14px] text-red-800"
+        >
+          <b className="font-medium">Voided</b>
+          {stray.voidedBy ? ` by ${stray.voidedBy}` : ''}: {stray.voidReason}. It no longer counts in any
+          figure or report.
+        </p>
+      )}
+      {action === 'void' && (
+        <VoidDialog
+          open
+          onOpenChange={(o) => !o && setAction(null)}
+          url={`/api/strays/${stray.id}/void`}
+          what={`stray report ${stray.code}`}
+          onVoided={() => onOpenChange(false)}
+        />
+      )}
+      {action === 'delete' && (
+        <DeleteDialog
+          open
+          onOpenChange={(o) => !o && setAction(null)}
+          url={`/api/strays/${stray.id}`}
+          what={`stray report ${stray.code}`}
+          onDeleted={() => onOpenChange(false)}
+        />
+      )}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
         <div className="space-y-1 text-[14.5px] text-slate-700">
           <div>

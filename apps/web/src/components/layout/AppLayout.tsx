@@ -80,7 +80,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-2.5 py-3" aria-label="Main">
         {NAV.map((section) => {
-          const items = section.items.filter((i) => !i.adminOnly || isAdmin);
+          const items = section.items.filter((i) => !i.hidden && (!i.adminOnly || isAdmin));
           if (!items.length) return null;
           if (!section.label) return <div key={section.id}>{items.map((i) => link(i, false))}</div>;
           if (collapsed)
@@ -180,7 +180,7 @@ function BottomNav() {
       <Dialog open={!!sheet} onOpenChange={(o) => !o && setSheet(null)} title={sheet?.label ?? ''} size="sm">
         <div className="-mx-2 space-y-1">
           {sheet?.items
-            .filter((i) => !i.adminOnly || isAdmin)
+            .filter((i) => !i.hidden && (!i.adminOnly || isAdmin))
             .map((i) => (
               <NavLink
                 key={i.to}
@@ -629,6 +629,8 @@ export function AppLayout() {
           >
             <Search className="h-5 w-5" />
           </button>
+          <QuickNew />
+          <PageHelp />
           <Notifications />
           <UserMenu />
         </header>

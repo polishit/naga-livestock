@@ -79,7 +79,8 @@ farmsRouter.get(
     const barangay = qstr(req.query.barangay);
     const type = qstr(req.query.type);
     const location = qstr(req.query.location);
-    let rows = (await loadFarms({ barangay })).map(summarizeFarm);
+    // ?archived=1 lists the archived farms (to restore one).
+    let rows = (await loadFarms({ barangay, archived: req.query.archived === '1' })).map(summarizeFarm);
     if (type) rows = rows.filter((r) => r.type === type);
     if (location === 'mapped') rows = rows.filter((r) => r.mapped);
     if (location === 'unmapped') rows = rows.filter((r) => !r.mapped);
@@ -116,7 +117,7 @@ farmsRouter.get(
       orderBy: { id: 'asc' },
     });
     const cases = await prisma.diseaseCase.findMany({
-      where: { farmId: id },
+      where: { farmId: id, voidedAt: null },
       include: { farm: true, owner: true },
       orderBy: { reportedAt: 'desc' },
     });
@@ -124,6 +125,10 @@ farmsRouter.get(
       where: { farmId: id },
       include: { farm: true, group: true, animal: true },
       orderBy: { date: 'desc' },
+    });
+    const archivedGroups = await prisma.populationGroup.findMany({
+      where: { farmId: id, archived: true },
+      orderBy: { id: 'asc' },
     });
     const updates = await prisma.populationUpdate.findMany({
       where: { group: { farmId: id } },
@@ -165,6 +170,12 @@ farmsRouter.get(
         sex: a.sex,
         status: a.status,
         groupCode: a.group.code,
+      })),
+      archivedGroups: archivedGroups.map((g) => ({
+        id: g.id,
+        code: g.code,
+        species: g.species,
+        breed: g.breed,
       })),
       cases: cases.map(serializeCase),
       vaccinations: vaccinations.map(serializeVaccination),

@@ -126,12 +126,12 @@ ownersRouter.get(
       orderBy: { date: 'desc' },
     });
     const cases = await prisma.diseaseCase.findMany({
-      where: { ownerId: id },
+      where: { ownerId: id, voidedAt: null },
       include: { farm: true, owner: true, assignedTo: true },
       orderBy: { reportedAt: 'desc' },
     });
     const strays = await prisma.strayIncident.findMany({
-      where: { ownerId: id },
+      where: { ownerId: id, voidedAt: null },
       orderBy: { discoveredAt: 'desc' },
     });
     res.json({

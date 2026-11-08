@@ -269,7 +269,13 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
 }
 
 /** Void a wrong record (admin): it stays visible, struck through with the reason, and leaves all figures. */
-export function VoidDialog({ open, onOpenChange, url, what }: DialogProps & { url: string; what: string }) {
+export function VoidDialog({
+  open,
+  onOpenChange,
+  url,
+  what,
+  onVoided,
+}: DialogProps & { url: string; what: string; onVoided?: () => void }) {
   const form = useZodForm(voidSchema, {});
   useResetOnOpen(open, form, { reason: '' } as any);
   const save = useSave<any>('POST', url, {
@@ -277,7 +283,10 @@ export function VoidDialog({ open, onOpenChange, url, what }: DialogProps & { ur
     label: () => `Void ${what}`,
     form,
     offline: false,
-    onDone: () => onOpenChange(false),
+    onDone: () => {
+      onOpenChange(false);
+      onVoided?.();
+    },
   });
   const e = form.formState.errors;
   return (
@@ -456,17 +465,37 @@ export function CaseLocationDialog({
   );
 }
 
+/** A visit record being edited (to fix a typo). */
+export interface InvestigationEditRecord {
+  id: number;
+  date: string;
+  visitType: string;
+  investigator: string | null;
+  animalsExamined: number | null;
+  sickCount: number | null;
+  deadCount: number | null;
+  clinicalSigns: string | null;
+  biosecurity: string | null;
+  actionsTaken: string | null;
+  samplesCollected: boolean;
+  nextVisit: string | null;
+  notes: string;
+}
+
 export function InvestigationDialog({
   open,
   onOpenChange,
   caseId,
   code,
+  investigation: inv,
   minDate,
   caseDeaths,
   onMoreDeaths,
 }: DialogProps & {
   caseId: number;
   code: string;
+  /** Edit this visit instead of adding one. */
+  investigation?: InvestigationEditRecord | null;
   /** First day of the case (symptoms or report date); a visit cannot be earlier. */
   minDate?: string;
   /** Deaths currently recorded on the case. */
@@ -477,29 +506,33 @@ export function InvestigationDialog({
   const { user } = useAuth();
   const form = useZodForm(investigationCreateSchema, {});
   useResetOnOpen(open, form, {
-    date: isoDate(),
-    visitType: 'INITIAL',
-    investigator: user?.name ?? '',
-    animalsExamined: '',
-    sickCount: '',
-    deadCount: '',
-    clinicalSigns: '',
-    biosecurity: '',
-    actionsTaken: '',
-    samplesCollected: false,
-    nextVisit: '',
-    notes: '',
+    date: inv?.date ?? isoDate(),
+    visitType: inv?.visitType ?? 'INITIAL',
+    investigator: inv ? (inv.investigator ?? '') : (user?.name ?? ''),
+    animalsExamined: inv?.animalsExamined ?? '',
+    sickCount: inv?.sickCount ?? '',
+    deadCount: inv?.deadCount ?? '',
+    clinicalSigns: inv?.clinicalSigns ?? '',
+    biosecurity: inv?.biosecurity ?? '',
+    actionsTaken: inv?.actionsTaken ?? '',
+    samplesCollected: inv?.samplesCollected ?? false,
+    nextVisit: inv?.nextVisit ?? '',
+    notes: inv?.notes ?? '',
   } as any);
-  const save = useSave<any>('POST', `/api/cases/${caseId}/investigations`, {
-    success: 'Investigation recorded.',
-    label: () => `Investigation for ${code}`,
-    form,
-    onDone: () => {
-      const dead = Number(form.getValues('deadCount') ?? 0);
-      onOpenChange(false);
-      if (caseDeaths != null && dead > caseDeaths) onMoreDeaths?.(dead);
+  const save = useSave<any>(
+    inv ? 'PATCH' : 'POST',
+    inv ? `/api/investigations/${inv.id}` : `/api/cases/${caseId}/investigations`,
+    {
+      success: inv ? 'Investigation updated.' : 'Investigation recorded.',
+      label: () => `Investigation for ${code}`,
+      form,
+      onDone: () => {
+        const dead = Number(form.getValues('deadCount') ?? 0);
+        onOpenChange(false);
+        if (caseDeaths != null && dead > caseDeaths) onMoreDeaths?.(dead);
+      },
     },
-  });
+  );
   const e = form.formState.errors;
   const notes = form.watch('notes');
   const date = form.watch('date');
@@ -507,7 +540,7 @@ export function InvestigationDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Add investigation"
+      title={inv ? 'Edit investigation' : 'Add investigation'}
       size="lg"
       footer={
         <>

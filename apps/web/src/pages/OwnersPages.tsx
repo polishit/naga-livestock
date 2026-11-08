@@ -1,4 +1,4 @@
-import { Archive, IdCard, Pencil, Plus, RotateCcw, UserPlus } from 'lucide-react';
+import { Archive, IdCard, Pencil, Plus, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { MapView } from '@/components/MapView';
+import { MoreMenu } from '@/components/MoreMenu';
 import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge, StrayStatusBadge } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Checkbox, Tabs } from '@/components/ui';
@@ -24,6 +25,7 @@ import {
   type PcicRecord,
 } from '@/dialogs/registry';
 import { RegisterRaiser } from '@/dialogs/RegisterRaiser';
+import { DeleteDialog } from '@/dialogs/corrections';
 import type { CaseRow, FarmSummary, TransferRow, VaccinationRow } from './types';
 
 interface OwnerRow {
@@ -178,9 +180,10 @@ type OwnerTab = 'info' | 'farms' | 'animals' | 'ownership' | 'vaccinations' | 'i
 export function OwnerDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit } = useAuth();
+  const { canEdit, isAdmin } = useAuth();
   const qc = useQueryClient();
   const lh = useLetterhead();
+  const [del, setDel] = useState<null | { url: string; what: string; owner?: boolean }>(null);
   const [tab, setTab] = useState<OwnerTab>('info');
   const [edit, setEdit] = useState(false);
   const [archive, setArchive] = useState(false);
@@ -223,27 +226,39 @@ export function OwnerDetailPage() {
                 <Button variant="outline" onClick={() => setEdit(true)}>
                   <Pencil /> Edit
                 </Button>
-                {archived ? (
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      await api.post(`/api/owners/${o.id}/restore`);
-                      toast.success('Owner restored.');
-                      qc.invalidateQueries();
-                    }}
-                  >
-                    <RotateCcw /> Restore
-                  </Button>
-                ) : (
-                  <Button variant="outline" onClick={() => setArchive(true)}>
-                    <Archive /> Archive
-                  </Button>
-                )}
                 {!archived && (
                   <Button onClick={() => setAddFarm(true)}>
                     <Plus /> Add farm
                   </Button>
                 )}
+                {/* Archive / Restore and Delete are in the same "More" menu on every record. */}
+                <MoreMenu
+                  items={[
+                    archived
+                      ? {
+                          label: 'Restore owner',
+                          icon: RotateCcw,
+                          onSelect: async () => {
+                            await api.post(`/api/owners/${o.id}/restore`);
+                            toast.success('Owner restored.');
+                            qc.invalidateQueries();
+                          },
+                        }
+                      : {
+                          label: 'Archive owner',
+                          icon: Archive,
+                          hint: 'No longer raising livestock; kept for history',
+                          onSelect: () => setArchive(true),
+                        },
+                    isAdmin && {
+                      label: 'Delete (entered by mistake)',
+                      icon: Trash2,
+                      danger: true,
+                      hint: 'Only if the owner has no records yet',
+                      onSelect: () => setDel({ url: `/api/owners/${o.id}`, what: o.fullName, owner: true }),
+                    },
+                  ]}
+                />
               </>
             )}
           </>
@@ -528,16 +543,30 @@ export function OwnerDetailPage() {
                         header: '',
                         sort: false as const,
                         cell: (r: PcicRecord) => (
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() => {
-                              setPcicEdit(r);
-                              setAddPcic(true);
-                            }}
-                          >
-                            Update
-                          </Button>
+                          <span className="inline-flex gap-1">
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={() => {
+                                setPcicEdit(r);
+                                setAddPcic(true);
+                              }}
+                            >
+                              Update
+                            </Button>
+                            {isAdmin && r.status !== 'CLAIMED' && (
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                aria-label={`Delete policy ${r.policyNo}`}
+                                onClick={() =>
+                                  setDel({ url: `/api/pcic/${r.id}`, what: `policy ${r.policyNo}` })
+                                }
+                              >
+                                <Trash2 />
+                              </Button>
+                            )}
+                          </span>
                         ),
                       },
                     ]
@@ -550,6 +579,15 @@ export function OwnerDetailPage() {
       </div>
       <OwnerDialog open={edit} onOpenChange={setEdit} owner={o} />
       {archive && <ArchiveOwnerDialog open={archive} onOpenChange={setArchive} owner={o} />}
+      {del && (
+        <DeleteDialog
+          open
+          onOpenChange={(x) => !x && setDel(null)}
+          url={del.url}
+          what={del.what}
+          onDeleted={() => del.owner && navigate('/owners')}
+        />
+      )}
       <FarmDialog open={addFarm} onOpenChange={setAddFarm} ownerId={o.id} />
       <PcicDialog
         open={addPcic}

@@ -11,6 +11,7 @@ import { useLetterhead } from '@/components/ExportButtons';
 import { ErrorBox, FilterSelect, Loading, PageHeader } from '@/components/page';
 import { Badge, Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
 import { VaccinationDialog, VoidDialog } from '@/dialogs/surveillance';
+import { VaccinationEditDialog } from '@/dialogs/corrections';
 import type { CoverageRow, VaccinationRow } from './types';
 
 const columns: Column<VaccinationRow>[] = [
@@ -75,7 +76,9 @@ const upcomingColumns: Column<VaccinationRow & { overdue?: boolean }>[] = [
 export default function VaccinationsPage() {
   const { canEdit, isAdmin } = useAuth();
   const [voiding, setVoiding] = useState<VaccinationRow | null>(null);
-  const recordColumns: Column<VaccinationRow>[] = isAdmin
+  const [editing, setEditing] = useState<VaccinationRow | null>(null);
+  // Staff fix typos with Edit; an admin voids a record that should not count at all.
+  const recordColumns: Column<VaccinationRow>[] = canEdit
     ? [
         ...columns,
         {
@@ -84,9 +87,16 @@ export default function VaccinationsPage() {
           sort: false,
           cell: (r) =>
             !r.voided && (
-              <Button size="xs" variant="ghost" onClick={() => setVoiding(r)}>
-                Void
-              </Button>
+              <span className="inline-flex gap-1">
+                <Button size="xs" variant="ghost" onClick={() => setEditing(r)}>
+                  Edit
+                </Button>
+                {isAdmin && (
+                  <Button size="xs" variant="ghost" onClick={() => setVoiding(r)}>
+                    Void
+                  </Button>
+                )}
+              </span>
             ),
         },
       ]
@@ -320,6 +330,11 @@ export default function VaccinationsPage() {
           ))}
       </div>
       <VaccinationDialog open={open} onOpenChange={setOpen} />
+      <VaccinationEditDialog
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        vaccination={editing}
+      />
       {voiding && (
         <VoidDialog
           open

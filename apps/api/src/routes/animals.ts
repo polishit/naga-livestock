@@ -113,7 +113,7 @@ animalsRouter.get(
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
     });
     const cases = await prisma.diseaseCase.findMany({
-      where: { farmId: a.group.farmId, species: a.species },
+      where: { farmId: a.group.farmId, species: a.species, voidedAt: null },
       include: { farm: true, owner: true },
       orderBy: { reportedAt: 'desc' },
     });
@@ -512,6 +512,9 @@ function serializeStray(s: any) {
     impoundPlace: s.impoundPlace,
     releasedAt: ymd(s.releasedAt),
     releasedTo: s.releasedTo,
+    voided: s.voidedAt != null,
+    voidedBy: s.voidedBy ?? null,
+    voidReason: s.voidReason ?? null,
   };
 }
 
@@ -520,8 +523,14 @@ straysRouter.get(
   ah(async (req, res) => {
     const barangay = qstr(req.query.barangay);
     const status = qstr(req.query.status);
+    // status=VOIDED lists the reports voided as entered in error; every other list leaves them out.
     const rows = await prisma.strayIncident.findMany({
-      where: { ...(barangay ? { barangay } : {}), ...(status ? { status: status as any } : {}) },
+      where: {
+        ...(barangay ? { barangay } : {}),
+        ...(status === 'VOIDED'
+          ? { voidedAt: { not: null } }
+          : { voidedAt: null, ...(status ? { status: status as any } : {}) }),
+      },
       include: { owner: true },
       orderBy: { discoveredAt: 'desc' },
     });
@@ -536,7 +545,7 @@ straysRouter.get(
     const ownerId = idParam(req, 'ownerId');
     const except = Number(req.query.except) || undefined;
     const rows = await prisma.strayIncident.findMany({
-      where: { ownerId, ...(except ? { NOT: { id: except } } : {}) },
+      where: { ownerId, voidedAt: null, ...(except ? { NOT: { id: except } } : {}) },
       orderBy: { discoveredAt: 'desc' },
       select: {
         id: true,
@@ -646,6 +655,7 @@ straysRouter.patch(
       include: { owner: true },
     });
     if (!before) throw notFound('Incident');
+    if (before.voidedAt) throw badRequest('This incident is voided and can no longer be changed.');
     // Only the fields sent change (a blank field clears it); "Unknown owner" clears a wrong owner.
     const changes = {
       ...(d.status ? { status: d.status } : {}),

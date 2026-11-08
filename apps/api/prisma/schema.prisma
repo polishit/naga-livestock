@@ -275,6 +275,10 @@ model StrayIncident {
   releasedAt    DateTime?   @db.Date
   releasedTo    String?     @db.VarChar(150)
   remarks       String?     @db.Text
+  /// Voided: reported in error or a duplicate. Kept for history, left out of every figure.
+  voidedAt      DateTime?
+  voidedBy      String?     @db.VarChar(120)
+  voidReason    String?     @db.VarChar(300)
   createdBy     String?     @db.VarChar(120)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -312,6 +316,10 @@ model DiseaseCase {
   relatedCaseId        Int?
   /// Deaths + culled heads already reflected in the farm's population
   populationReconciled Int                 @default(0)
+  /// Voided: reported in error or a duplicate. Kept for history, left out of every figure.
+  voidedAt             DateTime?
+  voidedBy             String?             @db.VarChar(120)
+  voidReason           String?             @db.VarChar(300)
   relatedCase          DiseaseCase?        @relation("LinkedCases", fields: [relatedCaseId], references: [id])
   linkedCases          DiseaseCase[]       @relation("LinkedCases")
   createdAt            DateTime            @default(now())

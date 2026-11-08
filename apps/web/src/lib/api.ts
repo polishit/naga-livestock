@@ -63,6 +63,7 @@ export const api = {
   post: <T>(url: string, body?: unknown) => rawFetch('POST', url, body).then((r) => handle<T>(r)),
   patch: <T>(url: string, body?: unknown) => rawFetch('PATCH', url, body).then((r) => handle<T>(r)),
   put: <T>(url: string, body?: unknown) => rawFetch('PUT', url, body).then((r) => handle<T>(r)),
+  delete: <T>(url: string) => rawFetch('DELETE', url).then((r) => handle<T>(r)),
 };
 
 export async function uploadFile(file: Blob, name = 'photo.jpg', folder = 'photos'): Promise<string> {

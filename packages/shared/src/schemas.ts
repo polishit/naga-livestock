@@ -618,6 +618,23 @@ export const vaccinationCreateSchema = z
   );
 export type VaccinationCreateInput = z.infer<typeof vaccinationCreateSchema>;
 
+/** Correcting a vaccination's details (who was vaccinated cannot change: void and re-enter for that). */
+export const vaccinationUpdateSchema = z
+  .object({
+    count: intField(1, undefined, MAX_HEAD),
+    vaccine: reqText(120),
+    date: pastDate(),
+    nextDate: anyDate,
+    doseNumber: intField(1, undefined, 20),
+    batch: optText(60),
+    administeredBy: optText(120),
+    remarks: optText(500),
+  })
+  .refine((v) => !v.nextDate || v.nextDate > (v.date ?? isoDate()), {
+    path: ['nextDate'],
+    message: 'Next schedule must be after the vaccination date',
+  });
+
 /* ---------- settings ---------- */
 
 export const settingsSchema = z.object({

@@ -37,6 +37,9 @@ export function serializeCase(c: any) {
     closureOutcome: c.closureOutcome ?? null,
     relatedCaseId: c.relatedCaseId ?? null,
     relatedCaseCode: c.relatedCase?.code ?? null,
+    voided: c.voidedAt != null,
+    voidedBy: c.voidedBy ?? null,
+    voidReason: c.voidReason ?? null,
   };
 }
 

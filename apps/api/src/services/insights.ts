@@ -56,8 +56,8 @@ async function periodCounts(p: Period, f: Filters = {}) {
     labResults,
     measures,
   ] = await Promise.all([
-    prisma.diseaseCase.findMany({ where: { reportedAt: range, ...brgy, ...sp } }),
-    prisma.diseaseCase.count({ where: { closedAt: range, ...brgy, ...sp } }),
+    prisma.diseaseCase.findMany({ where: { reportedAt: range, voidedAt: null, ...brgy, ...sp } }),
+    prisma.diseaseCase.count({ where: { closedAt: range, voidedAt: null, ...brgy, ...sp } }),
     prisma.owner.count({ where: { registeredAt: range, ...brgy } }),
     prisma.farm.count({ where: { createdAt: range, ...brgy } }),
     prisma.animal.count({
@@ -69,7 +69,7 @@ async function periodCounts(p: Period, f: Filters = {}) {
     prisma.vaccination.findMany({
       where: { voidedAt: null, date: dateRange, ...sp, ...(f.barangay ? { farm: brgy } : {}) },
     }),
-    prisma.strayIncident.findMany({ where: { discoveredAt: range, ...brgy, ...sp } }),
+    prisma.strayIncident.findMany({ where: { discoveredAt: range, voidedAt: null, ...brgy, ...sp } }),
     prisma.investigation.count({
       where: { voidedAt: null, date: dateRange, case: { ...brgy, ...sp } },
     }),
@@ -231,7 +231,7 @@ export async function hotspots() {
   const recentFrom = shiftDays(t, -HOTSPOT_WINDOW_DAYS + 1);
   const baseFrom = shiftDays(recentFrom, -365);
   const cases = await prisma.diseaseCase.findMany({
-    where: { reportedAt: { gte: day(baseFrom) } },
+    where: { reportedAt: { gte: day(baseFrom) }, voidedAt: null },
     select: { barangay: true, reportedAt: true, disease: true, status: true, closedAt: true },
   });
   const rows = [...new Set(cases.map((c) => c.barangay))]

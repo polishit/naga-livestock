@@ -1,4 +1,14 @@
-import { Archive, ClipboardList, MapPin, Pencil, Plus, Printer, Syringe } from 'lucide-react';
+import {
+  Archive,
+  ClipboardList,
+  MapPin,
+  Pencil,
+  Plus,
+  Printer,
+  RotateCcw,
+  Syringe,
+  Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -12,9 +22,10 @@ import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { MapView } from '@/components/MapView';
+import { MoreMenu } from '@/components/MoreMenu';
 import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge, RecordStatusBadge, SpeciesChip } from '@/components/status';
-import { Badge, Button, Card, CardHeader, Tabs } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Checkbox, Tabs } from '@/components/ui';
 import { AnimalDialog } from '@/dialogs/animals';
 import {
   FarmDialog,
@@ -24,6 +35,7 @@ import {
   farmHasPasture,
 } from '@/dialogs/registry';
 import { VaccinationDialog } from '@/dialogs/surveillance';
+import { DeleteDialog } from '@/dialogs/corrections';
 import type { CaseRow, FarmSummary, VaccinationRow } from './types';
 
 export function FarmsPage() {
@@ -35,13 +47,17 @@ export function FarmsPage() {
   const [type, setType] = useState(params.get('type') ?? '');
   // ?location=unmapped lists the farms that still need a map pin.
   const [location, setLocation] = useState(params.get('location') ?? '');
+  // Archived farms are listed on their own, to open and restore one.
+  const [archived, setArchived] = useState(false);
   const [open, setOpen] = useState(false);
-  const { data, isLoading, error } = useApi<FarmSummary[]>(`/api/farms${qs({ barangay, type, location })}`);
+  const { data, isLoading, error } = useApi<FarmSummary[]>(
+    `/api/farms${qs({ barangay, type, location, archived: archived ? '1' : '' })}`,
+  );
   return (
     <div>
       <PageHeader
         title="Farms"
-        subtitle={`${data?.length ?? 0} active farms`}
+        subtitle={`${data?.length ?? 0} ${archived ? 'archived' : 'active'} farms`}
         actions={
           canEdit && (
             <Button onClick={() => setOpen(true)}>
@@ -91,6 +107,7 @@ export function FarmsPage() {
                   all="Any location"
                   className="w-full sm:w-44"
                 />
+                <Checkbox label="Show archived" checked={archived} onChange={setArchived} />
               </>
             }
             columns={[
@@ -168,6 +185,7 @@ interface FarmDetail {
     status: string;
     groupCode: string;
   }[];
+  archivedGroups: { id: number; code: string; species: string; breed: string | null }[];
   cases: CaseRow[];
   vaccinations: VaccinationRow[];
   updates: {
@@ -190,10 +208,11 @@ type FarmTab = 'overview' | 'groups' | 'animals' | 'history' | 'vaccinations' | 
 export function FarmDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit, user } = useAuth();
+  const { canEdit, isAdmin, user } = useAuth();
   const qc = useQueryClient();
   const lh = useLetterhead();
   const [tab, setTab] = useState<FarmTab>('overview');
+  const [deleting, setDeleting] = useState(false);
   const [dlg, setDlg] = useState<null | 'edit' | 'group' | 'update' | 'animal' | 'vax' | 'group-edit'>(null);
   const [editGroup, setEditGroup] = useState<FarmDetail['groups'][number] | null>(null);
   const { data, isLoading, error } = useApi<FarmDetail>(`/api/farms/${id}`);
@@ -209,6 +228,16 @@ export function FarmDetailPage() {
       qc.invalidateQueries();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'Could not archive group');
+    }
+  };
+
+  const restore = async (url: string, done: string) => {
+    try {
+      await api.post(url);
+      toast.success(done);
+      qc.invalidateQueries();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'Could not restore');
     }
   };
 
@@ -248,13 +277,35 @@ export function FarmDetailPage() {
                 <Button variant="outline" onClick={() => setDlg('edit')}>
                   <Pencil /> Edit
                 </Button>
-                <Button variant="outline" onClick={archive}>
-                  <Archive /> Archive
-                </Button>
                 <Button onClick={() => setDlg('update')} disabled={!data.groups.length}>
                   <ClipboardList /> Update population
                 </Button>
               </>
+            )}
+            {canEdit && (
+              <MoreMenu
+                items={[
+                  f.archived
+                    ? {
+                        label: 'Restore farm',
+                        icon: RotateCcw,
+                        onSelect: () => restore(`/api/farms/${f.id}/restore`, 'Farm restored.'),
+                      }
+                    : {
+                        label: 'Archive farm',
+                        icon: Archive,
+                        hint: 'Closed down; needs no animals and no open cases',
+                        onSelect: archive,
+                      },
+                  isAdmin && {
+                    label: 'Delete (entered by mistake)',
+                    icon: Trash2,
+                    danger: true,
+                    hint: 'Only if the farm has no records yet',
+                    onSelect: () => setDeleting(true),
+                  },
+                ]}
+              />
             )}
           </>
         }
@@ -423,6 +474,35 @@ export function FarmDetailPage() {
               ]}
               empty="No animals counted yet. Select “Add group” for each species kept on this farm, then update the count every month."
             />
+            {data.archivedGroups.length > 0 && (
+              <div className="border-t border-slate-100 px-4 py-3">
+                <div className="mb-2 text-[13px] font-medium text-slate-600">Archived groups</div>
+                <ul className="space-y-1.5">
+                  {data.archivedGroups.map((g) => (
+                    <li
+                      key={g.id}
+                      className="flex items-center justify-between gap-3 text-[14px] text-slate-600"
+                    >
+                      <span>
+                        {g.code} · {g.species}
+                        {g.breed ? ` (${g.breed})` : ''}
+                      </span>
+                      {canEdit && !f.archived && (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() =>
+                            restore(`/api/population/groups/${g.id}/restore`, `Group ${g.code} restored.`)
+                          }
+                        >
+                          <RotateCcw /> Restore
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Card>
         )}
         {tab === 'animals' && (
@@ -541,6 +621,15 @@ export function FarmDetailPage() {
           </Card>
         )}
       </div>
+      {deleting && (
+        <DeleteDialog
+          open
+          onOpenChange={setDeleting}
+          url={`/api/farms/${f.id}`}
+          what={f.name}
+          onDeleted={() => navigate('/farms')}
+        />
+      )}
       <FarmDialog open={dlg === 'edit'} onOpenChange={(o) => setDlg(o ? 'edit' : null)} farm={f} />
       <GroupDialog open={dlg === 'group'} onOpenChange={(o) => setDlg(o ? 'group' : null)} farmId={f.id} />
       <GroupEditDialog
