@@ -3,6 +3,8 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 /** Build MariaDB-connector options from a mysql:// URL (works with MySQL 8). */
 export function adapterFromUrl(url: string) {
   const u = new URL(url);
+  // ?sslaccept=strict (certificate checked) or ?sslaccept=accept_invalid_certs (encrypted, not checked)
+  const sslaccept = u.searchParams.get('sslaccept');
   return new PrismaMariaDb({
     host: u.hostname,
     port: Number(u.port || 3306),

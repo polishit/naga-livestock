@@ -8,6 +8,8 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      '**/dist-vercel/**',
+      '.vercel/**',
       '**/node_modules/**',
       '**/dev-dist/**',
       'apps/api/uploads/**',

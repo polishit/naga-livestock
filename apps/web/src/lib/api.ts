@@ -66,10 +66,36 @@ export const api = {
   delete: <T>(url: string) => rawFetch('DELETE', url).then((r) => handle<T>(r)),
 };
 
+/** Longest side, in pixels, of a photo after it is shrunk for upload. */
+const MAX_PHOTO_SIDE = 1600;
+
+/** Phone photos are resized and saved as JPEG before upload (Vercel accepts at most 4.5 MB). */
+async function shrinkImage(file: Blob): Promise<Blob> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 400_000) return file;
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, MAX_PHOTO_SIDE / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+    return out && out.size < file.size ? out : file;
+  } catch {
+    return file;
+  }
+}
+
 export async function uploadFile(file: Blob, name = 'photo.jpg', folder = 'photos'): Promise<string> {
+  const small = await shrinkImage(file);
   const fd = new FormData();
   fd.append('folder', folder);
-  fd.append('file', file, name);
+  fd.append('file', small, small === file ? name : name.replace(/\.[^.]+$/, '') + '.jpg');
   const out = await handle<{ key: string }>(await rawFetch('POST', '/api/uploads', fd));
   return out.key;
 }
