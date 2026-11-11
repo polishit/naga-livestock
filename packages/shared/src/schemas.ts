@@ -17,6 +17,10 @@ import {
   INVESTIGATION_VISIT_TYPES,
   RESPONSE_STATUSES,
   VACCINATION_TARGETS,
+  RECORD_SOURCES,
+  SERVICE_TYPES,
+  VISIT_PURPOSES,
+  VISIT_FINDINGS,
 } from './constants';
 import { isoDate, isoMonth } from './format';
 
@@ -207,6 +211,7 @@ export const ownerCreateSchema = z.object({
   street: optText(200),
   contact: phoneField,
   rsbsa: optText(60),
+  source: z.preprocess((v) => (v === '' ? null : v), z.enum(RECORD_SOURCES).nullable().optional()),
   remarks: optText(1000),
   /** Set after the user confirms a possible duplicate (same name in the same barangay) is a different person. */
   confirmDuplicate: z.boolean().optional(),
@@ -246,7 +251,8 @@ export const pcicCreateSchema = z
 export const farmCreateSchema = z.object({
   ownerId: idField('Select an owner'),
   name: reqText(150),
-  type: z.enum(FARM_TYPES),
+  type: z.enum(FARM_TYPES, { errorMap: () => ({ message: 'Select the farm scale' }) }),
+  source: z.preprocess((v) => (v === '' ? null : v), z.enum(RECORD_SOURCES).nullable().optional()),
   barangay: z.enum(BARANGAYS, { errorMap: () => ({ message: 'Select a barangay' }) }),
   zone: optText(60),
   pastureArea: nullableNumber(0),
@@ -269,17 +275,33 @@ export const farmReassignSchema = z.object({ ownerId: idField('Select an owner')
 
 /* ---------- population ---------- */
 
-export const groupCreateSchema = z.object({
-  farmId: idField('Select a farm'),
-  species: z.enum(SPECIES),
-  breed: optText(80),
-  sex: z.string().default('Mixed'),
-  lifeStage: z.string().default('Mixed'),
-  reportingMonth: optMonth,
-  count: intField(0, undefined, MAX_HEAD),
-  healthStatus: z.string().default('Healthy'),
-  remarks: optText(500),
-});
+/** Head count per classification code; every value is a whole number of head. */
+export const breakdownField = z
+  .record(z.string().max(30), z.number().int().min(0).max(MAX_HEAD))
+  .nullable()
+  .optional();
+const sumOf = (b?: Record<string, number> | null) => Object.values(b ?? {}).reduce((a, n) => a + n, 0);
+/** A breakdown, when given, must add up to the head count. */
+export const breakdownMatches = (count: number, b?: Record<string, number> | null) =>
+  !b || !Object.keys(b).length || sumOf(b) === count;
+
+export const groupCreateSchema = z
+  .object({
+    farmId: idField('Select a farm'),
+    species: z.enum(SPECIES),
+    breed: optText(80),
+    sex: z.string().default('Mixed'),
+    lifeStage: z.string().default('Mixed'),
+    reportingMonth: optMonth,
+    count: intField(0, undefined, MAX_HEAD),
+    breakdown: breakdownField,
+    healthStatus: z.string().default('Healthy'),
+    remarks: optText(500),
+  })
+  .refine((v) => breakdownMatches(v.count, v.breakdown), {
+    path: ['breakdown'],
+    message: 'The classification counts must add up to the head count',
+  });
 export type GroupCreateInput = z.infer<typeof groupCreateSchema>;
 /** Species and counts are not edited here: counts change through monthly updates. */
 export const groupUpdateSchema = z.object({
@@ -295,11 +317,17 @@ export const populationUpdateSchema = z.object({
   month: monthField,
   entries: z
     .array(
-      z.object({
-        groupId: idField(),
-        count: intField(0, undefined, MAX_HEAD),
-        reason: optText(200),
-      }),
+      z
+        .object({
+          groupId: idField(),
+          count: intField(0, undefined, MAX_HEAD),
+          breakdown: breakdownField,
+          reason: optText(200),
+        })
+        .refine((v) => breakdownMatches(v.count, v.breakdown), {
+          path: ['breakdown'],
+          message: 'The classification counts must add up to the head count',
+        }),
     )
     .min(1, 'No groups to update'),
 });
@@ -590,14 +618,19 @@ export const vaccinationCreateSchema = z
     target: z.enum(VACCINATION_TARGETS).default('GROUP'),
     groupId: optId,
     animalId: optId,
+    serviceType: z.enum(SERVICE_TYPES).default('DEWORMING'),
     count: intField(1, undefined, MAX_HEAD),
-    vaccine: reqText(120),
+    vaccine: optText(120),
     date: pastDate(),
     nextDate: anyDate,
-    doseNumber: intField(1, undefined, 20),
+    doseNumber: intField(1, undefined, 20).default(1),
     batch: optText(60),
     administeredBy: optText(120),
     remarks: optText(500),
+  })
+  .refine((v) => v.serviceType !== 'VACCINATION' || !!v.vaccine, {
+    path: ['vaccine'],
+    message: 'Enter the vaccine used',
   })
   .refine((v) => (v.target === 'GROUP' ? !!v.groupId : !!v.animalId), {
     path: ['groupId'],
@@ -621,19 +654,34 @@ export type VaccinationCreateInput = z.infer<typeof vaccinationCreateSchema>;
 /** Correcting a vaccination's details (who was vaccinated cannot change: void and re-enter for that). */
 export const vaccinationUpdateSchema = z
   .object({
+    serviceType: z.enum(SERVICE_TYPES).optional(),
     count: intField(1, undefined, MAX_HEAD),
-    vaccine: reqText(120),
+    vaccine: optText(120),
     date: pastDate(),
     nextDate: anyDate,
-    doseNumber: intField(1, undefined, 20),
+    doseNumber: intField(1, undefined, 20).default(1),
     batch: optText(60),
     administeredBy: optText(120),
     remarks: optText(500),
   })
   .refine((v) => !v.nextDate || v.nextDate > (v.date ?? isoDate()), {
     path: ['nextDate'],
-    message: 'Next schedule must be after the vaccination date',
+    message: 'Next schedule must be after the service date',
   });
+
+/* ---------- farm visits ---------- */
+
+export const farmVisitCreateSchema = z.object({
+  farmId: idField('Select a farm'),
+  caseId: optId,
+  date: reqPastDate(),
+  purpose: z.enum(VISIT_PURPOSES, { errorMap: () => ({ message: 'Select the purpose' }) }),
+  findings: z.enum(VISIT_FINDINGS).default('NO_SIGNS'),
+  visitedBy: optText(120),
+  remarks: optText(2000),
+});
+export type FarmVisitCreateInput = z.infer<typeof farmVisitCreateSchema>;
+export const farmVisitUpdateSchema = farmVisitCreateSchema.omit({ farmId: true }).partial();
 
 /* ---------- settings ---------- */
 

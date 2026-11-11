@@ -3,6 +3,7 @@
  * figures from these functions so every screen agrees.
  */
 import {
+  livestockRaised,
   CASE_STATUS_LABELS,
   CASE_STATUSES,
   SPECIES,
@@ -51,6 +52,7 @@ export async function loadFarms(f: Filters = {}) {
         },
         orderBy: { id: 'asc' },
       },
+      visits: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
     },
     orderBy: { id: 'asc' },
   });
@@ -78,11 +80,16 @@ export function summarizeFarm(farm: LoadedFarm) {
   }
   const species = [...bySpecies.entries()].map(([s, count]) => ({ species: s, count }));
   const status = recordStatus(farm.groups);
+  const lastVisit = farm.visits?.[0];
   return {
     id: farm.id,
     code: farm.code,
     name: farm.name,
     type: farm.type,
+    source: farm.source ?? null,
+    livestockRaised: livestockRaised(species.filter((x) => x.count > 0).map((x) => x.species)),
+    lastVisitAt: lastVisit ? ymd(lastVisit.date) : null,
+    lastVisitPurpose: lastVisit?.purpose ?? null,
     barangay: farm.barangay,
     zone: farm.zone,
     address: farm.address,
@@ -111,7 +118,15 @@ export function populationTotals(farms: LoadedFarm[]) {
   >();
   const bySpecies = new Map<
     string,
-    { species: string; groups: number; tagged: number; population: number }
+    {
+      species: string;
+      groups: number;
+      farms: number;
+      tagged: number;
+      population: number;
+      /** Head per classification code across all farms (for the species breakdown). */
+      breakdown: Record<string, number>;
+    }
   >();
   let total = 0;
   for (const farm of farms) {
@@ -126,10 +141,20 @@ export function populationTotals(farms: LoadedFarm[]) {
     for (const g of farm.groups) {
       b.population += g.count;
       total += g.count;
-      const s = bySpecies.get(g.species) ?? { species: g.species, groups: 0, tagged: 0, population: 0 };
+      const s = bySpecies.get(g.species) ?? {
+        species: g.species,
+        groups: 0,
+        farms: 0,
+        tagged: 0,
+        population: 0,
+        breakdown: {},
+      };
       s.groups += 1;
+      if (g.count > 0) s.farms += 1;
       s.tagged += g.animals.length;
       s.population += g.count;
+      for (const [k, n] of Object.entries((g.breakdown as Record<string, number> | null) ?? {}))
+        s.breakdown[k] = (s.breakdown[k] ?? 0) + n;
       bySpecies.set(g.species, s);
     }
     byBarangay.set(farm.barangay, b);
@@ -193,6 +218,8 @@ export async function vaccinationCoverage(
     where: {
       farmId: { in: farmIds },
       voidedAt: null,
+      // Coverage is for vaccinations only (deworming and check-ups are counted elsewhere).
+      serviceType: 'VACCINATION',
       date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) },
     },
     include: { animal: { select: { groupId: true, status: true } } },
@@ -295,11 +322,16 @@ export async function overview(f: Filters & { months?: number }) {
   });
   const vaccinationActivity = months.map((m) => {
     const inMonth = vaxRecords.filter((v) => ymd(v.date)!.startsWith(m));
+    const head = (t: string) => inMonth.filter((v) => v.serviceType === t).reduce((a, v) => a + v.count, 0);
+    const vaxOnly = inMonth.filter((v) => v.serviceType === 'VACCINATION');
     return {
       month: m,
       label: fmtMonth(m),
-      events: inMonth.length,
-      doses: inMonth.reduce((a, v) => a + v.count, 0),
+      events: vaxOnly.length,
+      doses: vaxOnly.reduce((a, v) => a + v.count, 0),
+      dewormed: head('DEWORMING'),
+      checkups: head('CHECKUP'),
+      vaccinated: head('VACCINATION'),
     };
   });
 
@@ -384,6 +416,14 @@ export async function overview(f: Filters & { months?: number }) {
       .map(([disease, count]) => ({ disease, count }))
       .sort((a, b) => b.count - a.count),
     vaccinationActivity,
+    farmsByRaised: [
+      ...summaries.reduce(
+        (m, x) => m.set(x.livestockRaised, (m.get(x.livestockRaised) ?? 0) + 1),
+        new Map<string, number>(),
+      ),
+    ]
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count),
     farmsByType: [...byType.entries()]
       .map(([type, count]) => ({ type, count }))
       .sort((a, b) => a.type.localeCompare(b.type)),
@@ -411,7 +451,7 @@ export async function radiusAnalysis(caseId: number, radiusMeters?: number) {
   if (c.lat == null || c.lng == null) {
     return { case: c, radius, geocoded: false as const, farms: [], totals: null, excluded: excluded.length };
   }
-  const rows = farms
+  const within = farms
     .filter((x) => hasFarm(x) || hasPasture(x))
     .map((x) => {
       const toFarm = hasFarm(x) ? distanceMeters(c.lat!, c.lng!, x.lat!, x.lng!) : Infinity;
@@ -421,16 +461,27 @@ export async function radiusAnalysis(caseId: number, radiusMeters?: number) {
       return { farm: x, distance: Math.min(toFarm, toPasture), viaPasture: toPasture < toFarm };
     })
     .filter((r) => r.distance <= radius || r.farm.id === c.farmId)
-    .sort((a, b) => a.distance - b.distance)
-    .map((r) => {
-      const s = summarizeFarm(r.farm);
-      const isGz = r.farm.id === c.farmId;
-      return {
-        ...s,
-        distance: isGz ? 0 : roundDistance(r.distance),
-        role: isGz ? 'Ground-zero farm' : r.viaPasture ? 'Nearby farm (pasture)' : 'Nearby farm',
-      };
-    });
+    .sort((a, b) => a.distance - b.distance);
+  // Monitoring: each nearby farm is checked individually after the case is reported.
+  const visits = await prisma.farmVisit.findMany({
+    where: {
+      farmId: { in: within.map((r) => r.farm.id) },
+      OR: [{ caseId: c.id }, { date: { gte: c.reportedAt } }],
+    },
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+  });
+  const rows = within.map((r) => {
+    const s = summarizeFarm(r.farm);
+    const isGz = r.farm.id === c.farmId;
+    const last = visits.find((v) => v.farmId === r.farm.id);
+    return {
+      ...s,
+      distance: isGz ? 0 : roundDistance(r.distance),
+      role: isGz ? 'Ground-zero farm' : r.viaPasture ? 'Nearby farm (pasture)' : 'Nearby farm',
+      monitoring: (last ? last.findings : 'NOT_VISITED') as 'NOT_VISITED' | 'NO_SIGNS' | 'SICK_ANIMALS',
+      monitoredAt: last ? ymd(last.date) : null,
+    };
+  });
   const species = new Map<string, number>();
   for (const r of rows)
     for (const s of r.species) species.set(s.species, (species.get(s.species) ?? 0) + s.count);
@@ -446,6 +497,8 @@ export async function radiusAnalysis(caseId: number, radiusMeters?: number) {
       groundZero: rows.some((r) => r.role === 'Ground-zero farm') ? 1 : 0,
       livestock: rows.reduce((a, r) => a + r.total, 0),
       owners: new Set(rows.map((r) => r.ownerId)).size,
+      notVisited: rows.filter((r) => r.role !== 'Ground-zero farm' && r.monitoring === 'NOT_VISITED').length,
+      sick: rows.filter((r) => r.monitoring === 'SICK_ANIMALS').length,
       species: [...species.entries()]
         .map(([s, count]) => ({ species: s, count }))
         .sort((a, b) => b.count - a.count),

@@ -1,20 +1,32 @@
-import { ChevronLeft, ChevronRight, FileText, Info, Pause, Play, Plus, Radar } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  FileText,
+  Info,
+  Pause,
+  Play,
+  Plus,
+  Radar,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
   CASE_STATUSES,
   CASE_STATUS_LABELS,
-  FARM_TYPES,
+  LIVESTOCK_RAISED,
+  MONITORED_DISEASES,
   RADIUS_PRESETS,
   SPECIES,
   addMonths,
   caseMarkerKind,
+  distanceMeters,
+  fmtDate,
   fmtMonth,
   fmtNumber,
   isoMonth,
   formatRadius,
-  titleCase,
   type ReportResult,
 } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
@@ -27,11 +39,13 @@ import { ErrorBox, FilterSelect, PageHeader, StatCard } from '@/components/page'
 import { CaseLegend, CaseStatusBadge, SpeciesChip } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Checkbox, Input, Tabs } from '@/components/ui';
 import { CaseLocationDialog } from '@/dialogs/surveillance';
+import { FarmVisitLauncher } from '@/dialogs/services';
+import { LastVisit, RaisedBadge } from '@/components/livestock';
 import type { CaseRow, FarmSummary, RadiusResult } from './types';
 
-/* ---------------- Livestock GIS map ---------------- */
+/* ---------------- Livestock & disease map ---------------- */
 
-/** Livestock Map and Barangay Map are one menu item with two tabs. */
+/** The map and the barangay summary are one menu item with two tabs. */
 function MapTabs({ value }: { value: 'farms' | 'barangays' }) {
   const navigate = useNavigate();
   return (
@@ -40,44 +54,111 @@ function MapTabs({ value }: { value: 'farms' | 'barangays' }) {
       value={value}
       onChange={(t) => navigate(t === 'farms' ? '/gis-map' : '/barangay-map')}
       tabs={[
-        { id: 'farms', label: 'Farms & cases' },
-        { id: 'barangays', label: 'By barangay' },
+        { id: 'farms', label: 'Map' },
+        { id: 'barangays', label: 'Barangay Summary' },
       ]}
     />
   );
 }
 
+/** Monitoring colours used on the map and in the "farms to monitor" list. */
+const MONITOR_RING = { NOT_VISITED: '#f59e0b', NO_SIGNS: '#16a34a', SICK_ANIMALS: '#dc2626' } as const;
+const MONITOR_LABEL = {
+  NOT_VISITED: 'Not yet visited',
+  NO_SIGNS: 'Visited — no signs',
+  SICK_ANIMALS: 'Sick animals found',
+} as const;
+
 export function GisMapPage() {
   const navigate = useNavigate();
+  const { canEdit } = useAuth();
+  const [params] = useSearchParams();
   const [q, setQ] = useState('');
-  const [barangay, setBarangay] = useState('');
+  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
   const [species, setSpecies] = useState('');
-  const [type, setType] = useState('');
-  const [layers, setLayers] = useState({ farms: true, cases: true, strays: false });
-  const { data: farms } = useApi<FarmSummary[]>(`/api/farms${qs({ barangay, type })}`);
-  const { data: cases } = useApi<CaseRow[]>(`/api/cases${qs({ barangay, species })}`);
+  const [raised, setRaised] = useState('');
+  const [disease, setDisease] = useState('');
+  const [caseState, setCaseState] = useState<'open' | 'all'>('open');
+  const [radius, setRadius] = useState(1000);
+  const [layers, setLayers] = useState({
+    farms: true,
+    cases: true,
+    population: false,
+    radius: true,
+    strays: false,
+  });
+  const [selected, setSelected] = useState<{ kind: 'farm' | 'case'; id: number } | null>(
+    params.get('case') ? { kind: 'case', id: Number(params.get('case')) } : null,
+  );
+  const [visitFarm, setVisitFarm] = useState<{ id: number; caseId?: number } | null>(null);
+  const { data: farms } = useApi<FarmSummary[]>(`/api/farms${qs({ barangay })}`);
+  const { data: cases } = useApi<CaseRow[]>(`/api/cases${qs({ barangay, species, state: caseState })}`);
   const { data: strays } = useApi<
     { id: number; code: string; species: string; lat: number | null; lng: number | null; barangay: string }[]
   >(layers.strays ? `/api/strays${qs({ barangay })}` : null);
+  const { data: shapes } = useBarangayShapes();
+
   const shownFarms = useMemo(
     () =>
       (farms ?? [])
         .filter((f) => f.mapped)
-        .filter((f) => !species || f.species.some((s) => s.species === species))
-        .filter((f) => !q || `${f.name} ${f.ownerName}`.toLowerCase().includes(q.toLowerCase())),
-    [farms, species, q],
+        .filter((f) => !species || f.species.some((s) => s.species === species && s.count > 0))
+        .filter((f) => !raised || f.livestockRaised === raised)
+        .filter((f) => !q || `${f.name} ${f.ownerName} ${f.code}`.toLowerCase().includes(q.toLowerCase())),
+    [farms, species, raised, q],
   );
-  const mappedCases = (cases ?? []).filter((c) => c.mapped);
+  const shownCases = (cases ?? []).filter((c) => !disease || c.disease === disease);
+  const mappedCases = shownCases.filter((c) => c.mapped);
+  const diseases = [...new Set([...MONITORED_DISEASES, ...(cases ?? []).map((c) => c.disease)])];
   const head = shownFarms.reduce(
     (a, f) => a + (species ? (f.species.find((s) => s.species === species)?.count ?? 0) : f.total),
     0,
   );
 
+  // Livestock per barangay for the population layer (same filters as the farms).
+  const popByBarangay = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const f of farms ?? []) {
+      if (raised && f.livestockRaised !== raised) continue;
+      const n = species ? (f.species.find((s) => s.species === species)?.count ?? 0) : f.total;
+      m.set(f.barangay, (m.get(f.barangay) ?? 0) + n);
+    }
+    return m;
+  }, [farms, species, raised]);
+  const popMax = Math.max(0, ...popByBarangay.values());
+  const popBreaks = classBreaks(popMax);
+  const popFill = (b: string) => {
+    const v = popByBarangay.get(b) ?? 0;
+    if (!v) return ZERO_FILL;
+    const k = Math.max(
+      0,
+      popBreaks.findIndex(([lo, hi]) => v >= lo && v <= hi),
+    );
+    const pal = GREENS();
+    return pal[
+      popBreaks.length === 1 ? 3 : Math.round((k * (pal.length - 1)) / Math.max(1, popBreaks.length - 1))
+    ];
+  };
+
+  const selCase = selected?.kind === 'case' ? (cases ?? []).find((c) => c.id === selected.id) : undefined;
+  const selFarm = selected?.kind === 'farm' ? (farms ?? []).find((f) => f.id === selected.id) : undefined;
+  // Farms within the radius of the selected case (straight-line distance), nearest first.
+  const nearSel = useMemo(() => {
+    if (!selCase?.mapped) return [];
+    return (farms ?? [])
+      .filter((f) => f.mapped)
+      .map((f) => ({ f, d: Math.round(distanceMeters(selCase.lat!, selCase.lng!, f.lat!, f.lng!)) }))
+      .filter((x) => x.d <= radius)
+      .sort((a, b) => a.d - b.d);
+  }, [selCase, farms, radius]);
+
+  const ringCases = layers.radius ? (selCase?.mapped ? [selCase] : mappedCases.filter((c) => !c.closed)) : [];
+
   return (
     <div>
       <PageHeader
-        title="Livestock Map"
-        subtitle={`${shownFarms.length} farms · ${fmtNumber(head)} head · ${mappedCases.length} mapped cases (current filters)`}
+        title="Livestock & Disease Map"
+        subtitle={`${shownFarms.length} farms · ${fmtNumber(head)} head · ${mappedCases.length} disease reports on the map`}
       />
       <MapTabs value="farms" />
       <Card className="p-3 sm:p-4">
@@ -86,7 +167,7 @@ export function GisMapPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search farm or owner"
-            className="w-full sm:w-56"
+            className="w-full sm:w-52"
             aria-label="Search farm or owner"
           />
           <FilterSelect
@@ -95,48 +176,103 @@ export function GisMapPage() {
             onChange={setBarangay}
             options={BARANGAYS}
             all="All barangays"
-            className="w-[calc(50%-4px)] sm:w-48"
+            className="w-[calc(50%-4px)] sm:w-44"
           />
           <FilterSelect
-            label="Species"
+            label="Disease"
+            value={disease}
+            onChange={setDisease}
+            options={diseases}
+            all="All diseases"
+            className="w-[calc(50%-4px)] sm:w-56"
+          />
+          <FilterSelect
+            label="Livestock"
             value={species}
             onChange={setSpecies}
             options={SPECIES}
-            all="All species"
+            all="All livestock"
             className="w-[calc(50%-4px)] sm:w-36"
           />
           <FilterSelect
-            label="Farm type"
-            value={type}
-            onChange={setType}
-            options={FARM_TYPES.map((t) => ({ value: t, label: titleCase(t) }))}
-            all="All farm types"
-            className="w-full sm:w-36"
+            label="Farm (livestock raised)"
+            value={raised}
+            onChange={setRaised}
+            options={LIVESTOCK_RAISED}
+            all="All farms"
+            className="w-[calc(50%-4px)] sm:w-40"
           />
-          <div className="flex flex-wrap gap-4 sm:ml-auto">
-            <Checkbox
-              label="Farms"
-              checked={layers.farms}
-              onChange={(v) => setLayers((l) => ({ ...l, farms: v }))}
-            />
-            <Checkbox
-              label="Disease cases"
-              checked={layers.cases}
-              onChange={(v) => setLayers((l) => ({ ...l, cases: v }))}
-            />
-            <Checkbox
-              label="Stray incidents"
-              checked={layers.strays}
-              onChange={(v) => setLayers((l) => ({ ...l, strays: v }))}
-            />
-          </div>
+          <FilterSelect
+            label="Reports"
+            value={caseState}
+            onChange={(v) => setCaseState((v || 'open') as 'open' | 'all')}
+            options={[
+              { value: 'open', label: 'Open reports' },
+              { value: 'all', label: 'All reports (incl. closed)' },
+            ]}
+            className="w-full sm:w-52"
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 pt-3">
+          <span className="text-[13px] font-semibold uppercase tracking-wide text-slate-500">Layers</span>
+          <Checkbox
+            label="Farms"
+            checked={layers.farms}
+            onChange={(v) => setLayers((l) => ({ ...l, farms: v }))}
+          />
+          <Checkbox
+            label="Disease reports"
+            checked={layers.cases}
+            onChange={(v) => setLayers((l) => ({ ...l, cases: v }))}
+          />
+          <Checkbox
+            label="Livestock population (by barangay)"
+            checked={layers.population}
+            onChange={(v) => setLayers((l) => ({ ...l, population: v }))}
+          />
+          <Checkbox
+            label="Radius rings"
+            checked={layers.radius}
+            onChange={(v) => setLayers((l) => ({ ...l, radius: v }))}
+          />
+          {layers.radius && (
+            <span className="inline-flex flex-wrap gap-1" role="group" aria-label="Radius">
+              {RADIUS_PRESETS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  aria-pressed={radius === r}
+                  onClick={() => setRadius(r)}
+                  className={cn(
+                    'h-8 rounded-md border px-2.5 text-[13px]',
+                    radius === r
+                      ? 'border-brand-strong bg-brand-strong text-white'
+                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+                  )}
+                >
+                  {formatRadius(r)}
+                </button>
+              ))}
+            </span>
+          )}
+          <Checkbox
+            label="Stray incidents"
+            checked={layers.strays}
+            onChange={(v) => setLayers((l) => ({ ...l, strays: v }))}
+          />
         </div>
       </Card>
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
         <div>
           <MapView
-            className="h-[420px] lg:h-[600px]"
-            farms={layers.farms ? shownFarms : []}
+            className="h-[440px] lg:h-[620px]"
+            farms={
+              layers.farms
+                ? shownFarms.map((f) => ({ ...f, selected: selFarm?.id === f.id }))
+                : selFarm
+                  ? [{ ...selFarm, selected: true }]
+                  : []
+            }
             pastures={
               layers.farms
                 ? shownFarms
@@ -144,39 +280,236 @@ export function GisMapPage() {
                     .map((f) => ({ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }))
                 : []
             }
-            cases={layers.cases ? mappedCases : []}
+            cases={layers.cases ? mappedCases : selCase?.mapped ? [selCase] : []}
             strays={layers.strays ? (strays ?? []) : []}
-            circles={
-              layers.cases
-                ? mappedCases
-                    .filter((c) => c.status === 'POSITIVE')
-                    .map((c) => ({ lat: c.lat!, lng: c.lng!, radius: 1000 }))
-                : []
+            circles={ringCases.map((c) => ({ lat: c.lat!, lng: c.lng!, radius }))}
+            areas={
+              layers.population && shapes
+                ? {
+                    data: shapes,
+                    fill: popFill,
+                    label: (b) => `${b}: ${fmtNumber(popByBarangay.get(b) ?? 0)} head`,
+                    version: `pop|${species}|${raised}|${popMax}`,
+                  }
+                : undefined
             }
-            fitKey={`${barangay}${species}${type}`}
+            onFarmClick={(f) => setSelected({ kind: 'farm', id: f.id })}
+            onCaseClick={(c) => setSelected({ kind: 'case', id: c.id })}
+            focusCircle={selCase?.mapped ? { lat: selCase.lat!, lng: selCase.lng!, radius } : undefined}
+            fitKey={`${barangay}${species}${raised}${disease}|${selCase?.id ?? ''}|${layers.population}`}
           />
           <CaseLegend includeSpecies />
+          {layers.population && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-slate-600">
+              <span className="font-medium">Livestock (head):</span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-3 w-4 rounded-sm" style={{ background: ZERO_FILL }} /> 0
+              </span>
+              {popBreaks.map(([lo, hi], k) => (
+                <span key={k} className="inline-flex items-center gap-1">
+                  <span
+                    className="h-3 w-4 rounded-sm"
+                    style={{
+                      background:
+                        GREENS()[
+                          popBreaks.length === 1 ? 3 : Math.round((k * 4) / Math.max(1, popBreaks.length - 1))
+                        ],
+                    }}
+                  />
+                  {lo === hi ? fmtNumber(lo) : `${fmtNumber(lo)}–${fmtNumber(hi)}`}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-        <Card className="flex max-h-[480px] flex-col overflow-hidden lg:max-h-[488px]">
-          <CardHeader title={`Farms (${shownFarms.length})`} />
-          <ul className="flex-1 overflow-y-auto">
-            {shownFarms.map((f) => (
-              <li key={f.id}>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/farms/${f.id}`)}
-                  className="w-full border-b border-slate-100 px-4 py-2.5 text-left hover:bg-slate-50"
-                >
-                  <span className="block text-[15px] text-slate-900">{f.name}</span>
-                  <span className="block text-[12.5px] text-slate-500">
-                    {f.barangay} · {f.total} head
+        <div className="space-y-4">
+          {selCase && (
+            <Card>
+              <CardHeader
+                title={`${selCase.code} · ${selCase.disease}`}
+                actions={
+                  <button
+                    type="button"
+                    className="text-[13px] text-slate-500 hover:underline"
+                    onClick={() => setSelected(null)}
+                  >
+                    Close
+                  </button>
+                }
+              />
+              <div className="space-y-1.5 px-4 py-3 text-[14.5px] text-slate-700">
+                <CaseStatusBadge status={selCase.status} />
+                <div>
+                  {selCase.farmName} · {selCase.barangay}
+                </div>
+                <div>
+                  {selCase.species} · {selCase.affected} affected · {selCase.deaths} deaths · reported{' '}
+                  {fmtDate(selCase.reportedAt)}
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button variant="outline" size="xs" onClick={() => navigate(`/cases/${selCase.id}`)}>
+                    Open report
+                  </Button>
+                  <Button size="xs" onClick={() => navigate(`/radius?case=${selCase.id}&radius=${radius}`)}>
+                    <Radar /> Farms to monitor
+                  </Button>
+                </div>
+              </div>
+              {selCase.mapped && (
+                <div className="border-t border-slate-100">
+                  <div className="px-4 pt-3 text-[13px] font-medium text-slate-600">
+                    {nearSel.length} farm(s) within {formatRadius(radius)}
+                  </div>
+                  <ul className="max-h-[260px] overflow-y-auto py-1">
+                    {nearSel.map(({ f, d }) => (
+                      <li key={f.id} className="flex items-center justify-between gap-2 px-4 py-1.5">
+                        <button
+                          type="button"
+                          className="min-w-0 text-left"
+                          onClick={() => setSelected({ kind: 'farm', id: f.id })}
+                        >
+                          <span className="block truncate text-[14px] text-slate-900">{f.name}</span>
+                          <span className="block text-[12px] text-slate-500">
+                            {d} m · {f.total} head ·{' '}
+                            {f.lastVisitAt ? `visited ${fmtDate(f.lastVisitAt)}` : 'not visited'}
+                          </span>
+                        </button>
+                        {canEdit && (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => setVisitFarm({ id: f.id, caseId: selCase.id })}
+                          >
+                            Visit
+                          </Button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          )}
+          {selFarm && (
+            <Card>
+              <CardHeader
+                title={selFarm.name}
+                actions={
+                  <button
+                    type="button"
+                    className="text-[13px] text-slate-500 hover:underline"
+                    onClick={() => setSelected(null)}
+                  >
+                    Close
+                  </button>
+                }
+              />
+              <div className="space-y-1.5 px-4 py-3 text-[14.5px] text-slate-700">
+                <div className="flex flex-wrap items-center gap-2">
+                  <RaisedBadge value={selFarm.livestockRaised} />
+                  <span className="text-[13px] text-slate-500">
+                    {selFarm.code} · {selFarm.barangay}
                   </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
+                </div>
+                <div>Owner: {selFarm.ownerName}</div>
+                <div className="flex flex-wrap gap-1">
+                  {selFarm.species
+                    .filter((s) => s.count > 0)
+                    .map((s) => (
+                      <SpeciesChip key={s.species} species={s.species} count={s.count} />
+                    ))}
+                </div>
+                <div className="text-[13.5px]">
+                  Last visit: <LastVisit at={selFarm.lastVisitAt} purpose={selFarm.lastVisitPurpose} />
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button variant="outline" size="xs" onClick={() => navigate(`/farms/${selFarm.id}`)}>
+                    Open farm
+                  </Button>
+                  {canEdit && (
+                    <>
+                      <Button size="xs" onClick={() => setVisitFarm({ id: selFarm.id })}>
+                        <ClipboardCheck /> Record visit
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => navigate(`/cases/new?farm=${selFarm.id}`)}
+                      >
+                        <Plus /> Report disease
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+          <Card className="flex max-h-[300px] flex-col overflow-hidden">
+            <CardHeader title={`Disease Reports (${shownCases.length})`} />
+            <ul className="flex-1 overflow-y-auto">
+              {shownCases.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      c.mapped ? setSelected({ kind: 'case', id: c.id }) : navigate(`/cases/${c.id}`)
+                    }
+                    className={cn(
+                      'flex w-full items-start justify-between gap-2 border-b border-slate-100 px-4 py-2 text-left hover:bg-slate-50',
+                      selCase?.id === c.id && 'bg-brand-light',
+                    )}
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-[14.5px] text-slate-900">{c.disease}</span>
+                      <span className="block text-[12px] text-slate-500">
+                        {c.code} · {c.barangay}
+                        {!c.mapped && ' · no map location'}
+                      </span>
+                    </span>
+                    <span className="shrink-0">
+                      <CaseStatusBadge status={c.status} />
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {!shownCases.length && (
+                <li className="p-4 text-sm text-slate-500">No disease reports for these filters.</li>
+              )}
+            </ul>
+          </Card>
+          <Card className="flex max-h-[320px] flex-col overflow-hidden">
+            <CardHeader title={`Farms (${shownFarms.length})`} />
+            <ul className="flex-1 overflow-y-auto">
+              {shownFarms.map((f) => (
+                <li key={f.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected({ kind: 'farm', id: f.id })}
+                    className={cn(
+                      'w-full border-b border-slate-100 px-4 py-2 text-left hover:bg-slate-50',
+                      selFarm?.id === f.id && 'bg-brand-light',
+                    )}
+                  >
+                    <span className="block text-[14.5px] text-slate-900">{f.name}</span>
+                    <span className="block text-[12px] text-slate-500">
+                      {f.barangay} · {f.livestockRaised} · {f.total} head
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
       </div>
+      {visitFarm && (
+        <FarmVisitLauncher
+          open
+          onOpenChange={(o) => !o && setVisitFarm(null)}
+          farmId={visitFarm.id}
+          defaultPurpose={visitFarm.caseId ? 'MONITORING' : 'ROUTINE'}
+          defaultCaseId={visitFarm.caseId}
+        />
+      )}
     </div>
   );
 }
@@ -184,7 +517,7 @@ export function GisMapPage() {
 /* ---------------- Disease outbreak map ---------------- */
 
 export function OutbreakMapPage() {
-  const [view, setView] = useState<'current' | 'timeline'>('current');
+  const [view, setView] = useState<'current' | 'timeline'>('timeline');
   return (
     <div>
       <Tabs
@@ -192,8 +525,8 @@ export function OutbreakMapPage() {
         value={view}
         onChange={setView}
         tabs={[
-          { id: 'current', label: 'Current cases' },
-          { id: 'timeline', label: 'Outbreak timeline' },
+          { id: 'timeline', label: 'Outbreak Timeline' },
+          { id: 'current', label: 'Open Reports' },
         ]}
       />
       {view === 'current' ? <CurrentOutbreakMap /> : <OutbreakTimeline />}
@@ -215,8 +548,8 @@ function CurrentOutbreakMap() {
   return (
     <div>
       <PageHeader
-        title="Disease Outbreak Map"
-        subtitle={`${mapped.length} mapped cases · ${unmapped.length} awaiting geotagging`}
+        title="Open Disease Reports"
+        subtitle={`${mapped.length} on the map · ${unmapped.length} without a map location`}
         actions={
           <FilterSelect
             label="Status"
@@ -333,6 +666,7 @@ function CurrentOutbreakMap() {
     </div>
   );
 }
+
 /**
  * Outbreak timeline: replays the cases month by month. A case is shown from the month it was reported
  * until the month it was closed; cases reported in the selected month pulse.
@@ -628,7 +962,7 @@ export function BarangayMapPage() {
   return (
     <div>
       <PageHeader
-        title="Barangay Map"
+        title="Barangay Summary"
         subtitle="Barangays shaded by the figure you choose — darker means more."
         actions={
           <>
@@ -745,7 +1079,8 @@ export function BarangayMapPage() {
     </div>
   );
 }
-/* ---------------- Radius analysis ---------------- */
+
+/* ---------------- Farms to monitor (radius analysis) ---------------- */
 
 export function RadiusPage() {
   const [params, setParams] = useSearchParams();
@@ -755,13 +1090,15 @@ export function RadiusPage() {
   const geocoded = (cases ?? []).filter((c) => c.mapped).sort((a, b) => a.id - b.id);
   const caseId =
     params.get('case') ??
-    (geocoded.find((c) => c.status === 'POSITIVE') ?? geocoded[0])?.id?.toString() ??
+    (geocoded.find((c) => c.status === 'POSITIVE' && !c.closed) ?? geocoded[0])?.id?.toString() ??
     '';
   const [radius, setRadius] = useState(Number(params.get('radius')) || 1000);
   const [custom, setCustom] = useState(String(radius));
   const [bq, setBq] = useState('');
   const [bBarangay, setBBarangay] = useState('');
   const [bSpecies, setBSpecies] = useState('');
+  const [monitor, setMonitor] = useState('');
+  const [visitFarm, setVisitFarm] = useState<number | null>(null);
   const { data, error, isLoading } = useApi<RadiusResult>(
     caseId ? `/api/radius?caseId=${caseId}&radius=${radius}` : null,
   );
@@ -778,14 +1115,15 @@ export function RadiusPage() {
     (f) =>
       (!bq || `${f.name} ${f.ownerName} ${f.ownerContact ?? ''}`.toLowerCase().includes(bq.toLowerCase())) &&
       (!bBarangay || f.barangay === bBarangay) &&
-      (!bSpecies || f.species.some((s) => s.species === bSpecies)),
+      (!bSpecies || f.species.some((s) => s.species === bSpecies)) &&
+      (!monitor || (f.role !== 'Ground-zero farm' && f.monitoring === monitor)),
   );
 
   return (
     <div>
       <PageHeader
-        title="Radius Analysis"
-        subtitle="Identify farms within an assessment radius of a confirmed case."
+        title="Farms to Monitor"
+        subtitle="Farms within the radius of a disease report, and whether each one has been visited since the report."
         actions={
           <>
             <ExportButtons report={report} size="default" print={false} />
@@ -793,27 +1131,29 @@ export function RadiusPage() {
               disabled={!caseId}
               onClick={() => navigate(`/reports?tab=outbreak&case=${caseId}&radius=${radius}`)}
             >
-              <FileText /> Generate Outbreak-Area Report
+              <FileText /> Outbreak-Area Report
             </Button>
           </>
         }
       />
       <Card className="p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-          <div className="w-full lg:w-80">
-            <div className="mb-1.5 text-[13.5px] font-medium text-slate-700">Ground-zero case</div>
+          <div className="w-full lg:w-96">
+            <div className="mb-1.5 text-[13.5px] font-medium text-slate-700">
+              Disease report (ground zero)
+            </div>
             <FilterSelect
               label="Ground-zero case"
               value={caseId}
               onChange={setCase}
               options={geocoded.map((c) => ({
                 value: String(c.id),
-                label: `${c.code} · ${c.disease} (${CASE_STATUS_LABELS[c.status]})`,
+                label: `${c.code} · ${c.disease} · ${c.barangay} (${c.closed ? 'closed' : CASE_STATUS_LABELS[c.status]})`,
               }))}
             />
           </div>
           <div>
-            <div className="mb-1.5 text-[15px] text-slate-800">Radius</div>
+            <div className="mb-1.5 text-[13.5px] font-medium text-slate-700">Radius</div>
             <div className="flex flex-wrap items-center gap-1.5">
               {RADIUS_PRESETS.map((r) => (
                 <button
@@ -850,6 +1190,11 @@ export function RadiusPage() {
               </Button>
             </div>
           </div>
+          {data?.case && (
+            <Link to={`/cases/${data.case.id}`} className="link text-[14px] lg:ml-auto lg:pb-2">
+              Open {data.case.code}
+            </Link>
+          )}
         </div>
       </Card>
       {error && <ErrorBox error={error} />}
@@ -859,12 +1204,36 @@ export function RadiusPage() {
             <StatCard
               label="Farms within radius"
               value={data.totals.farms}
-              sub={`Ground-zero farm + ${data.totals.nearby} nearby`}
+              sub={`Ground-zero farm + ${data.totals.nearby} nearby · ${fmtNumber(data.totals.livestock)} head`}
             />
-            <StatCard label="Livestock (current recorded)" value={fmtNumber(data.totals.livestock)} />
-            <StatCard label="Owners affected" value={data.totals.owners} />
+            <button
+              type="button"
+              className="text-left"
+              onClick={() => setMonitor(monitor === 'NOT_VISITED' ? '' : 'NOT_VISITED')}
+            >
+              <StatCard
+                label="Not yet visited"
+                value={data.totals.notVisited}
+                sub="Nearby farms with no visit since the report"
+                tone="orange"
+                className={monitor === 'NOT_VISITED' ? 'ring-2 ring-amber-400' : ''}
+              />
+            </button>
+            <button
+              type="button"
+              className="text-left"
+              onClick={() => setMonitor(monitor === 'SICK_ANIMALS' ? '' : 'SICK_ANIMALS')}
+            >
+              <StatCard
+                label="Sick animals found"
+                value={data.totals.sick}
+                sub="Visited farms that need a report"
+                tone="red"
+                className={monitor === 'SICK_ANIMALS' ? 'ring-2 ring-red-400' : ''}
+              />
+            </button>
             <div className="card p-4">
-              <div className="text-[13px] text-slate-600">Species</div>
+              <div className="text-[13px] text-slate-600">Species within radius</div>
               <div className="mt-2 flex flex-wrap gap-1">
                 {data.totals.species.map((s) => (
                   <SpeciesChip key={s.species} species={s.species} count={s.count} />
@@ -874,27 +1243,43 @@ export function RadiusPage() {
           </div>
           {data.excluded > 0 && (
             <div className="mt-4 flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[14.5px] text-slate-700">
-              <Info className="h-4 w-4 text-sky-600" /> {data.excluded} active farm(s) excluded — no
-              coordinates.{' '}
+              <Info className="h-4 w-4 text-sky-600" /> {data.excluded} active farm(s) left out — no map
+              location.{' '}
               <Link to="/farms?location=unmapped" className="underline">
                 Set their locations
               </Link>
             </div>
           )}
-          <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
-            <MapView
-              className="h-[380px] xl:h-[520px]"
-              farms={data.farms
-                .filter((f) => f.role !== 'Ground-zero farm')
-                .map((f) => ({ ...f, inRadius: true }))}
-              pastures={data.farms
-                .filter((f) => f.pastureLat != null)
-                .map((f) => ({ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }))}
-              groundZero={data.center}
-              circles={data.center ? [{ ...data.center, radius: data.radius }] : []}
-              focusCircle={data.center ? { ...data.center, radius: data.radius } : undefined}
-              fitKey={`${caseId}-${radius}`}
-            />
+          <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.1fr]">
+            <div>
+              <MapView
+                className="h-[380px] xl:h-[560px]"
+                farms={data.farms
+                  .filter((f) => f.role !== 'Ground-zero farm')
+                  .map((f) => ({ ...f, inRadius: true, ring: MONITOR_RING[f.monitoring] }))}
+                pastures={data.farms
+                  .filter((f) => f.pastureLat != null)
+                  .map((f) => ({ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }))}
+                groundZero={data.center}
+                circles={data.center ? [{ ...data.center, radius: data.radius }] : []}
+                focusCircle={data.center ? { ...data.center, radius: data.radius } : undefined}
+                fitKey={`${caseId}-${radius}`}
+              />
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-slate-600">
+                {(Object.keys(MONITOR_RING) as (keyof typeof MONITOR_RING)[]).map((k) => (
+                  <span key={k} className="inline-flex items-center gap-1.5">
+                    <span
+                      className="h-3 w-3 rounded-full border-[3px] bg-white"
+                      style={{ borderColor: MONITOR_RING[k] }}
+                    />
+                    {MONITOR_LABEL[k]}
+                  </span>
+                ))}
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-full bg-red-600" /> Ground zero
+                </span>
+              </div>
+            </div>
             <Card>
               <CardHeader title={`Farms within ${formatRadius(data.radius)}`} />
               <DataTable
@@ -902,16 +1287,27 @@ export function RadiusPage() {
                 rowKey={(r) => r.id}
                 onRowClick={(r) => navigate(`/farms/${r.id}`)}
                 pageSize={0}
-                minWidth={canEdit ? 680 : 560}
+                minWidth={canEdit ? 760 : 620}
                 defaultSort={{ key: 'distance', dir: 'asc' }}
                 toolbar={
                   <>
                     <Input
                       value={bq}
                       onChange={(e) => setBq(e.target.value)}
-                      placeholder="Search..."
-                      className="w-full sm:w-56"
+                      placeholder="Search farm or owner..."
+                      className="w-full sm:w-48"
                       aria-label="Search farms within radius"
+                    />
+                    <FilterSelect
+                      label="Monitoring"
+                      value={monitor}
+                      onChange={setMonitor}
+                      all="Any status"
+                      options={(Object.keys(MONITOR_LABEL) as (keyof typeof MONITOR_LABEL)[]).map((k) => ({
+                        value: k,
+                        label: MONITOR_LABEL[k],
+                      }))}
+                      className="w-[calc(50%-4px)] sm:w-44"
                     />
                     <FilterSelect
                       label="Barangay"
@@ -945,20 +1341,42 @@ export function RadiusPage() {
                     ),
                   },
                   { key: 'barangay', header: 'Barangay' },
-                  { key: 'total', header: 'Head' },
+                  { key: 'total', header: 'No. of Heads' },
                   {
                     key: 'distance',
                     header: 'Distance',
-                    cell: (r) => (
-                      <div>
-                        <div>{r.distance} m</div>
-                        {r.role === 'Ground-zero farm' ? (
-                          <Badge tone="violet">Ground-zero farm</Badge>
-                        ) : (
-                          <Badge tone="red">Within Assessment Radius</Badge>
-                        )}
-                      </div>
-                    ),
+                    cell: (r) =>
+                      r.role === 'Ground-zero farm' ? (
+                        <Badge tone="violet">Ground zero</Badge>
+                      ) : (
+                        `${r.distance} m`
+                      ),
+                  },
+                  {
+                    key: 'monitoring',
+                    header: 'Monitoring',
+                    sort: (r) => (r.role === 'Ground-zero farm' ? 'z' : r.monitoring),
+                    cell: (r) =>
+                      r.role === 'Ground-zero farm' ? (
+                        <span className="text-slate-400">—</span>
+                      ) : (
+                        <div>
+                          <Badge
+                            tone={
+                              r.monitoring === 'SICK_ANIMALS'
+                                ? 'red'
+                                : r.monitoring === 'NO_SIGNS'
+                                  ? 'green'
+                                  : 'amber'
+                            }
+                          >
+                            {MONITOR_LABEL[r.monitoring]}
+                          </Badge>
+                          {r.monitoredAt && (
+                            <div className="mt-0.5 text-[12px] text-slate-500">{fmtDate(r.monitoredAt)}</div>
+                          )}
+                        </div>
+                      ),
                   },
                   ...(canEdit
                     ? [
@@ -968,16 +1386,29 @@ export function RadiusPage() {
                           sort: false as const,
                           cell: (r: (typeof rows)[number]) =>
                             r.role === 'Ground-zero farm' ? null : (
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                onClick={(ev) => {
-                                  ev.stopPropagation();
-                                  navigate(`/cases/new?farm=${r.id}&from=${caseId}`);
-                                }}
-                              >
-                                <Plus /> Report incident
-                              </Button>
+                              <span className="inline-flex flex-wrap gap-1">
+                                <Button
+                                  size="xs"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    setVisitFarm(r.id);
+                                  }}
+                                >
+                                  <ClipboardCheck /> Record visit
+                                </Button>
+                                {r.monitoring === 'SICK_ANIMALS' && (
+                                  <Button
+                                    variant="outline"
+                                    size="xs"
+                                    onClick={(ev) => {
+                                      ev.stopPropagation();
+                                      navigate(`/cases/new?farm=${r.id}&from=${caseId}`);
+                                    }}
+                                  >
+                                    <Plus /> Report
+                                  </Button>
+                                )}
+                              </span>
                             ),
                         },
                       ]
@@ -989,7 +1420,16 @@ export function RadiusPage() {
         </>
       )}
       {!isLoading && !geocoded.length && (
-        <p className="mt-4 text-sm text-slate-500">No geocoded cases yet.</p>
+        <p className="mt-4 text-sm text-slate-500">No disease reports with a map location yet.</p>
+      )}
+      {visitFarm && (
+        <FarmVisitLauncher
+          open
+          onOpenChange={(o) => !o && setVisitFarm(null)}
+          farmId={visitFarm}
+          defaultPurpose="MONITORING"
+          defaultCaseId={Number(caseId)}
+        />
       )}
     </div>
   );

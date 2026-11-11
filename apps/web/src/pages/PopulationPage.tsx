@@ -1,12 +1,14 @@
 import { ClipboardList, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { BARANGAYS, SPECIES, fmtMonth, fmtNumber } from '@livestock/shared';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { BARANGAYS, SPECIES, breakdownText, fmtMonth, fmtNumber, type Breakdown } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
 import { useApi, useLookups } from '@/lib/hooks';
 import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
-import { ErrorBox, FilterSelect, PageHeader } from '@/components/page';
+import { BarangayBars } from '@/components/charts';
+import { BreakdownBars } from '@/components/livestock';
+import { ErrorBox, FilterSelect, Loading, PageHeader } from '@/components/page';
 import { Button, Card, CardHeader, Tabs } from '@/components/ui';
 import { GroupDialog, PopulationUpdateDialog } from '@/dialogs/registry';
 
@@ -24,28 +26,39 @@ interface GroupRow {
   count: number;
   tagged: number;
   lastVerified: string | null;
+  breakdown: Breakdown | null;
 }
 interface Totals {
   total: number;
   byBarangay: { barangay: string; owners: number; farms: number; population: number }[];
-  bySpecies: { species: string; groups: number; tagged: number; population: number }[];
+  bySpecies: {
+    species: string;
+    groups: number;
+    farms: number;
+    tagged: number;
+    population: number;
+    breakdown: Breakdown;
+  }[];
 }
+
+type PopTab = 'summary' | 'farms' | 'barangays';
 
 export default function PopulationPage() {
   const { canEdit } = useAuth();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const farmParam = params.get('farm') ?? '';
-  const [tab, setTab] = useState<'groups' | 'totals'>('groups');
+  const [tab, setTab] = useState<PopTab>((params.get('tab') as PopTab) || 'summary');
   const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
   const [species, setSpecies] = useState(params.get('species') ?? '');
   const [dlg, setDlg] = useState<null | 'group' | 'update'>(null);
   const { data: lookups } = useLookups();
-  const groups = useApi<GroupRow[]>(`/api/population/groups${qs({ barangay, species, farmId: farmParam })}`);
+  const totals = useApi<Totals>(`/api/population/totals${qs({ barangay, species })}`);
+  const groups = useApi<GroupRow[]>(
+    tab === 'farms' ? `/api/population/groups${qs({ barangay, species, farmId: farmParam })}` : null,
+  );
   const allFarmGroups = useApi<GroupRow[]>(
     farmParam ? `/api/population/groups${qs({ farmId: farmParam })}` : null,
-  );
-  const totals = useApi<Totals>(
-    tab === 'totals' ? `/api/population/totals${qs({ barangay, species })}` : null,
   );
   const farm = lookups?.farms.find((f) => String(f.id) === farmParam);
   const setFarm = (v: string) => {
@@ -54,12 +67,13 @@ export default function PopulationPage() {
     else p.delete('farm');
     setParams(p, { replace: true });
   };
+  const t = totals.data;
 
   return (
     <div>
       <PageHeader
-        title="Population Monitoring"
-        subtitle="Current recorded population by group; monthly updates, history and overdue records."
+        title="Livestock Population"
+        subtitle="Current head count from the masterlist, with the breakdown by age, sex and production stage."
         actions={
           canEdit && (
             <>
@@ -70,95 +84,177 @@ export default function PopulationPage() {
                 all="Select farm to update..."
                 options={(lookups?.farms ?? []).map((f) => ({
                   value: String(f.id),
-                  label: `${f.code} ${f.name}`,
+                  label: `${f.name} · ${f.barangay}`,
                 }))}
                 className="w-full sm:w-64"
               />
               <Button variant="outline" disabled={!farm} onClick={() => setDlg('group')}>
-                <Plus /> Add group
+                <Plus /> Add Species
               </Button>
               <Button disabled={!farm || !allFarmGroups.data?.length} onClick={() => setDlg('update')}>
-                <ClipboardList /> Update population
+                <ClipboardList /> Update Head Count
               </Button>
             </>
           )
         }
       />
+      <div className="mb-4 flex flex-wrap gap-2">
+        <FilterSelect
+          label="Barangay"
+          value={barangay}
+          onChange={setBarangay}
+          options={BARANGAYS}
+          all="All barangays"
+          className="w-[calc(50%-4px)] sm:w-48"
+        />
+        <FilterSelect
+          label="Species"
+          value={species}
+          onChange={setSpecies}
+          options={SPECIES}
+          all="All species"
+          className="w-[calc(50%-4px)] sm:w-40"
+        />
+      </div>
       <Tabs
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: 'groups', label: 'Population groups' },
-          { id: 'totals', label: 'Totals by barangay & species' },
+          { id: 'summary', label: 'By Species' },
+          { id: 'farms', label: 'By Farm' },
+          { id: 'barangays', label: 'By Barangay' },
         ]}
       />
       <div className="mt-4">
-        {tab === 'groups' ? (
+        {totals.error ? (
+          <ErrorBox error={totals.error} />
+        ) : tab === 'summary' ? (
+          !t ? (
+            <Loading />
+          ) : (
+            <>
+              <div className="card mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 px-4 py-3">
+                <span className="text-[14px] text-slate-600">
+                  Total livestock{barangay ? ` in ${barangay}` : ''}:
+                </span>
+                <span className="text-[26px] font-semibold text-slate-900">{fmtNumber(t.total)}</span>
+                <span className="text-[14px] text-slate-500">head</span>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {t.bySpecies
+                  .filter((s) => s.population > 0)
+                  .sort((a, b) => b.population - a.population)
+                  .map((s) => (
+                    <Card key={s.species} className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-[16px] font-semibold text-slate-900">{s.species}</div>
+                          <div className="text-[13px] text-slate-500">
+                            {s.farms} farm{s.farms === 1 ? '' : 's'}
+                            {s.tagged ? ` · ${s.tagged} tagged` : ''}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[24px] font-semibold leading-none text-slate-900">
+                            {fmtNumber(s.population)}
+                          </div>
+                          <div className="text-[12px] text-slate-500">head</div>
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <BreakdownBars species={s.species} total={s.population} breakdown={s.breakdown} />
+                      </div>
+                      <button
+                        type="button"
+                        className="link mt-3 text-[13.5px]"
+                        onClick={() => {
+                          setSpecies(s.species);
+                          setTab('farms');
+                        }}
+                      >
+                        See farms raising {s.species.toLowerCase()}
+                      </button>
+                    </Card>
+                  ))}
+              </div>
+              {!t.bySpecies.some((s) => s.population > 0) && (
+                <Card>
+                  <p className="px-4 py-8 text-center text-[14.5px] text-slate-500">
+                    No livestock recorded for this selection.
+                  </p>
+                </Card>
+              )}
+            </>
+          )
+        ) : tab === 'farms' ? (
           groups.error ? (
             <ErrorBox error={groups.error} />
           ) : (
             <Card>
               <DataTable
                 rows={groups.data}
-                empty="No animal groups found. Choose a farm above, then select “Add group” for each species it keeps."
+                empty="No livestock found for this selection."
                 loading={groups.isLoading}
                 rowKey={(r) => r.id}
+                onRowClick={(r) => navigate(`/farms/${r.farmId}?tab=livestock`)}
                 searchText={(r) => `${r.code} ${r.farmName} ${r.ownerName} ${r.species} ${r.breed ?? ''}`}
+                searchPlaceholder="Search farm, owner or species..."
                 toolbar={
-                  <>
-                    <FilterSelect
-                      label="Barangay"
-                      value={barangay}
-                      onChange={setBarangay}
-                      options={BARANGAYS}
-                      all="All barangays"
-                      className="w-[calc(50%-4px)] sm:w-48"
-                    />
-                    <FilterSelect
-                      label="Species"
-                      value={species}
-                      onChange={setSpecies}
-                      options={SPECIES}
-                      all="All species"
-                      className="w-[calc(50%-4px)] sm:w-36"
-                    />
-                    {farmParam && (
-                      <button
-                        type="button"
-                        className="px-2 text-[13px] text-slate-700 hover:underline"
-                        onClick={() => setFarm('')}
-                      >
-                        Clear farm filter
-                      </button>
-                    )}
-                  </>
+                  farmParam && (
+                    <button
+                      type="button"
+                      className="px-2 text-[13px] text-slate-700 hover:underline"
+                      onClick={() => setFarm('')}
+                    >
+                      Clear farm filter
+                    </button>
+                  )
                 }
+                minWidth={980}
                 columns={[
-                  { key: 'code', header: 'Group' },
-                  { key: 'farmName', header: 'Farm' },
-                  { key: 'ownerName', header: 'Owner' },
+                  { key: 'farmName', header: 'Farm Name', className: 'font-medium text-slate-900' },
+                  { key: 'ownerName', header: 'Livestock Owner' },
+                  { key: 'barangay', header: 'Barangay' },
                   { key: 'species', header: 'Species' },
-                  { key: 'breed', header: 'Breed' },
-                  { key: 'count', header: 'Count', className: 'font-semibold' },
-                  { key: 'tagged', header: 'Tagged' },
-                  { key: 'lastVerified', header: 'Last verified', cell: (r) => fmtMonth(r.lastVerified) },
+                  { key: 'count', header: 'No. of Heads', className: 'font-semibold' },
+                  {
+                    key: 'breakdown',
+                    header: 'Classification',
+                    sort: false,
+                    cell: (r) =>
+                      breakdownText(r.species, r.breakdown) || (
+                        <span className="text-slate-400">Not classified</span>
+                      ),
+                  },
+                  { key: 'lastVerified', header: 'Last Counted', cell: (r) => fmtMonth(r.lastVerified) },
                 ]}
               />
             </Card>
           )
-        ) : totals.error ? (
-          <ErrorBox error={totals.error} />
+        ) : !t ? (
+          <Loading />
         ) : (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.1fr_1fr]">
             <Card>
-              <CardHeader title="By barangay" className="border-b-0" />
+              <CardHeader title="Livestock by Barangay" />
+              <div className="h-[320px] p-4">
+                <BarangayBars
+                  data={[...t.byBarangay]
+                    .sort((a, b) => b.population - a.population)
+                    .slice(0, 12)
+                    .map((b) => ({ barangay: b.barangay, count: b.population }))}
+                  onSelect={(r) => navigate(`/farms?barangay=${encodeURIComponent(r.barangay)}`)}
+                />
+              </div>
+            </Card>
+            <Card>
               <DataTable
-                rows={totals.data?.byBarangay}
-                loading={totals.isLoading}
+                rows={t.byBarangay}
                 rowKey={(r) => r.barangay}
                 pageSize={0}
                 hideFooter
                 minWidth={420}
+                onRowClick={(r) => navigate(`/farms?barangay=${encodeURIComponent(r.barangay)}`)}
                 defaultSort={{ key: 'population', dir: 'desc' }}
                 columns={[
                   { key: 'barangay', header: 'Barangay' },
@@ -166,39 +262,12 @@ export default function PopulationPage() {
                   { key: 'farms', header: 'Farms' },
                   {
                     key: 'population',
-                    header: 'Current population',
+                    header: 'No. of Heads',
                     className: 'font-semibold',
                     cell: (r) => fmtNumber(r.population),
                   },
                 ]}
               />
-            </Card>
-            <Card>
-              <CardHeader title="By species" className="border-b-0" />
-              <DataTable
-                rows={totals.data?.bySpecies}
-                loading={totals.isLoading}
-                rowKey={(r) => r.species}
-                pageSize={0}
-                hideFooter
-                minWidth={420}
-                columns={[
-                  { key: 'species', header: 'Species' },
-                  { key: 'groups', header: 'Groups' },
-                  { key: 'tagged', header: 'Tagged (within count)' },
-                  {
-                    key: 'population',
-                    header: 'Current population',
-                    className: 'font-semibold',
-                    cell: (r) => fmtNumber(r.population),
-                  },
-                ]}
-              />
-              <p className="px-4 pb-4 text-[12.5px] text-slate-500">
-                City total (your scope): <b className="text-slate-800">{fmtNumber(totals.data?.total)}</b>{' '}
-                head. Tagged animals are members of their groups and are not added again. Totals by owner and
-                farm are shown on the Owners and Farms lists.
-              </p>
             </Card>
           </div>
         )}

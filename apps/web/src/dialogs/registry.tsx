@@ -24,6 +24,10 @@ import {
   pcicCreateSchema,
   populationUpdateSchema,
   titleCase,
+  FARM_TYPE_LABELS,
+  RECORD_SOURCES,
+  RECORD_SOURCE_LABELS,
+  type Breakdown,
 } from '@livestock/shared';
 import { ApiError, api, isQueued } from '@/lib/api';
 import {
@@ -35,6 +39,7 @@ import {
   useSave,
 } from '@/lib/hooks';
 import { MapView } from '@/components/MapView';
+import { BreakdownEditor, breakdownOk, cleanBreakdown } from '@/dialogs/services';
 import { AddressLookupHint, err, useZodForm } from '@/components/forms';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
@@ -57,6 +62,29 @@ export interface OwnerRecord {
   rsbsa: string | null;
   remarks: string | null;
   status: string;
+  source?: string | null;
+}
+
+/** Where the office got the record: the CVO builds the masterlist from DA lists and farm visits. */
+function SourceSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <Select {...props}>
+      <option value="">Not specified</option>
+      {RECORD_SOURCES.map((s) => (
+        <option key={s} value={s}>
+          {RECORD_SOURCE_LABELS[s]}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h4 className="border-b border-slate-200 pb-1.5 text-[13px] font-semibold uppercase tracking-wide text-slate-500 sm:col-span-2">
+      {children}
+    </h4>
+  );
 }
 
 /** Used by the "Register a raiser" guide to chain the owner → farm → animals forms. */
@@ -85,6 +113,7 @@ export function OwnerDialog({
     contact: owner?.contact ?? '',
     rsbsa: owner?.rsbsa ?? '',
     remarks: owner?.remarks ?? '',
+    source: owner?.source ?? (editing ? '' : 'FARM_VISIT'),
     confirmDuplicate: false,
     ...(editing ? { status: owner!.status } : {}),
   };
@@ -93,8 +122,8 @@ export function OwnerDialog({
     editing ? 'PATCH' : 'POST',
     editing ? `/api/owners/${owner!.id}` : '/api/owners',
     {
-      success: editing ? 'Owner updated.' : 'Owner registered.',
-      label: (b) => `${editing ? 'Update' : 'Register'} owner ${b.fullName}`,
+      success: editing ? 'Livestock owner updated.' : 'Livestock owner added to the masterlist.',
+      label: (b) => `${editing ? 'Update' : 'Add'} owner ${b.fullName}`,
       form,
       onDone: (res) => {
         if (!editing && !isQueued(res) && onCreated) return onCreated((res as { id: number }).id);
@@ -108,14 +137,16 @@ export function OwnerDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? `Edit ${owner!.code}` : `${step ? `${step}: ` : ''}Register livestock owner`}
+      title={
+        editing ? `Edit Livestock Owner ${owner!.code}` : `${step ? `${step}: ` : ''}Add Livestock Owner`
+      }
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button form="owner-form" type="submit" loading={save.isPending}>
-            {editing ? 'Save changes' : 'Register owner'}
+            {editing ? 'Save changes' : 'Add owner'}
           </Button>
         </>
       }
@@ -126,6 +157,7 @@ export function OwnerDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
+        <SectionTitle>Personal Information</SectionTitle>
         <Field label="Full name *" error={err(e, 'fullName')} className="sm:col-span-2">
           <Input {...form.register('fullName')} aria-invalid={!!e.fullName} autoFocus />
         </Field>
@@ -165,6 +197,10 @@ export function OwnerDialog({
           hint="Registry System for Basic Sectors in Agriculture, if registered"
         >
           <Input {...form.register('rsbsa')} />
+        </Field>
+        <SectionTitle>Record</SectionTitle>
+        <Field label="Source of record" error={err(e, 'source')} hint="Where the office got this information">
+          <SourceSelect {...form.register('source')} />
         </Field>
         {editing && (
           <Field label="Status" error={err(e, 'status')}>
@@ -513,6 +549,7 @@ export interface FarmEditRecord {
   lng: number | null;
   remarks: string | null;
   ownerName: string;
+  source?: string | null;
 }
 
 /** A lat/lng pair from form values, or null when either is blank or not a number. */
@@ -559,30 +596,27 @@ export function FarmDialog({
     lat: farm?.lat ?? '',
     lng: farm?.lng ?? '',
     remarks: farm?.remarks ?? '',
+    source: farm?.source ?? (editing ? '' : 'FARM_VISIT'),
   } as any);
   const geo = useAddressLookup(form, { address: 'address', barangay: 'barangay' });
   // A map click on the pasture map fills in the pasture's address the same way.
   const pastureGeo = useAddressLookup(form, { address: 'pastureLocation' });
   // Pasture details are asked only when the animals graze on a pasture.
   const [hasPasture, setHasPasture] = useState(false);
-  const type = form.watch('type');
   useEffect(() => {
     if (open) {
       geo.reset();
       pastureGeo.reset();
-      setHasPasture(farmHasPasture(farm) || farm?.type === 'pasture');
+      setHasPasture(farmHasPasture(farm));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-  useEffect(() => {
-    if (open && type === 'pasture') setHasPasture(true);
-  }, [open, type]);
   const save = useSave<any, { id: number }>(
     editing ? 'PATCH' : 'POST',
     editing ? `/api/farms/${farm!.id}` : '/api/farms',
     {
-      success: editing ? 'Farm updated.' : 'Farm registered.',
-      label: (b) => `${editing ? 'Update' : 'Register'} farm ${b.name}`,
+      success: editing ? 'Farm updated.' : 'Farm added to the masterlist.',
+      label: (b) => `${editing ? 'Update' : 'Add'} farm ${b.name}`,
       form,
       onDone: (res) => {
         if (!editing && !isQueued(res) && onCreated) return onCreated((res as { id: number }).id);
@@ -631,7 +665,7 @@ export function FarmDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? `Edit ${farm!.code}` : `${step ? `${step}: ` : ''}Register farm`}
+      title={editing ? `Edit Farm ${farm!.code}` : `${step ? `${step}: ` : ''}Add Farm`}
       size="lg"
       footer={
         <>
@@ -639,7 +673,7 @@ export function FarmDialog({
             Cancel
           </Button>
           <Button form="farm-form" type="submit" loading={save.isPending}>
-            {editing ? 'Save changes' : 'Register farm'}
+            {editing ? 'Save changes' : 'Add farm'}
           </Button>
         </>
       }
@@ -687,11 +721,15 @@ export function FarmDialog({
           <Field label="Farm name *" error={err(e, 'name')} className="sm:col-span-2">
             <Input {...form.register('name')} aria-invalid={!!e.name} />
           </Field>
-          <Field label="Farm type" error={err(e, 'type')}>
+          <Field
+            label="Farm scale"
+            error={err(e, 'type')}
+            hint="Livestock raised (piggery, goat only…) follows the species you add."
+          >
             <Select {...form.register('type')}>
               {FARM_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {titleCase(t)}
+                  {FARM_TYPE_LABELS[t]}
                 </option>
               ))}
             </Select>
@@ -714,9 +752,12 @@ export function FarmDialog({
             <Input inputMode="decimal" {...form.register('lat')} />
           </Field>
           <Field label="Longitude" error={err(e, 'lng')}>
-             <Input inputMode="decimal" {...form.register('lng')} />
+            <Input inputMode="decimal" {...form.register('lng')} />
           </Field>
-          <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
+          <Field label="Source of record" error={err(e, 'source')}>
+            <SourceSelect {...form.register('source')} />
+          </Field>
+          <Field label="Remarks" error={err(e, 'remarks')}>
             <Input {...form.register('remarks')} />
           </Field>
         </div>
@@ -821,8 +862,16 @@ export function GroupDialog({
     healthStatus: 'Healthy',
     remarks: '',
   } as any);
+  const [classify, setClassify] = useState(false);
+  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
+  useEffect(() => {
+    if (open) {
+      setClassify(false);
+      setBreakdown(null);
+    }
+  }, [open]);
   const save = useSave<any>('POST', '/api/population/groups', {
-    success: 'Population group added.',
+    success: 'Livestock added to the farm.',
     label: (b) => `Add ${b.species} group`,
     form,
     onDone: (res) => {
@@ -835,14 +884,14 @@ export function GroupDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={`${step ? `${step}: ` : ''}Add population group (head count)`}
+      title={`${step ? `${step}: ` : ''}Add Livestock (Species and Head Count)`}
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button form="group-form" type="submit" loading={save.isPending}>
-            Add group
+            Add livestock
           </Button>
         </>
       }
@@ -850,7 +899,17 @@ export function GroupDialog({
       <form
         id="group-form"
         noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
+        onSubmit={form.handleSubmit((v) => {
+          const b = classify ? cleanBreakdown(breakdown) : null;
+          if (!breakdownOk(Number(v.count), b)) {
+            form.setError('count', {
+              type: 'manual',
+              message: 'The classification must add up to the head count',
+            });
+            return;
+          }
+          save.mutate({ ...v, breakdown: b });
+        })}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
         <Field label="Species" error={err(e, 'species')}>
@@ -880,9 +939,9 @@ export function GroupDialog({
           </Select>
         </Field>
         <Field
-          label="Reporting month"
+          label="Month counted"
           error={err(e, 'reportingMonth')}
-          hint="Month the initial count was verified."
+          hint="Month the head count was taken (farm visit or DA list)."
         >
           <Input
             type="month"
@@ -891,7 +950,7 @@ export function GroupDialog({
             {...form.register('reportingMonth')}
           />
         </Field>
-        <Field label="Initial head count" error={err(e, 'count')}>
+        <Field label="Head count *" error={err(e, 'count')}>
           <Input type="number" min={0} {...form.register('count')} />
         </Field>
         <Field label="Health status" error={err(e, 'healthStatus')}>
@@ -904,6 +963,20 @@ export function GroupDialog({
         <Field label="Remarks" error={err(e, 'remarks')}>
           <Input {...form.register('remarks')} />
         </Field>
+        <div className="sm:col-span-2">
+          <Checkbox label="Classify by age, sex and stage" checked={classify} onChange={setClassify} />
+          {classify && (
+            <div className="mt-2">
+              <BreakdownEditor
+                species={form.watch('species')}
+                total={Number(form.watch('count')) || 0}
+                value={breakdown}
+                onChange={setBreakdown}
+                idPrefix="new-group"
+              />
+            </div>
+          )}
+        </div>
       </form>
     </Dialog>
   );
@@ -917,6 +990,7 @@ export interface GroupRow {
   sex: string;
   count: number;
   tagged: number;
+  breakdown?: Breakdown | null;
 }
 
 export function PopulationUpdateDialog({
@@ -927,9 +1001,12 @@ export function PopulationUpdateDialog({
   prefill,
   note,
   onSaved,
+  classifyGroupId,
 }: DialogProps & {
   farm: { id: number; name: string };
   groups: GroupRow[];
+  /** Open with this species' classification boxes showing (from "Classify" on a species card). */
+  classifyGroupId?: number | null;
   /** Suggested new counts (e.g. after deaths in a disease case); staff review before saving. */
   prefill?: Record<number, { count: number; reason: string }>;
   note?: string;
@@ -945,6 +1022,19 @@ export function PopulationUpdateDialog({
       reason: prefill?.[g.id]?.reason ?? '',
     })),
   } as any);
+  // Classification (age, sex, stage) per species: optional, shown when ticked.
+  const [classify, setClassify] = useState<Record<number, boolean>>({});
+  const [breakdowns, setBreakdowns] = useState<Record<number, Breakdown | null>>({});
+  useEffect(() => {
+    if (!open) return;
+    setClassify(
+      Object.fromEntries(
+        groups.map((g) => [g.id, g.id === classifyGroupId || !!cleanBreakdown(g.breakdown)]),
+      ),
+    );
+    setBreakdowns(Object.fromEntries(groups.map((g) => [g.id, g.breakdown ?? null])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   const save = useSave<any>('POST', '/api/population/updates', {
     success: `Population for ${farm.name} saved.`,
     label: () => `Population update — ${farm.name}`,
@@ -961,7 +1051,7 @@ export function PopulationUpdateDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={`Update population — ${farm.name}`}
+      title={`Update Head Count — ${farm.name}`}
       size="lg"
       footer={
         <>
@@ -969,7 +1059,7 @@ export function PopulationUpdateDialog({
             Cancel
           </Button>
           <Button form="pop-form" type="submit" loading={save.isPending} disabled={!groups.length}>
-            Save update
+            Save head count
           </Button>
         </>
       }
@@ -977,7 +1067,21 @@ export function PopulationUpdateDialog({
       <form
         id="pop-form"
         noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
+        onSubmit={form.handleSubmit((v) => {
+          const entries = (v.entries as { groupId: number; count: number; reason?: string }[]).map((x) => ({
+            ...x,
+            breakdown: classify[x.groupId] ? cleanBreakdown(breakdowns[x.groupId]) : null,
+          }));
+          const bad = entries.findIndex((x) => !breakdownOk(x.count, x.breakdown));
+          if (bad >= 0) {
+            form.setError(`entries.${bad}.count` as any, {
+              type: 'manual',
+              message: 'The classification must add up to this count',
+            });
+            return;
+          }
+          save.mutate({ ...v, entries });
+        })}
         className="space-y-3"
       >
         {note && (
@@ -989,7 +1093,9 @@ export function PopulationUpdateDialog({
           <Input type="month" min={MIN_DATE.slice(0, 7)} max={isoMonth()} {...form.register('month')} />
         </Field>
         {!groups.length && (
-          <p className="text-sm text-slate-500">This farm has no population groups yet. Add a group first.</p>
+          <p className="text-sm text-slate-500">
+            This farm has no livestock recorded yet. Add a species first.
+          </p>
         )}
         {groups.map((g, i) => {
           const val = Number(entries[i]?.count ?? g.count);
@@ -999,10 +1105,11 @@ export function PopulationUpdateDialog({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-[15px] font-medium text-slate-900">
-                    {g.species} · {g.breed ?? '—'}
+                    {g.species}
+                    {g.breed ? ` · ${g.breed}` : ''}
                   </div>
                   <div className="text-[13px] text-slate-500">
-                    {g.code} · {g.sex} · previous {g.count}
+                    {g.code} · last recorded {g.count} head
                     {g.tagged ? ` · ${g.tagged} tagged` : ''}
                   </div>
                 </div>
@@ -1013,7 +1120,7 @@ export function PopulationUpdateDialog({
                       {...form.register(`entries.${i}.reason` as const)}
                     />
                   </Field>
-                  <Field label="Count" error={e.entries?.[i]?.count?.message} className="w-24">
+                  <Field label="Head count" error={e.entries?.[i]?.count?.message} className="w-28">
                     <Input
                       type="number"
                       min={g.tagged}
@@ -1028,6 +1135,24 @@ export function PopulationUpdateDialog({
                   </span>
                 </div>
               </div>
+              <div className="mt-2">
+                <Checkbox
+                  label="Classify by age, sex and stage"
+                  checked={!!classify[g.id]}
+                  onChange={(c) => setClassify((x) => ({ ...x, [g.id]: c }))}
+                />
+              </div>
+              {classify[g.id] && (
+                <div className="mt-2">
+                  <BreakdownEditor
+                    species={g.species}
+                    total={isNaN(val) ? 0 : val}
+                    value={breakdowns[g.id]}
+                    onChange={(b) => setBreakdowns((x) => ({ ...x, [g.id]: b }))}
+                    idPrefix={`pop-${g.id}`}
+                  />
+                </div>
+              )}
             </div>
           );
         })}

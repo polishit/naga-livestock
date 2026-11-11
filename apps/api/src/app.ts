@@ -25,6 +25,7 @@ import {
 } from './routes/misc';
 import { ownersRouter } from './routes/owners';
 import { populationRouter } from './routes/population';
+import { visitsRouter } from './routes/visits';
 import { vaccinationsRouter } from './routes/vaccinations';
 
 export function createApp() {
@@ -72,6 +73,7 @@ export function createApp() {
   api.use('/radius', radiusRouter);
   api.use('/', recordsRouter);
   api.use('/vaccinations', vaccinationsRouter);
+  api.use('/farm-visits', visitsRouter);
   api.use('/users', requireRole('ADMIN'), usersRouter);
   api.use('/settings', settingsRouter);
   api.use('/insights', insightsRouter);
@@ -92,7 +94,8 @@ export function createApp() {
     }
     if (err instanceof MulterError) {
       return res.status(400).json({
-        error: err.code === 'LIMIT_FILE_SIZE' ? `Each photo must be ${MAX_PHOTO_MB} MB or smaller` : err.message,
+        error:
+          err.code === 'LIMIT_FILE_SIZE' ? `Each photo must be ${MAX_PHOTO_MB} MB or smaller` : err.message,
       });
     }
     const e = err as { code?: string; meta?: unknown; message?: string };

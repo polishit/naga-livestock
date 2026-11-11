@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ClipboardCheck,
   FlaskConical,
   House,
   MapPinOff,
@@ -27,15 +28,16 @@ import {
   BarangayBars,
   CasesLine,
   ChartCard,
-  CoverageBars,
+  ServiceTrendBars,
   SpeciesDonut,
   TrendBars,
 } from '@/components/charts';
+import type { MonthlyReportData } from '@/lib/print';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, Loading, PageHeader, StatCard } from '@/components/page';
 import { HotspotBanner, MyTasksCard, WelcomeCard } from '@/components/insights';
 import { CaseLegend } from '@/components/status';
-import { Badge, Button, Card, CardHeader } from '@/components/ui';
+import { Button, Card, CardHeader } from '@/components/ui';
 import type { Overview } from './types';
 
 export default function DashboardPage() {
@@ -47,6 +49,9 @@ export default function DashboardPage() {
   const { data, isLoading, error } = useApi<Overview>(
     `/api/dashboard${qs({ barangay, species, caseStatus })}`,
   );
+  // This month's field work (deworming, check-ups, visits) for the cards and the trend graph.
+  const { data: month } = useApi<MonthlyReportData>(`/api/monthly-summary${qs({ barangay })}`);
+  const dewormed = month?.services.find((s) => s.type === 'DEWORMING');
 
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good day' : 'Good evening';
@@ -61,7 +66,7 @@ export default function DashboardPage() {
     <div>
       <PageHeader
         title={`${greet}, ${firstName}`}
-        subtitle="Overview of livestock, disease surveillance and vaccination across Naga City."
+        subtitle="Masterlist, disease surveillance, deworming and farm visits across Naga City."
         actions={
           <>
             <FilterSelect
@@ -89,9 +94,14 @@ export default function DashboardPage() {
               className="w-[calc(50%-4px)] sm:w-44"
             />
             {canEdit && (
-              <Button onClick={() => navigate('/cases/new')}>
-                <Plus /> Report case
-              </Button>
+              <>
+                <Button onClick={() => navigate('/services?tab=visits&visit=1')}>
+                  <ClipboardCheck /> Record Farm Visit
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/cases/new')}>
+                  <Plus /> Report Incident
+                </Button>
+              </>
             )}
           </>
         }
@@ -105,39 +115,43 @@ export default function DashboardPage() {
           <WelcomeCard />
           <HotspotBanner />
           <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-            <StatCard label="Registered owners" value={fmtNumber(data.stats.owners)} icon={Users} />
+            <StatCard label="Livestock owners" value={fmtNumber(data.stats.owners)} icon={Users} />
             <StatCard
-              label="Registered farms"
+              label="Farms in the masterlist"
               value={fmtNumber(data.stats.farms)}
-              sub={`${data.stats.outdatedFarms} outdated records`}
+              sub={`${data.stats.outdatedFarms} head counts out of date`}
               icon={House}
             />
             <StatCard
-              label="Current recorded livestock"
+              label="Total livestock"
               value={fmtNumber(data.stats.livestock)}
-              sub={`${data.stats.verifiedPct}% of farms verified this month`}
+              sub={`${data.stats.verifiedPct}% of farms counted this month`}
               icon={PawPrint}
             />
             <StatCard
-              label="Suspected cases"
+              label="Suspected (open reports)"
               value={data.stats.suspected}
               icon={AlertTriangle}
               tone="orange"
             />
-            <StatCard label="Cases in laboratory" value={data.stats.inLab} icon={FlaskConical} tone="blue" />
+            <StatCard label="Awaiting lab result" value={data.stats.inLab} icon={FlaskConical} tone="blue" />
             <StatCard label="Confirmed positive" value={data.stats.positive} icon={ShieldAlert} tone="red" />
             <StatCard
-              label="Vaccination coverage (6 mo.)"
-              value={`≈ ${data.stats.coveragePct}%`}
-              sub={<Badge tone="amber">Estimated</Badge>}
+              label="Heads dewormed this month"
+              value={fmtNumber(dewormed?.head ?? 0)}
+              sub={`${dewormed?.farms ?? 0} farm(s)`}
               icon={Syringe}
+              tone="blue"
             />
             <StatCard
-              label="Cases awaiting geotagging"
-              value={data.stats.awaitingGeotag}
-              sub="Excluded from radius analysis"
+              label="Farm visits this month"
+              value={month?.visits.total ?? 0}
+              sub={
+                data.stats.awaitingGeotag
+                  ? `${data.stats.awaitingGeotag} disease report(s) without a map location`
+                  : `${month?.visits.farms ?? 0} farm(s) visited`
+              }
               icon={MapPinOff}
-              tone="red"
             />
           </div>
 
@@ -204,17 +218,14 @@ export default function DashboardPage() {
             >
               <TrendBars data={data.trend} />
             </ChartCard>
-            <ChartCard title="Disease cases per month">
+            <ChartCard title="Disease reports per month">
               <CasesLine data={data.casesPerMonth} />
             </ChartCard>
             <ChartCard title="Population by barangay">
               <BarangayBars data={data.byBarangay} />
             </ChartCard>
-            <ChartCard
-              title="Vaccination coverage by species"
-              note="Estimated coverage is based on aggregate events; exact applies to tagged animals only."
-            >
-              <CoverageBars data={data.coverage} />
+            <ChartCard title="Deworming, check-ups and farm visits">
+              {month ? <ServiceTrendBars data={month.trend} /> : <Loading />}
             </ChartCard>
           </div>
         </>

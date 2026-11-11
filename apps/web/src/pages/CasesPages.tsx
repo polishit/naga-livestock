@@ -5,7 +5,9 @@ import {
   Check,
   Link2,
   Lock,
+  Map as MapIcon,
   MapPin,
+  Radar,
   Pencil,
   Plus,
   RotateCcw,
@@ -21,7 +23,11 @@ import {
   CASE_STATUSES,
   ASF_RESPONSE_STEPS,
   CASE_STATUS_LABELS,
+  MONITORED_DISEASES,
   RESPONSE_TYPES_WITH_END,
+  addMonths,
+  fmtMonth,
+  isoMonth,
   checkCaseStatus,
   isAsfDisease,
   MAX_PHOTOS,
@@ -43,7 +49,10 @@ import { DataTable } from '@/components/DataTable';
 import { PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
 import { MapView } from '@/components/MapView';
 import { MoreMenu } from '@/components/MoreMenu';
-import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
+import { ActivityTimeline, DiseasePicker } from '@/components/livestock';
+import type { VisitRecord } from '@/dialogs/services';
+import { ErrorBox, FilterSelect, KV, Loading, PageHeader, StatCard, Timeline } from '@/components/page';
+import { ChartCard, DiseaseBars, ReportTrendLine } from '@/components/charts';
 import { CaseStatusBadge, ClosedBadge, GeotagBadge, LabResultBadge } from '@/components/status';
 import {
   Badge,
@@ -72,7 +81,7 @@ import {
   type LabLite,
   type ResponseEditRecord,
 } from '@/dialogs/surveillance';
-import type { CaseRow } from './types';
+import type { CaseRow, RadiusResult } from './types';
 
 /* ---------------- Incident list ---------------- */
 
@@ -100,9 +109,13 @@ export function CasesPage() {
   const [state, setState] = useState(params.get('state') === 'all' ? '' : (params.get('state') ?? 'open'));
   const status = params.get('status') ?? '';
   const disease = params.get('disease') ?? '';
+  const [showTrends, setShowTrends] = useState(true);
   const { data, isLoading, error } = useApi<CaseRow[]>(
     `/api/cases${qs({ barangay, location, state, status, disease })}`,
   );
+  // All reports (any state) for the trend graphs; follows the barangay and disease filters.
+  const { data: all } = useApi<CaseRow[]>(showTrends ? `/api/cases${qs({ barangay, disease })}` : null);
+  const diseases = [...new Set([...MONITORED_DISEASES, ...(all ?? []).map((c) => c.disease)])];
   const filters = (
     <>
       {status && (
@@ -111,7 +124,14 @@ export function CasesPage() {
           onClear={() => setParam('status', '')}
         />
       )}
-      {disease && <LinkFilter label={`Disease: ${disease}`} onClear={() => setParam('disease', '')} />}
+      <FilterSelect
+        label="Disease"
+        value={disease}
+        onChange={(v) => setParam('disease', v)}
+        options={diseases}
+        all="All diseases"
+        className="w-full sm:w-60"
+      />
       <FilterSelect
         label="Barangay"
         value={barangay}
@@ -148,7 +168,8 @@ export function CasesPage() {
   return (
     <div>
       <PageHeader
-        title="Disease Incident Reports"
+        title="Disease Surveillance"
+        subtitle="Incident reports for ASF and the other diseases the office monitors, from report to lab result and response."
         actions={
           <>
             <div
@@ -174,12 +195,18 @@ export function CasesPage() {
             </div>
             {canEdit && (
               <Button onClick={() => navigate('/cases/new')}>
-                <Plus /> Report incident
+                <Plus /> Report Incident
               </Button>
             )}
           </>
         }
       />
+      <div className="mb-3 flex justify-end">
+        <button type="button" className="link text-[13.5px]" onClick={() => setShowTrends((v) => !v)}>
+          {showTrends ? 'Hide graphs' : 'Show graphs'}
+        </button>
+      </div>
+      {showTrends && all && <SurveillanceTrends cases={all} />}
       {error ? (
         <ErrorBox error={error} />
       ) : view === 'board' ? (
@@ -202,13 +229,18 @@ export function CasesPage() {
             minWidth={980}
             defaultSort={{ key: 'reportedAt', dir: 'desc' }}
             toolbar={filters}
+            searchText={(r) =>
+              `${r.code} ${r.disease} ${r.farmName ?? ''} ${r.ownerName ?? ''} ${r.barangay}`
+            }
+            searchPlaceholder="Search case, disease, farm or barangay..."
             columns={[
-              { key: 'code', header: 'Case' },
-              { key: 'reportedAt', header: 'Reported', cell: (r) => fmtDate(r.reportedAt) },
+              { key: 'code', header: 'Case No.' },
+              { key: 'reportedAt', header: 'Date Reported', cell: (r) => fmtDate(r.reportedAt) },
               { key: 'disease', header: 'Disease' },
               { key: 'farmName', header: 'Farm' },
+              { key: 'barangay', header: 'Barangay' },
               { key: 'species', header: 'Species' },
-              { key: 'assignedToName', header: 'Assigned to', cell: (r) => r.assignedToName ?? '—' },
+              { key: 'assignedToName', header: 'Assigned To', cell: (r) => r.assignedToName ?? '—' },
               {
                 key: 'status',
                 header: 'Status',
@@ -225,6 +257,59 @@ export function CasesPage() {
           />
         </Card>
       )}
+    </div>
+  );
+}
+
+/** Reports per month (last 12 months) and by disease, plus headline counts. */
+function SurveillanceTrends({ cases }: { cases: CaseRow[] }) {
+  const navigate = useNavigate();
+  const months = Array.from({ length: 12 }, (_, i) => addMonths(isoMonth(), i - 11));
+  const perMonth = months.map((m) => {
+    const xs = cases.filter((c) => c.reportedAt.startsWith(m));
+    return {
+      label: fmtMonth(m).replace(/ (\d{2})(\d{2})$/, ' ’$2'),
+      reports: xs.length,
+      positive: xs.filter((c) => c.status === 'POSITIVE').length,
+    };
+  });
+  const byDisease = [...new Set(cases.map((c) => c.disease))]
+    .map((d) => ({ disease: d, count: cases.filter((c) => c.disease === d).length }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+  const open = cases.filter((c) => !c.closed);
+  const year = String(new Date().getFullYear());
+  return (
+    <div className="mb-4 space-y-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="Open reports" value={open.length} tone="orange" />
+        <StatCard
+          label="Awaiting lab result"
+          value={open.filter((c) => c.status === 'SENT_TO_LAB' || c.status === 'AWAITING_RESULT').length}
+          tone="blue"
+        />
+        <StatCard
+          label="Confirmed positive (open)"
+          value={open.filter((c) => c.status === 'POSITIVE').length}
+          tone="red"
+        />
+        <StatCard
+          label={`ASF reports in ${year}`}
+          value={cases.filter((c) => isAsfDisease(c.disease) && c.reportedAt.startsWith(year)).length}
+          tone="red"
+        />
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard title="Disease Reports per Month">
+          <ReportTrendLine data={perMonth} />
+        </ChartCard>
+        <ChartCard title="Reports by Disease" clickable>
+          <DiseaseBars
+            data={byDisease}
+            onSelect={(r) => navigate(`/cases?disease=${encodeURIComponent(r.disease)}&state=all`)}
+          />
+        </ChartCard>
+      </div>
     </div>
   );
 }
@@ -502,24 +587,14 @@ export function CaseNewPage() {
               </Select>
             </Field>
             <Field label="Suspected disease *" error={err(e, 'disease')}>
-              <Input {...form.register('disease')} list="disease-list" aria-invalid={!!e.disease} />
+              <DiseasePicker
+                value={form.watch('disease') ?? ''}
+                onChange={(v) =>
+                  form.setValue('disease', v as any, { shouldValidate: !!e.disease, shouldDirty: true })
+                }
+                invalid={!!e.disease}
+              />
             </Field>
-            <datalist id="disease-list">
-              {[
-                'African Swine Fever (ASF)',
-                'Hog Cholera',
-                'Foot and Mouth Disease (suspected)',
-                'Hemorrhagic Septicemia (suspected)',
-                'Newcastle Disease',
-                'Avian Influenza (suspected)',
-                'Porcine Reproductive & Respiratory Syndrome',
-                'Peste des Petits Ruminants',
-                'Swine Erysipelas',
-                'Anthrax (suspected)',
-              ].map((d) => (
-                <option key={d} value={d} />
-              ))}
-            </datalist>
             <Field
               label="Animals affected *"
               error={err(e, 'affected')}
@@ -628,6 +703,7 @@ export function CaseNewPage() {
 }
 
 /* ---------------- Case profile ---------------- */
+
 interface VoidInfo {
   voided?: boolean;
   voidedBy?: string | null;
@@ -893,6 +969,7 @@ export function CaseDetailPage() {
   const [voidTarget, setVoidTarget] = useState<{ url: string; what: string } | null>(null);
   const [popExtra, setPopExtra] = useState(0);
   const { data, isLoading, error } = useApi<CaseDetail>(`/api/cases/${id}`);
+  const { data: caseVisits } = useApi<VisitRecord[]>(`/api/farm-visits?caseId=${id}`);
   // Links from My tasks can open a form straight away: ?do=visit or ?do=location.
   const doParam = params.get('do');
   const [didDo, setDidDo] = useState(false);
@@ -978,6 +1055,11 @@ export function CaseDetailPage() {
         }
         actions={
           <>
+            {c.mapped && (
+              <Button variant="outline" onClick={() => navigate(`/gis-map?case=${c.id}`)}>
+                <MapIcon /> View on Map
+              </Button>
+            )}
             {canEdit && (
               <>
                 <Button variant="outline" onClick={() => setDlg('edit')}>
@@ -1129,7 +1211,7 @@ export function CaseDetailPage() {
           { id: 'laboratory', label: 'Laboratory' },
           { id: 'response', label: 'Response' },
           { id: 'map', label: 'Map' },
-          { id: 'history', label: 'History' },
+          { id: 'history', label: 'Timeline' },
         ]}
       />
       <div className="mt-4">
@@ -1227,6 +1309,25 @@ export function CaseDetailPage() {
               )}
             </div>
           </Card>
+        )}
+        {tab === 'overview' && (
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <LabTracker
+              labs={data.labs}
+              onAdd={
+                canEdit
+                  ? () => {
+                      setLabEdit(null);
+                      setDlg('lab');
+                    }
+                  : undefined
+              }
+            />
+            <div className="space-y-4">
+              <ResponseStatusCard d={data} onOpen={() => setTab('response')} />
+              <MonitoringCard c={c} />
+            </div>
+          </div>
         )}
         {tab === 'investigation' && (
           <InvestigationTable
@@ -1345,17 +1446,23 @@ export function CaseDetailPage() {
             </Card>
           ))}
         {tab === 'history' && (
-          <Card>
-            <CardHeader title="Status history" />
-            <Timeline
-              items={data.history.map((h) => ({
-                key: h.id,
-                meta: `${fmtDateTime(h.at)} · ${h.byName ?? 'System'}`,
-                title: h.label,
-                body: h.note,
-              }))}
-            />
-          </Card>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.3fr_1fr]">
+            <Card>
+              <CardHeader title="Incident Timeline" />
+              <IncidentTimeline d={data} visits={caseVisits ?? []} />
+            </Card>
+            <Card className="self-start">
+              <CardHeader title="Status History" />
+              <Timeline
+                items={data.history.map((h) => ({
+                  key: h.id,
+                  meta: `${fmtDateTime(h.at)} · ${h.byName ?? 'System'}`,
+                  title: h.label,
+                  body: h.note,
+                }))}
+              />
+            </Card>
+          </div>
         )}
       </div>
       <CaseStatusDialog
@@ -1455,6 +1562,292 @@ export function CaseDetailPage() {
         pending={pending}
       />
     </div>
+  );
+}
+
+/* ---------------- Incident timeline, lab tracking and monitoring ---------------- */
+
+const LAB_TONE: Record<string, 'green' | 'red' | 'amber' | 'slate'> = {
+  POSITIVE: 'red',
+  NEGATIVE: 'green',
+  INCONCLUSIVE: 'amber',
+  PENDING: 'slate',
+};
+
+/** Every event on a case in date order: report, visits, samples, results, responses, closure. */
+function IncidentTimeline({ d, visits }: { d: CaseDetail; visits: VisitRecord[] }) {
+  const c = d.case;
+  type Ev = {
+    key: string;
+    date: string;
+    sort: string;
+    title: React.ReactNode;
+    tag?: React.ReactNode;
+    body?: React.ReactNode;
+    tone: 'green' | 'red' | 'blue' | 'amber' | 'slate';
+  };
+  const ev: Ev[] = [];
+  // Same-day events follow the report itself (report = " 1", other events = " 5").
+  const add = (e: Omit<Ev, 'sort'> & { sort?: string }) => ev.push({ ...e, sort: e.sort ?? `${e.date} 5` });
+  if (c.symptomsDate)
+    add({
+      key: 'sym',
+      date: c.symptomsDate,
+      sort: `${c.symptomsDate} 0`,
+      title: 'Symptoms first observed',
+      tone: 'amber',
+    });
+  add({
+    key: 'rep',
+    date: c.reportedAt,
+    sort: `${c.reportedAt} 1`,
+    title: 'Incident reported',
+    body: `${c.species} · ${c.affected} affected, ${c.deaths} dead${c.reportedBy ? ` · reported by ${c.reportedBy}` : ''}`,
+    tone: 'red',
+  });
+  // Status changes after the first one (the first is the report itself).
+  for (const h of [...d.history].sort((x, y) => x.at.localeCompare(y.at)).slice(1))
+    add({
+      key: `h${h.id}`,
+      date: h.at.slice(0, 10),
+      sort: `${h.at.slice(0, 10)} 5${h.at}`,
+      title: `Status: ${h.label}`,
+      body: [h.note, h.byName].filter(Boolean).join(' · '),
+      tone: h.status === 'POSITIVE' ? 'red' : h.status === 'NEGATIVE' ? 'green' : 'slate',
+    });
+  for (const v of d.investigations.filter((x) => !x.voided))
+    add({
+      key: `i${v.id}`,
+      date: v.date,
+      title: `Site visit · ${v.visitLabel}`,
+      body: [
+        v.investigator,
+        v.animalsExamined != null && `${v.animalsExamined} examined`,
+        v.sickCount != null && `${v.sickCount} sick`,
+        v.deadCount != null && `${v.deadCount} dead`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      tone: 'blue',
+    });
+  for (const l of d.labs.filter((x) => !x.voided)) {
+    if (l.collectedAt)
+      add({
+        key: `lc${l.id}`,
+        date: l.collectedAt,
+        title: `Sample collected · ${l.sampleId}`,
+        body: l.sampleType,
+        tone: 'blue',
+      });
+    if (l.sentAt)
+      add({
+        key: `ls${l.id}`,
+        date: l.sentAt,
+        title: `Sample sent for testing · ${l.sampleId}`,
+        body: [l.laboratory, l.testMethod].filter(Boolean).join(' · '),
+        tone: 'blue',
+      });
+    if (l.resultDate && l.result !== 'PENDING')
+      add({
+        key: `lr${l.id}`,
+        date: l.resultDate,
+        title: `Laboratory result · ${l.sampleId}`,
+        tag: <LabResultBadge result={l.result} />,
+        tone: l.result === 'POSITIVE' ? 'red' : l.result === 'NEGATIVE' ? 'green' : 'amber',
+      });
+  }
+  for (const r of d.responses.filter((x) => !x.voided))
+    add({
+      key: `r${r.id}`,
+      date: r.date,
+      title: r.typeLabel,
+      tag: (
+        <Badge tone={r.status === 'COMPLETED' ? 'green' : r.status === 'ONGOING' ? 'amber' : 'slate'}>
+          {r.statusLabel}
+        </Badge>
+      ),
+      body: [r.location, r.heads ? `${r.heads} head` : null, r.endDate && `until ${fmtDate(r.endDate)}`]
+        .filter(Boolean)
+        .join(' · '),
+      tone: 'amber',
+    });
+  for (const v of visits)
+    add({
+      key: `v${v.id}`,
+      date: v.date,
+      title: `Monitoring visit · ${v.farmName}`,
+      tag: <Badge tone={v.findings === 'SICK_ANIMALS' ? 'red' : 'green'}>{v.findingsLabel}</Badge>,
+      body: [v.barangay, v.visitedBy].filter(Boolean).join(' · '),
+      tone: v.findings === 'SICK_ANIMALS' ? 'red' : 'green',
+    });
+  if (c.closedAt)
+    add({
+      key: 'close',
+      date: c.closedAt.slice(0, 10),
+      sort: `${c.closedAt.slice(0, 10)} 9`,
+      title: 'Case closed',
+      body: [
+        c.closureOutcome && (CASE_OUTCOME_LABELS[c.closureOutcome as CaseOutcome] ?? c.closureOutcome),
+        c.closedBy,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      tone: 'slate',
+    });
+  ev.sort((a, b) => a.sort.localeCompare(b.sort));
+  return <ActivityTimeline items={ev} empty="No events yet." />;
+}
+
+/** Each sample as three steps: collected → sent for testing → result. */
+function LabTracker({ labs, onAdd }: { labs: (LabEditRecord & VoidInfo)[]; onAdd?: () => void }) {
+  const live = labs.filter((l) => !l.voided);
+  return (
+    <Card>
+      <CardHeader
+        title="Sample, Testing and Result"
+        actions={
+          onAdd && (
+            <Button size="xs" variant="outline" onClick={onAdd}>
+              <Plus /> Add sample
+            </Button>
+          )
+        }
+      />
+      {live.length ? (
+        <ul className="divide-y divide-slate-100">
+          {live.map((l) => {
+            const steps = [
+              { label: 'Collected', done: !!l.collectedAt || !!l.sentAt, date: l.collectedAt },
+              { label: 'Sent for testing', done: !!l.sentAt, date: l.sentAt, sub: l.laboratory },
+              {
+                label:
+                  l.result === 'PENDING'
+                    ? 'Result'
+                    : `Result: ${l.result.charAt(0)}${l.result.slice(1).toLowerCase()}`,
+                done: l.result !== 'PENDING',
+                date: l.resultDate,
+                tone: LAB_TONE[l.result],
+              },
+            ];
+            return (
+              <li key={l.id} className="px-4 py-3">
+                <div className="text-[14px] font-medium text-slate-900">
+                  {l.sampleId}
+                  <span className="font-normal text-slate-500">
+                    {[l.sampleType, l.testMethod].filter(Boolean).length
+                      ? ` · ${[l.sampleType, l.testMethod].filter(Boolean).join(' · ')}`
+                      : ''}
+                  </span>
+                </div>
+                <ol className="mt-2 grid grid-cols-3 gap-2">
+                  {steps.map((s, i) => (
+                    <li
+                      key={i}
+                      className={cn(
+                        'rounded-md border px-2 py-1.5 text-[12.5px]',
+                        s.done
+                          ? s.tone === 'red'
+                            ? 'border-red-200 bg-red-50 text-red-800'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                          : 'border-slate-200 bg-white text-slate-400',
+                      )}
+                    >
+                      <div className="flex items-center gap-1 font-medium">
+                        {s.done ? <Check className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5" />}{' '}
+                        {s.label}
+                      </div>
+                      <div>{s.date ? fmtDate(s.date) : s.done ? '' : 'Waiting'}</div>
+                      {s.sub && <div className="truncate">{s.sub}</div>}
+                    </li>
+                  ))}
+                </ol>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="px-4 py-4 text-[14px] text-slate-500">No samples recorded yet.</p>
+      )}
+    </Card>
+  );
+}
+
+/** Farms near the case and whether each was visited since the report. */
+function MonitoringCard({ c }: { c: CaseRow }) {
+  const navigate = useNavigate();
+  const { data } = useApi<RadiusResult>(c.mapped ? `/api/radius?caseId=${c.id}&radius=1000` : null);
+  return (
+    <Card>
+      <CardHeader
+        title="Farms to Monitor (1 km)"
+        actions={
+          c.mapped && (
+            <Button size="xs" variant="outline" onClick={() => navigate(`/radius?case=${c.id}&radius=1000`)}>
+              <Radar /> Open list
+            </Button>
+          )
+        }
+      />
+      {!c.mapped ? (
+        <p className="px-4 py-4 text-[14px] text-slate-500">
+          Add the case location to see the farms around it.
+        </p>
+      ) : !data?.totals ? (
+        <p className="px-4 py-4 text-[14px] text-slate-500">Loading…</p>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 p-4 text-center">
+          <div className="rounded-md bg-slate-50 p-2">
+            <div className="text-[20px] font-semibold text-slate-900">{data.totals.nearby}</div>
+            <div className="text-[12px] text-slate-500">nearby farms</div>
+          </div>
+          <div className="rounded-md bg-amber-50 p-2">
+            <div className="text-[20px] font-semibold text-amber-800">{data.totals.notVisited}</div>
+            <div className="text-[12px] text-amber-800">not yet visited</div>
+          </div>
+          <div className="rounded-md bg-red-50 p-2">
+            <div className="text-[20px] font-semibold text-red-700">{data.totals.sick}</div>
+            <div className="text-[12px] text-red-700">sick animals found</div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Quarantine, disinfection, culling and other measures with their current status. */
+function ResponseStatusCard({ d, onOpen }: { d: CaseDetail; onOpen: () => void }) {
+  const live = d.responses.filter((r) => !r.voided);
+  return (
+    <Card>
+      <CardHeader
+        title="Response Status"
+        actions={
+          <Button size="xs" variant="outline" onClick={onOpen}>
+            View all
+          </Button>
+        }
+      />
+      {live.length ? (
+        <ul className="divide-y divide-slate-100">
+          {live.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-2 px-4 py-2">
+              <span>
+                <span className="text-[14px] text-slate-900">{r.typeLabel}</span>
+                <span className="block text-[12px] text-slate-500">
+                  {fmtDate(r.date)}
+                  {r.endDate ? ` – ${fmtDate(r.endDate)}` : ''}
+                </span>
+              </span>
+              <Badge tone={r.status === 'COMPLETED' ? 'green' : r.status === 'ONGOING' ? 'amber' : 'slate'}>
+                {r.statusLabel}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="px-4 py-4 text-[14px] text-slate-500">No response measures logged yet.</p>
+      )}
+    </Card>
   );
 }
 

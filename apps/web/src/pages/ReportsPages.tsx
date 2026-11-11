@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CalendarDays } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
@@ -21,15 +22,15 @@ import {
   LargestFarmsBars,
   SpeciesDonut,
   StatusPie,
+  ServiceTrendBars,
   TrendBars,
-  VaccinationLine,
 } from '@/components/charts';
 import { DataTable } from '@/components/DataTable';
 import { ExportButtons } from '@/components/ExportButtons';
 import { CompareKpis, DataQualityCard, HotspotsCard, TargetsCard } from '@/components/insights';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, Loading, PageHeader, SummaryChips } from '@/components/page';
-import { Card, Field, Input, Tabs } from '@/components/ui';
+import { Button, Card, Field, Input, Tabs } from '@/components/ui';
 import type { CaseRow, FarmSummary, Overview } from './types';
 
 /* ---------------- Analytics ---------------- */
@@ -130,15 +131,18 @@ export function AnalyticsPage() {
               <CoverageBars data={data.coverage} />
             </ChartCard>
             <ChartCard
-              title="Vaccination activity"
-              note="Events and doses are raw totals, not distinct animals."
+              title="Deworming and veterinary services"
+              note="Heads served per month (raw totals; the same animal can be served more than once)."
             >
-              <VaccinationLine data={data.vaccinationActivity} />
+              <ServiceTrendBars
+                data={data.vaccinationActivity}
+                bars={['dewormed', 'checkups', 'vaccinated']}
+              />
             </ChartCard>
-            <ChartCard title="Farms by type" clickable>
+            <ChartCard title="Farms by livestock raised" clickable>
               <FarmTypeDonut
-                data={data.farmsByType}
-                onSelect={(r) => navigate(`/farms${qs({ type: r.type, barangay })}`)}
+                data={data.farmsByRaised}
+                onSelect={(r) => navigate(`/farms${qs({ raised: r.type, barangay })}`)}
               />
             </ChartCard>
             <ChartCard title="Largest farms (current population)" clickable>
@@ -165,7 +169,8 @@ function ReportTable({ report, loading }: { report?: ReportResult; loading?: boo
       <DataTable
         rows={report.rows}
         rowKey={(r) => JSON.stringify(r)}
-        pageSize={25}
+        // Summary reports (with sections) are shown whole, like the printed copy.
+        pageSize={report.columns.some((c) => c.key === 'section') ? 0 : 25}
         hideFooter={report.rows.length <= 25}
         minWidth={Math.max(640, report.columns.length * 120)}
         columns={report.columns.map((c) => ({
@@ -311,6 +316,7 @@ function OutbreakReport({ initialCase, initialRadius }: { initialCase?: string; 
 }
 
 export function ReportsPage() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // Opens on the accomplishment report; links can pick a tab and report, e.g. ?tab=population&type=...
   const tab = (params.get('tab') as ReportCategory) ?? 'summary';
@@ -332,6 +338,11 @@ export function ReportsPage() {
       <PageHeader
         title="Reports"
         subtitle={`${REPORT_TYPES.length} ready-made reports — view, print or download as Excel, CSV or PDF (with letterhead).`}
+        actions={
+          <Button onClick={() => navigate('/monthly-report')}>
+            <CalendarDays /> Monthly Report
+          </Button>
+        }
       />
       <Tabs
         value={tab}

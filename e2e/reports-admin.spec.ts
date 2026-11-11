@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('reports: population by barangay and CSV/XLSX/PDF exports', async ({ page }) => {
-  await page.goto('/reports');
+  await page.goto('/reports?tab=population');
   await expect(page.getByRole('heading', { name: 'Current Recorded Population by Barangay' })).toBeVisible();
   await expect(page.getByText(/Total population:/)).toBeVisible();
 
@@ -27,10 +27,14 @@ test('reports: population by barangay and CSV/XLSX/PDF exports', async ({ page }
   expect((await pdf).suggestedFilename()).toMatch(/\.pdf$/);
 });
 
-test('report export lists all 27 report types and filters by barangay', async ({ page }) => {
+test('reports list all 36 report types and filter by barangay (old export link)', async ({ page }) => {
   await page.goto('/export');
-  await expect(page.getByText('27 report types')).toBeVisible();
-  await page.getByLabel('Report', { exact: true }).selectOption({ label: 'Disease Case Monitoring Report' });
+  await expect(page).toHaveURL(/\/reports$/);
+  await expect(page.getByText('36 ready-made reports')).toBeVisible();
+  await page.getByRole('tab', { name: 'Disease Surveillance' }).click();
+  await page
+    .getByLabel('Report type', { exact: true })
+    .selectOption({ label: 'Disease Case Monitoring Report' });
   await expect(page.getByRole('heading', { name: 'Disease Case Monitoring Report' })).toBeVisible();
   await page.getByLabel('Barangay').first().selectOption('Cararayan');
   await expect(page.getByText(/Cases: /)).toBeVisible();
@@ -41,7 +45,8 @@ test('analytics renders all charts', async ({ page }) => {
   for (const t of [
     'Monthly population trend',
     'Cases by status',
-    'Vaccination activity',
+    'Deworming and veterinary services',
+    'Farms by livestock raised',
     'Largest farms (current population)',
   ]) {
     await expect(page.getByText(t)).toBeVisible();

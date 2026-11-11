@@ -23,6 +23,12 @@ export interface FarmSummary {
   species: { species: string; count: number }[];
   recordStatus: 'verified' | 'overdue' | 'outdated' | 'no_groups';
   recordStatusLabel: string;
+  /** Where the office got the record (DA masterlist, farm visit…). */
+  source: string | null;
+  /** Piggery, Cattle Only, Goat Only, Mixed… (from the species counted on the farm). */
+  livestockRaised: string;
+  lastVisitAt: string | null;
+  lastVisitPurpose: string | null;
 }
 
 export interface CaseRow {
@@ -71,7 +77,11 @@ export interface VaccinationRow {
   code: string;
   date: string;
   nextDate: string | null;
-  vaccine: string;
+  /** DEWORMING, VACCINATION, CHECKUP, TREATMENT or OTHER. */
+  serviceType: string;
+  serviceLabel: string;
+  /** Vaccine, dewormer or medicine used. */
+  vaccine: string | null;
   species: string;
   target: 'GROUP' | 'ANIMAL';
   targetLabel: string;
@@ -158,7 +168,16 @@ export interface Overview {
   attention: { label: string; kind: string; href: string }[];
   casesByStatus: { status: CaseStatus; label: string; count: number }[];
   casesByDisease: { disease: string; count: number }[];
-  vaccinationActivity: { month: string; label: string; events: number; doses: number }[];
+  vaccinationActivity: {
+    month: string;
+    label: string;
+    events: number;
+    doses: number;
+    dewormed: number;
+    checkups: number;
+    vaccinated: number;
+  }[];
+  farmsByRaised: { type: string; count: number }[];
   farmsByType: { type: string; count: number }[];
   largestFarms: { id: number; name: string; total: number }[];
 }
@@ -168,7 +187,13 @@ export interface RadiusResult {
   radius: number;
   geocoded: boolean;
   center: { lat: number; lng: number } | null;
-  farms: (FarmSummary & { distance: number; role: string })[];
+  farms: (FarmSummary & {
+    distance: number;
+    role: string;
+    /** Whether the farm was checked after the case was reported. */
+    monitoring: 'NOT_VISITED' | 'NO_SIGNS' | 'SICK_ANIMALS';
+    monitoredAt: string | null;
+  })[];
   totals: {
     farms: number;
     nearby: number;
@@ -176,6 +201,8 @@ export interface RadiusResult {
     livestock: number;
     owners: number;
     species: { species: string; count: number }[];
+    notVisited: number;
+    sick: number;
   } | null;
   excluded: number;
 }

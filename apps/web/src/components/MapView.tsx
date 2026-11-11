@@ -36,6 +36,10 @@ export interface FarmMarker {
   species?: { species: string; count: number }[];
   /** Draw in the red "within radius" style. */
   inRadius?: boolean;
+  /** Ring colour override (e.g. monitoring status near an outbreak). */
+  ring?: string;
+  /** Draw larger (the selected farm). */
+  selected?: boolean;
 }
 export interface CaseMarker {
   id: number;
@@ -84,13 +88,19 @@ function farmIcon(f: FarmMarker) {
   const dominant = [...(f.species ?? [])].sort((a, b) => b.count - a.count)[0]?.species as
     | Species
     | undefined;
-  const ring = f.inRadius ? '#dc2626' : dominant ? SPECIES_COLORS[dominant] : '#94a3b8';
+  const ring = f.ring ?? (f.inRadius ? '#dc2626' : dominant ? SPECIES_COLORS[dominant] : '#94a3b8');
   const n = f.species?.length ?? 0;
-  const html = `<div style="position:relative;width:22px;height:22px">
-    <div style="width:22px;height:22px;border-radius:50%;background:${f.inRadius ? '#fff5f5' : '#fff'};border:3px solid ${ring};box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>
+  const size = f.selected ? 30 : 22;
+  const html = `<div style="position:relative;width:${size}px;height:${size}px">
+    <div style="width:${size}px;height:${size}px;border-radius:50%;background:${f.inRadius ? '#fff5f5' : '#fff'};border:${f.selected ? 5 : 3}px solid ${ring};box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>
     ${n ? `<span style="position:absolute;top:-7px;right:-8px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#111827;color:#fff;font:600 9px/15px Inter,sans-serif;text-align:center;border:1px solid #fff">${n}</span>` : ''}
   </div>`;
-  return L.divIcon({ html, className: 'leaflet-div-icon-clear', iconSize: [22, 22], iconAnchor: [11, 11] });
+  return L.divIcon({
+    html,
+    className: 'leaflet-div-icon-clear',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
 }
 
 function caseIcon(status: CaseStatus, highlight = false) {

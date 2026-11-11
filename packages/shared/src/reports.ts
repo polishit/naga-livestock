@@ -1,4 +1,11 @@
-export type ReportCategory = 'summary' | 'population' | 'disease' | 'outbreak' | 'vaccination' | 'ownership';
+export type ReportCategory =
+  | 'summary'
+  | 'population'
+  | 'disease'
+  | 'outbreak'
+  | 'vaccination'
+  | 'visits'
+  | 'ownership';
 
 export interface ReportTypeDef {
   id: string;
@@ -7,21 +14,28 @@ export interface ReportTypeDef {
 }
 
 export const REPORT_CATEGORIES: { id: ReportCategory; label: string }[] = [
-  { id: 'summary', label: 'Accomplishment' },
-  { id: 'population', label: 'Population' },
-  { id: 'disease', label: 'Disease Monitoring' },
-  { id: 'outbreak', label: 'Outbreak' },
-  { id: 'vaccination', label: 'Vaccination' },
-  { id: 'ownership', label: 'Ownership & Incidents' },
+  { id: 'summary', label: 'Monthly & Accomplishment' },
+  { id: 'population', label: 'Livestock Population' },
+  { id: 'disease', label: 'Disease Surveillance' },
+  { id: 'outbreak', label: 'Outbreak Response' },
+  { id: 'vaccination', label: 'Deworming & Veterinary Services' },
+  { id: 'visits', label: 'Farm Visits' },
+  { id: 'ownership', label: 'Masterlist & Records' },
 ];
 
 /** All exportable report types. */
 export const REPORT_TYPES: ReportTypeDef[] = [
+  { id: 'monthly-report', title: 'Monthly Livestock Monitoring Report', category: 'summary' },
   { id: 'accomplishment', title: 'Accomplishment Report', category: 'summary' },
   { id: 'population-by-barangay', title: 'Current Recorded Population by Barangay', category: 'population' },
   { id: 'population-by-species', title: 'Current Recorded Population by Species', category: 'population' },
   { id: 'population-by-farm', title: 'Current Recorded Population by Farm', category: 'population' },
   { id: 'population-by-owner', title: 'Current Recorded Population by Owner', category: 'population' },
+  {
+    id: 'population-classification',
+    title: 'Population by Classification (Age, Sex, Stage)',
+    category: 'population',
+  },
   { id: 'population-groups', title: 'Population Groups Masterlist', category: 'population' },
   { id: 'population-updates', title: 'Monthly Population Updates', category: 'population' },
   { id: 'population-overdue', title: 'Overdue / Outdated Population Records', category: 'population' },
@@ -34,12 +48,20 @@ export const REPORT_TYPES: ReportTypeDef[] = [
   { id: 'cases-awaiting-geotag', title: 'Cases Awaiting Geotagging', category: 'disease' },
   { id: 'outbreak-area', title: 'Outbreak-Area Report', category: 'outbreak' },
   { id: 'response-activities', title: 'Response Activities Log', category: 'outbreak' },
+  { id: 'deworming-records', title: 'Deworming Records', category: 'vaccination' },
+  { id: 'service-records', title: 'Veterinary Check-ups & Field Services', category: 'vaccination' },
   { id: 'vaccination-records', title: 'Vaccination Records', category: 'vaccination' },
+  { id: 'services-by-barangay', title: 'Services by Barangay', category: 'vaccination' },
+  {
+    id: 'vaccination-upcoming',
+    title: 'Upcoming Schedule (Next Deworming / Vaccination)',
+    category: 'vaccination',
+  },
   { id: 'vaccination-coverage', title: 'Vaccination Coverage by Species', category: 'vaccination' },
-  { id: 'vaccination-upcoming', title: 'Upcoming Vaccination Schedule', category: 'vaccination' },
-  { id: 'vaccination-by-barangay', title: 'Vaccination Activity by Barangay', category: 'vaccination' },
-  { id: 'owner-registry', title: 'Livestock Owner Registry', category: 'ownership' },
-  { id: 'farm-registry', title: 'Farm Registry', category: 'ownership' },
+  { id: 'farm-visits', title: 'Farm Visit Log', category: 'visits' },
+  { id: 'farms-not-visited', title: 'Farms Not Visited Recently', category: 'visits' },
+  { id: 'owner-registry', title: 'Livestock Owner Masterlist', category: 'ownership' },
+  { id: 'farm-registry', title: 'Farm Masterlist', category: 'ownership' },
   { id: 'animal-registry', title: 'Animal ID / Ear Tag Registry', category: 'ownership' },
   { id: 'ownership-transfers', title: 'Ownership Transfers', category: 'ownership' },
   { id: 'stray-incidents', title: 'Stray Livestock & Violations', category: 'ownership' },

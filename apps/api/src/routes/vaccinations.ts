@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { vaccinationCreateSchema } from '@livestock/shared';
+import {
+  SERVICE_TYPE_LABELS,
+  SERVICE_TYPES,
+  type ServiceType,
+  vaccinationCreateSchema,
+} from '@livestock/shared';
 import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, today, ymd } from '../lib/dates';
@@ -34,15 +39,18 @@ export const liveReminder = {
  */
 export async function refreshReminders(
   tx: Prisma.TransactionClient,
-  v: { groupId: number | null; animalId: number | null; vaccine: string },
+  v: { groupId: number | null; animalId: number | null; vaccine: string | null; serviceType: string },
 ) {
-  const key = v.vaccine.trim().toLowerCase();
+  // A reminder is for the same service and product (e.g. the next deworming of the same goats).
+  const keyOf = (x: { vaccine: string | null; serviceType: string }) =>
+    `${x.serviceType}|${(x.vaccine ?? '').trim().toLowerCase()}`;
+  const key = keyOf(v);
   const doses = (
     await tx.vaccination.findMany({
       where: { voidedAt: null, ...(v.animalId ? { animalId: v.animalId } : { groupId: v.groupId }) },
-      select: { id: true, date: true, nextDate: true, vaccine: true, reminderDone: true },
+      select: { id: true, date: true, nextDate: true, vaccine: true, serviceType: true, reminderDone: true },
     })
-  ).filter((x) => x.vaccine.trim().toLowerCase() === key);
+  ).filter((x) => keyOf(x) === key);
   for (const x of doses) {
     if (!x.nextDate) continue;
     const done = doses.some(
@@ -59,8 +67,12 @@ vaccinationsRouter.get(
   '/',
   ah(async (req, res) => {
     const barangay = qstr(req.query.barangay);
+    const type = qstr(req.query.type);
     const rows = await prisma.vaccination.findMany({
-      where: barangay ? { farm: { barangay } } : {},
+      where: {
+        ...(barangay ? { farm: { barangay } } : {}),
+        ...(type && (SERVICE_TYPES as readonly string[]).includes(type) ? { serviceType: type } : {}),
+      },
       include,
       orderBy: [{ date: 'desc' }, { id: 'asc' }],
     });
@@ -145,7 +157,7 @@ vaccinationsRouter.post(
     }
     if (d.nextDate && d.date && d.nextDate <= d.date) {
       throw badRequest('Validation failed', {
-        fieldErrors: { nextDate: ['Next schedule must be after the vaccination date'] },
+        fieldErrors: { nextDate: ['Next schedule must be after the service date'] },
       });
     }
     const v = await prisma.$transaction(async (tx) => {
@@ -158,7 +170,8 @@ vaccinationsRouter.post(
           animalId: d.target === 'ANIMAL' ? d.animalId! : null,
           species,
           count,
-          vaccine: d.vaccine,
+          serviceType: d.serviceType,
+          vaccine: d.vaccine ?? null,
           date: dateOnly(d.date ?? today())!,
           nextDate: dateOnly(d.nextDate) ?? null,
           doseNumber: d.doseNumber,
@@ -169,16 +182,17 @@ vaccinationsRouter.post(
       });
       const vv = await tx.vaccination.update({
         where: { id: created.id },
-        data: { code: displayCode('VAX', created.id) },
+        data: { code: displayCode('SRV', created.id) },
       });
       // This dose fulfils earlier "next dose" reminders for the same group/animal and vaccine
       // (and if it was back-dated before a dose already given, it needs no reminder itself).
       await refreshReminders(tx, vv);
+      const what = SERVICE_TYPE_LABELS[vv.serviceType as ServiceType] ?? 'Service';
       await logActivity(
         'farm',
         farm.id,
         'vaccination',
-        `${vv.vaccine} given to ${count} head at ${farm.name}`,
+        `${what}${vv.vaccine ? ` (${vv.vaccine})` : ''}: ${count} ${species} at ${farm.name}`,
         req.user?.name,
         tx,
       );
@@ -187,7 +201,7 @@ vaccinationsRouter.post(
           'animal',
           d.animalId!,
           'vaccination',
-          `Vaccinated: ${vv.vaccine} (dose ${vv.doseNumber})`,
+          `${what}${vv.vaccine ? `: ${vv.vaccine}` : ''}${vv.serviceType === 'VACCINATION' ? ` (dose ${vv.doseNumber})` : ''}`,
           req.user?.name,
           tx,
         );

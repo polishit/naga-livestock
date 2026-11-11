@@ -1,6 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   CircleAlert,
+  ClipboardCheck,
   ClipboardList,
   FileWarning,
   Plus,
@@ -25,27 +26,33 @@ export function QuickNew() {
   if (!canEdit) return null;
   const items: { icon: LucideIcon; label: string; hint: string; run: () => void }[] = [
     {
-      icon: UserPlus,
-      label: 'Register a raiser',
-      hint: 'Owner, farm and animals, step by step',
-      run: () => setRaiser(true),
+      icon: ClipboardCheck,
+      label: 'Record a farm visit',
+      hint: 'Head count, deworming and findings in one form',
+      run: () => navigate('/services?tab=visits&visit=1'),
+    },
+    {
+      icon: Syringe,
+      label: 'Record deworming or a service',
+      hint: 'Deworming, check-up, vaccination or treatment',
+      run: () => navigate('/services?tab=records&new=1'),
     },
     {
       icon: FileWarning,
-      label: 'Report a disease case',
+      label: 'Report a disease incident',
       hint: 'Sick or dead animals reported',
       run: () => navigate('/cases/new'),
     },
     {
-      icon: Syringe,
-      label: 'Record a vaccination',
-      hint: 'A group or a tagged animal',
-      run: () => navigate('/vaccinations?new=1'),
+      icon: UserPlus,
+      label: 'Add owner, farm and livestock',
+      hint: 'New entry for the masterlist, step by step',
+      run: () => setRaiser(true),
     },
     {
       icon: ClipboardList,
       label: 'Update a head count',
-      hint: 'Monthly count for a farm',
+      hint: 'Count per species for a farm',
       run: () => navigate('/population'),
     },
     {

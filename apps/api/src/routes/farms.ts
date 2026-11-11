@@ -10,7 +10,7 @@ import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { dateOnly, today, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr, sent } from '../lib/http';
 import { loadFarms, summarizeFarm } from '../services/metrics';
-import { serializeCase, serializeVaccination } from './serializers';
+import { serializeCase, serializeVaccination, serializeVisit } from './serializers';
 
 export const farmsRouter = Router();
 
@@ -78,10 +78,12 @@ farmsRouter.get(
   ah(async (req, res) => {
     const barangay = qstr(req.query.barangay);
     const type = qstr(req.query.type);
+    const raised = qstr(req.query.raised);
     const location = qstr(req.query.location);
     // ?archived=1 lists the archived farms (to restore one).
     let rows = (await loadFarms({ barangay, archived: req.query.archived === '1' })).map(summarizeFarm);
     if (type) rows = rows.filter((r) => r.type === type);
+    if (raised) rows = rows.filter((r) => r.livestockRaised === raised);
     if (location === 'mapped') rows = rows.filter((r) => r.mapped);
     if (location === 'unmapped') rows = rows.filter((r) => !r.mapped);
     res.json(rows);
@@ -107,9 +109,15 @@ farmsRouter.get(
             },
             orderBy: { id: 'asc' },
           },
+          visits: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
         },
       })
     )[0];
+    const visits = await prisma.farmVisit.findMany({
+      where: { farmId: id },
+      include: { case: { select: { code: true, disease: true } } },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    });
     const summary = summarizeFarm(loaded);
     const animals = await prisma.animal.findMany({
       where: { group: { farmId: id } },
@@ -140,6 +148,8 @@ farmsRouter.get(
         ...summary,
         pastureArea: farm.pastureArea,
         pastureLocation: farm.pastureLocation,
+        pastureLat: farm.pastureLat,
+        pastureLng: farm.pastureLng,
         remarks: farm.remarks,
         archived: farm.archived,
         createdAt: farm.createdAt,
@@ -148,8 +158,10 @@ farmsRouter.get(
           code: farm.owner.code,
           fullName: farm.owner.fullName,
           contact: farm.owner.contact,
+          barangay: farm.owner.barangay,
         },
       },
+      visits: visits.map(serializeVisit),
       groups: loaded.groups.map((g) => ({
         id: g.id,
         code: g.code,
@@ -158,6 +170,7 @@ farmsRouter.get(
         sex: g.sex,
         lifeStage: g.lifeStage,
         count: g.count,
+        breakdown: (g.breakdown as Record<string, number> | null) ?? null,
         tagged: g.animals.length,
         healthStatus: g.healthStatus,
         lastVerified: g.lastVerified,
@@ -212,6 +225,7 @@ farmsRouter.post(
           ownerId: d.ownerId,
           name: d.name,
           type: d.type,
+          source: d.source ?? null,
           barangay: d.barangay,
           zone: d.zone ?? null,
           address: d.address ?? null,
@@ -228,7 +242,14 @@ farmsRouter.post(
         where: { id: created.id },
         data: { code: displayCode('FRM', created.id) },
       });
-      await logActivity('farm', f.id, 'created', `Farm ${f.code} registered (${f.name})`, req.user?.name, tx);
+      await logActivity(
+        'farm',
+        f.id,
+        'created',
+        `Farm ${f.code} added to the masterlist (${f.name})`,
+        req.user?.name,
+        tx,
+      );
       return f;
     });
     res.status(201).json(farm);
@@ -248,6 +269,7 @@ farmsRouter.patch(
       ...(d.type !== undefined ? { type: d.type } : {}),
       ...(d.barangay !== undefined ? { barangay: d.barangay } : {}),
       ...sent(req.body, d, [
+        'source',
         'zone',
         'address',
         'pastureArea',

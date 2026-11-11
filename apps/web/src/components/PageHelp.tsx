@@ -16,7 +16,7 @@ interface Help {
 /** How records are removed, explained the same way wherever it applies. */
 const REMOVE_TERMS: [string, string][] = [
   ['Archive', 'Put away a record that is no longer active. It can be restored.'],
-  ['Void', 'Cross out a wrong entry with the reason. It stays visible but no longer counts.'],
+  ['Remove / Void', 'Cross out a wrong entry with the reason (administrators only). It no longer counts.'],
   ['Delete', 'Remove for good. Only for a record entered by mistake that nothing depends on.'],
 ];
 
@@ -27,79 +27,82 @@ const HELP: Record<string, Help> = {
     purpose: 'The city at a glance, and the list of work waiting for you.',
     steps: [
       'Start with "My tasks": each row is one thing to do. Select its button to open the right page and form.',
-      'Use the chips above the list (Field visits, Lab results…) to see one kind of task at a time.',
-      'A red "Disease hotspot" strip means a barangay suddenly has more cases than usual. Open it and plan a response.',
-      'Use "+ New" at the top for the common jobs: register a raiser, report a case, record a vaccination.',
+      'Use the search box at the top to find any owner, farm, ear tag or disease report.',
+      'Use "+ New" for the everyday jobs: record a farm visit, record deworming, report a disease incident.',
     ],
     terms: [
       ['Overdue', 'The due date has passed.'],
-      ['Verified this month', 'The farm’s head count was updated this month.'],
-      ['Estimated coverage', 'Worked out from group vaccinations; exact only for tagged animals.'],
+      ['Counted this month', 'The farm’s head count was updated this month.'],
     ],
   },
   '/owners': {
     title: 'Livestock Owners',
-    purpose: 'Everyone who raises livestock in the city.',
+    purpose: 'The owner masterlist, built from the DA list and farm visits.',
     steps: [
-      'New raiser? Select "Register raiser". It asks for the owner, then the farm (pin it on the map), then the animals, one after another.',
-      'Use "Register owner" only when you want to add the person now and the farm later.',
-      'Search or filter by barangay, status or RSBSA, then select a row to open the owner’s profile.',
-      'On the profile you can add another farm, a PCIC insurance policy, or archive the owner.',
+      'Search by name, contact or RSBSA number, or filter by barangay or source.',
+      'New entry from the DA list or a visit? Select "Add Owner, Farm and Livestock" and follow the steps.',
+      'Select a row to open the owner: personal information first, then ownership and insurance.',
     ],
     terms: [
       ['RSBSA', 'Registry System for Basic Sectors in Agriculture number of the raiser.'],
+      ['Source', 'Where the office got the record: DA masterlist, farm visit or barangay referral.'],
       ['Archived', 'No longer raising livestock; kept for history, hidden from lists.'],
     ],
   },
   '/owners/:id': {
     title: 'Owner profile',
-    purpose: 'One raiser: details, farms, insurance and stray incidents.',
+    purpose: 'One livestock owner: personal information, ownership, insurance and farms.',
     steps: [
-      'Check the details; select "Edit" to correct them.',
-      'Select "Add farm" for each place where they keep animals.',
-      'Add PCIC insurance policies and link the insured ear tags.',
-      '"More" holds Archive (stopped raising livestock) and, for administrators, Delete — only for an owner entered by mistake with no records yet.',
+      'Owner Profile tab: personal information, then ownership records and PCIC insurance below it.',
+      'Farms tab: one card per farm with the livestock raised and the last visit. Select a card to open the farm.',
+      'Select "Add Farm" for each place where the owner keeps animals.',
+      '"More" holds Archive (stopped raising livestock).',
     ],
     terms: REMOVE_TERMS,
   },
   '/farms': {
     title: 'Farms',
-    purpose: 'Every farm, where it is, and how many animals it has.',
+    purpose: 'The farm masterlist: where each farm is, what it raises and when it was last visited.',
     steps: [
-      'Select "Register farm", choose the owner, then click the map where the farm is. The address and barangay fill in by themselves.',
-      'Tick "The animals graze on a pasture" only if they graze somewhere else, then click the pasture map.',
-      'Filter "Location: unmapped" to find farms that still need a pin.',
-      'Select a farm to update its head count, add animals or record a vaccination.',
+      'Use the cards at the top (Piggery, Goat Only, Mixed…) or the filters to narrow the list.',
+      'Filter "Not visited in 90 days" to plan the next farm visits.',
+      'Select "Add Farm", choose the owner, then click the map where the farm is.',
+      'Select a farm to record a visit, update the head count or record deworming.',
     ],
     terms: [
-      ['Overdue', 'The monthly head count was not updated in time.'],
-      ['Unmapped', 'No map pin yet: the farm is left out of radius checks.'],
+      [
+        'Livestock raised',
+        'Worked out from the species counted on the farm (one species, poultry or mixed).',
+      ],
+      ['Farm scale', 'Backyard or commercial.'],
+      [
+        'No map location',
+        'The farm is left out of the map and the farms-to-monitor list until it is pinned.',
+      ],
     ],
   },
   '/farms/:id': {
     title: 'Farm profile',
-    purpose: 'One farm: location, animal groups, vaccinations and cases.',
+    purpose: 'One farm: information, livestock with classifications, visits and services, and cases.',
     steps: [
-      'Each month select "Update population" and enter the current count for every group.',
-      'No map pin yet? Select "Set location" and click the map.',
-      'Add a group for each species (head count), or register animals one by one with ear tags.',
-      'Select "Print profile" for a paper copy with the letterhead.',
-      '"More" holds Archive / Restore farm and Delete (entered by mistake). Archived groups can be restored at the bottom of the Groups tab.',
+      'After each visit select "Record Farm Visit": note the findings, update the head count (with age, sex and stage) and the deworming given, all in one form.',
+      'Livestock tab: one card per species. Select "Update count / classify" to change the numbers.',
+      'Visits & Services tab: every visit and service on one timeline.',
+      'Select "Print" for a paper copy with the letterhead.',
     ],
     terms: REMOVE_TERMS,
   },
   '/population': {
-    title: 'Population Monitoring',
-    purpose: 'Monthly head counts of every farm’s animal groups.',
+    title: 'Livestock Population',
+    purpose: 'Head count from the masterlist, by species, farm and barangay.',
     steps: [
-      'Choose the farm first (the farm box at the top).',
-      'Select "Update population" and enter this month’s count for each group. Give a reason when the number changes.',
-      'Select "Add group" when the farm starts raising a new species.',
-      'Open the "Totals by barangay & species" tab for the city totals.',
+      'By Species: total heads per species with the breakdown by age, sex and production stage.',
+      'By Farm: each farm’s count per species. Select a row to open the farm.',
+      'To update a farm, choose it in the box at the top and select "Update Head Count".',
     ],
     terms: [
-      ['Verified', 'Staff entered a count for that month.'],
-      ['Carried forward', 'No count that month; the last known number is used.'],
+      ['Not classified', 'Heads counted without an age, sex or stage breakdown yet.'],
+      ['Last counted', 'Month of the latest count (farm visit or DA list).'],
     ],
   },
   '/animals': {
@@ -140,16 +143,17 @@ const HELP: Record<string, Help> = {
     terms: [['OR number', 'Official receipt number of the paid fine.']],
   },
   '/gis-map': {
-    title: 'Livestock Map',
-    purpose: 'Farms, cases and strays on one map.',
+    title: 'Livestock & Disease Map',
+    purpose: 'Farms, disease reports and livestock population on one map.',
     steps: [
-      'Turn layers on or off (farms, cases, strays) and filter by barangay, species or farm type.',
-      'Click a marker to see the farm or case, then open it.',
-      'Open the "By barangay" tab to see barangays shaded by livestock or cases.',
+      'Filter by barangay, disease, livestock or farm type (livestock raised).',
+      'Turn layers on or off: farms, disease reports, population by barangay, radius rings, strays.',
+      'Click a disease report to see the farms inside its radius and record a monitoring visit.',
+      'Click a farm to see its livestock and last visit.',
     ],
   },
   '/barangay-map': {
-    title: 'Map by barangay',
+    title: 'Barangay Summary',
     purpose: 'Each barangay shaded by the figure you choose. Darker means more.',
     steps: [
       'Choose what to show (livestock, farms, cases…) and a species.',
@@ -157,38 +161,40 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/outbreak-map': {
-    title: 'Disease Outbreak Map',
-    purpose: 'Where the disease cases are, and how they spread over time.',
+    title: 'Outbreak Timeline',
+    purpose: 'How the disease reports appeared and spread, month by month.',
     steps: [
-      'Filter by status to see, for example, only confirmed cases.',
-      'Open the "Outbreak timeline" tab and press play to watch the cases appear over time.',
-      'Click a case on the map to see it, then open it.',
+      'Press play to watch the reports appear over time, or drag the slider to a month.',
+      'Open the "Open Reports" tab for the reports still open, and add a location to those not yet on the map.',
     ],
   },
   '/radius': {
-    title: 'Radius Analysis',
-    purpose: 'Farms within a distance of a confirmed case (for quarantine and surveillance).',
+    title: 'Farms to Monitor',
+    purpose: 'Farms near a disease report, and whether each one was visited since the report.',
     steps: [
-      'Choose the case, then the radius (for example 500 m or 1 km).',
-      'Read the list of farms inside the circle with their owners and contact numbers.',
+      'Choose the disease report, then the radius (for example 500 m or 1 km).',
+      'Start with "Not yet visited": visit each farm and select "Record visit" to note the findings.',
+      'If sick animals are found, select "Report" to file an incident for that farm.',
       'Download the Outbreak-Area Report for the response team.',
     ],
-    terms: [['Excluded', 'Farms without a map pin cannot be measured. Set their locations first.']],
+    terms: [
+      ['Not yet visited', 'No farm visit recorded since the disease report.'],
+      ['Left out', 'Farms without a map location cannot be measured. Set their locations first.'],
+    ],
   },
   '/cases': {
-    title: 'Incident Reports',
-    purpose: 'All disease cases. Report a new one here.',
+    title: 'Disease Surveillance',
+    purpose: 'Disease reports for ASF and the other monitored diseases, with trends.',
     steps: [
-      'Select "Report incident" when a raiser reports sick or dead animals.',
-      'Switch between "Table" (a list) and "Board" (one column per stage).',
-      'Select a case to open it. The "Next step" box at the top of the case tells you what to do.',
+      'Select "Report Incident" when a raiser reports sick or dead animals.',
+      'Filter by disease, barangay or state; the graphs follow the filters.',
+      'Select a report to open it. The "Next step" box tells you what to do now.',
     ],
     terms: [
       [
         'Suspected → Sample collected → Sent to lab → Awaiting result → Positive / Negative',
-        'The stages of a case.',
+        'The stages of a report.',
       ],
-      ['Awaiting geotagging', 'The case has no map location yet.'],
       ['Closed', 'Finished; read-only.'],
     ],
   },
@@ -202,14 +208,13 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/cases/:id': {
-    title: 'Case profile',
-    purpose: 'One disease case from report to closing.',
+    title: 'Disease report',
+    purpose: 'One incident from report to closing: samples, tests, results, response and monitoring.',
     steps: [
-      'Follow the "Next step" box at the top: it always shows the one thing to do now, with a button for it.',
-      'Investigation tab: record each site visit. Laboratory tab: samples and results. Response tab: quarantine, disinfection, culling.',
-      'When the lab result comes back, the system offers the matching status.',
-      'Close the case when it is contained. A closed case is read-only.',
-      'A duplicate or wrong report: an administrator selects "More → Void case". It stays visible but stops counting.',
+      'Follow the "Next step" box at the top: it shows the one thing to do now.',
+      'Overview: the sample → testing → result steps, the response status and the farms to monitor nearby.',
+      'Timeline tab: every event in date order (visits, samples, results, responses, monitoring visits).',
+      'Close the report when the outbreak is contained. A closed report is read-only.',
     ],
     terms: [
       ['In force', 'A quarantine, movement restriction or checkpoint that has started and not been lifted.'],
@@ -220,11 +225,11 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/investigation': {
-    title: 'Investigation & Lab',
-    purpose: 'Lab results not back yet and field visits that are due, across all open cases.',
+    title: 'Samples & Lab Results',
+    purpose: 'Lab results not back yet and field visits that are due, across all open reports.',
     steps: [
       'Work from the top: the samples waiting longest and the overdue visits come first.',
-      'Select a row to open the case on the right tab, then enter the result or record the visit.',
+      'Select a row to open the report, then enter the result or record the visit.',
     ],
   },
   '/response': {
@@ -233,15 +238,6 @@ const HELP: Record<string, Help> = {
     steps: [
       'Check the "Needs update" rows first: a planned measure whose date passed, or one that should have ended.',
       'Select a row to open the case’s Response tab and update or lift the measure.',
-    ],
-  },
-  '/vaccinations': {
-    title: 'Vaccinations',
-    purpose: 'Vaccination records, doses due, and coverage.',
-    steps: [
-      'Select "Record vaccination", choose the farm and the group (or a tagged animal), the vaccine and the number vaccinated.',
-      'Enter the next dose date so it appears in "Upcoming" and in My tasks.',
-      'The "Coverage" tab shows how much of each species is vaccinated.',
     ],
   },
   '/analytics': {
@@ -262,9 +258,9 @@ const HELP: Record<string, Help> = {
     title: 'Reports',
     purpose: 'Ready-made reports to view, print or download.',
     steps: [
-      'The first tab, "Accomplishment", is the monthly report of everything the office did. Pick the dates of the month or quarter.',
-      'Other tabs hold the detailed reports. Choose one, then filter by barangay, species or dates.',
-      'Download as Excel, CSV or PDF (with the letterhead), or print.',
+      'For the month’s report with graphs, select "Monthly Report".',
+      'Choose a group (Livestock Population, Disease Surveillance, Deworming…), then the report.',
+      'Filter by barangay, species or dates, then download as Excel, CSV or PDF, or print.',
     ],
   },
   '/users': {
@@ -287,6 +283,25 @@ const HELP: Record<string, Help> = {
       'Edit the office name and letterhead lines used on printed reports.',
       'Set how many days before a head count is overdue, and how far ahead vaccinations are listed.',
       'Download a backup of all records.',
+    ],
+  },
+  '/services': {
+    title: 'Deworming & Veterinary Services',
+    purpose: 'Deworming, check-ups, vaccinations and other field services, and the farm visits.',
+    steps: [
+      'Select "Record Service": choose the service (Deworming is first), the farm and species, and the number of heads.',
+      'Select "Record Farm Visit" to record a visit with its head count and services in one form.',
+      'Service Records: filter by service, species, barangay or dates; select "Print List" for a paper copy.',
+      'Upcoming Schedule: the next deworming or vaccination that is due.',
+    ],
+  },
+  '/monthly-report': {
+    title: 'Monthly Report',
+    purpose: 'The month’s population, disease reports, deworming, check-ups and farm visits.',
+    steps: [
+      'Choose the month (and a barangay if needed). The graphs update by themselves.',
+      'Select "Print Monthly Report" for the printed report with the letterhead and signatures.',
+      'Use XLSX, CSV or PDF to download the same figures as a table.',
     ],
   },
 };

@@ -11,13 +11,16 @@ import {
   OFFICE_NAME,
   REPORT_TYPES,
   RESPONSE_TYPE_LABELS,
+  SERVICE_TYPE_LABELS,
   fmtDate,
   loginSchema,
   settingsSchema,
   userCreateSchema,
   userUpdateSchema,
-  type ResponseType,  
+  type ResponseType,
+  type ServiceType,
 } from '@livestock/shared';
+import { monthlySummary } from '../services/monthly';
 import {
   REFRESH_COOKIE,
   clearAuthCookies,
@@ -270,6 +273,15 @@ metricsRouter.get(
 );
 
 metricsRouter.get(
+  '/monthly-summary',
+  ah(async (req, res) => {
+    const month = qstr(req.query.month);
+    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw badRequest('Use a month like 2026-11');
+    res.json(await monthlySummary(month, qstr(req.query.barangay)));
+  }),
+);
+
+metricsRouter.get(
   '/dashboard',
   ah(async (req, res) => {
     res.json(
@@ -329,12 +341,28 @@ metricsRouter.get(
     const like = { contains: q };
     const [owners, farms, animals, cases] = await Promise.all([
       prisma.owner.findMany({
-        where: { OR: [{ fullName: like }, { code: like }, { contact: like }] },
+        where: {
+          status: { not: 'ARCHIVED' },
+          OR: [{ fullName: like }, { code: like }, { contact: like }, { rsbsa: like }],
+        },
+        orderBy: { fullName: 'asc' },
         take: 5,
       }),
-      prisma.farm.findMany({ where: { archived: false, OR: [{ name: like }, { code: like }] }, take: 5 }),
+      prisma.farm.findMany({
+        where: {
+          archived: false,
+          OR: [{ name: like }, { code: like }, { barangay: like }, { owner: { fullName: like } }],
+        },
+        include: { owner: { select: { fullName: true } } },
+        orderBy: { name: 'asc' },
+        take: 5,
+      }),
       prisma.animal.findMany({ where: { OR: [{ code: like }, { earTag: like }] }, take: 5 }),
-      prisma.diseaseCase.findMany({ where: { OR: [{ code: like }, { disease: like }] }, take: 5 }),
+      prisma.diseaseCase.findMany({
+        where: { voidedAt: null, OR: [{ code: like }, { disease: like }, { barangay: like }] },
+        orderBy: { reportedAt: 'desc' },
+        take: 5,
+      }),
     ]);
     res.json([
       ...owners.map((o) => ({
@@ -346,7 +374,7 @@ metricsRouter.get(
       ...farms.map((f) => ({
         type: 'Farm',
         label: f.name,
-        sub: `${f.code} · ${f.barangay}`,
+        sub: `${f.code} · ${f.barangay} · ${f.owner.fullName}`,
         href: `/farms/${f.id}`,
       })),
       ...animals.map((a) => ({
@@ -358,7 +386,7 @@ metricsRouter.get(
       ...cases.map((c) => ({
         type: 'Case',
         label: `${c.code} · ${c.disease}`,
-        sub: CASE_STATUS_LABELS[c.status],
+        sub: `${c.barangay} · ${CASE_STATUS_LABELS[c.status]}`,
         href: `/cases/${c.id}`,
       })),
     ]);
@@ -446,9 +474,9 @@ metricsRouter.get(
         const nd = ymd(v.nextDate)!;
         return {
           kind: 'vaccination',
-          title: `${v.vaccine} ${nd < start ? 'overdue' : 'due'} ${fmtDate(nd)}`,
+          title: `${v.vaccine ?? SERVICE_TYPE_LABELS[v.serviceType as ServiceType] ?? 'Service'} ${nd < start ? 'overdue' : 'due'} ${fmtDate(nd)}`,
           sub: `${v.farm.name} · ${v.target === 'GROUP' ? `${v.group?.code} · ${v.count} head` : v.animal?.code}`,
-          href: '/vaccinations?tab=upcoming',
+          href: '/services?tab=upcoming',
         };
       }),
       ...farms

@@ -1,7 +1,6 @@
 import { ChevronLeft, ChevronRight, ChevronsUpDown, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
-import { titleCase } from '@livestock/shared';
-import { cn } from '@/lib/utils';
+import { cn, toTitle } from '@/lib/utils';
 import { EmptyState, Input, Spinner } from './ui';
 
 export interface Column<T> {
@@ -38,6 +37,9 @@ interface Props<T> {
   /** Column key used as the card title on phones (defaults to the second column). */
   mobileTitle?: string;
 }
+
+/** Table headers are always shown in Title Case so every table looks the same. */
+const head = (h: ReactNode) => (typeof h === 'string' ? toTitle(h) : h);
 
 export function DataTable<T>({
   columns,
@@ -166,13 +168,7 @@ export function DataTable<T>({
                     <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
                       {rest.map((c) => (
                         <div key={c.key} className="contents">
-                          <dt className="text-slate-500">
-                            {typeof c.header === 'string' &&
-                            c.header === c.header.toUpperCase() &&
-                            c.header.length > 3
-                              ? titleCase(c.header)
-                              : c.header}
-                          </dt>
+                          <dt className="text-slate-500">{head(c.header)}</dt>
                           <dd className="min-w-0 text-slate-800">{render(c)}</dd>
                         </div>
                       ))}
@@ -197,14 +193,14 @@ export function DataTable<T>({
                   )}
                 >
                   {c.sort === false ? (
-                    c.header
+                    head(c.header)
                   ) : (
                     <button
                       type="button"
                       onClick={() => toggleSort(c.key)}
                       className="inline-flex items-center gap-1 hover:text-slate-800"
                     >
-                      {c.header}
+                      {head(c.header)}
                       {sort?.key === c.key ? (
                         sort.dir === 'asc' ? (
                           <ChevronUp className="h-3 w-3" />

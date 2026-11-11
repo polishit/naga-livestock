@@ -482,7 +482,7 @@ const GROUP_ORDER = [
   'Lab results',
   'Response measures',
   'Case locations',
-  'Vaccinations due',
+  'Deworming & vaccinations due',
   'Head counts',
   'Farm locations',
 ];

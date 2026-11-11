@@ -80,7 +80,7 @@ recordActionsRouter.delete(
     const id = idParam(req);
     const f = await prisma.farm.findUnique({
       where: { id },
-      include: { _count: { select: { groups: true, cases: true, vaccinations: true } } },
+      include: { _count: { select: { groups: true, cases: true, vaccinations: true, visits: true } } },
     });
     if (!f) throw notFound('Farm');
     const transfers = await prisma.ownershipTransfer.count({
@@ -90,7 +90,8 @@ recordActionsRouter.delete(
     const reasons = [
       c.groups && `has ${n(c.groups, 'animal group')} with head-count history`,
       c.cases && `has ${n(c.cases, 'disease case')}`,
-      c.vaccinations && `has ${n(c.vaccinations, 'vaccination record')}`,
+      c.vaccinations && `has ${n(c.vaccinations, 'service record')}`,
+      c.visits && `has ${n(c.visits, 'farm visit')}`,
       transfers && `has ${n(transfers, 'ownership transfer')}`,
     ].filter(Boolean) as string[];
     if (reasons.length) throw cannotDelete(f.name, reasons, 'Archive the farm instead.');
@@ -350,13 +351,14 @@ recordActionsRouter.patch(
     const date = d.date ?? ymd(v.date)!;
     if (d.nextDate && d.nextDate <= date)
       throw badRequest('Validation failed', {
-        fieldErrors: { nextDate: ['Next schedule must be after the vaccination date'] },
+        fieldErrors: { nextDate: ['Next schedule must be after the service date'] },
       });
     const changes: string[] = [];
     const diff = (label: string, a: unknown, b: unknown) => {
       if ((a ?? '') !== (b ?? '')) changes.push(`${label}: ${a ?? '—'} → ${b ?? '—'}`);
     };
-    diff('vaccine', v.vaccine, d.vaccine);
+    diff('service', v.serviceType, d.serviceType ?? v.serviceType);
+    diff('product', v.vaccine, d.vaccine);
     diff('date', fmtDate(ymd(v.date)), fmtDate(date));
     diff('next dose', fmtDate(ymd(v.nextDate)), fmtDate(d.nextDate ?? null));
     diff('head', v.count, count);
@@ -365,7 +367,8 @@ recordActionsRouter.patch(
       const updated = await tx.vaccination.update({
         where: { id },
         data: {
-          vaccine: d.vaccine,
+          serviceType: d.serviceType ?? v.serviceType,
+          vaccine: d.vaccine ?? null,
           date: dateOnly(date)!,
           nextDate: dateOnly(d.nextDate) ?? null,
           count,
@@ -377,12 +380,13 @@ recordActionsRouter.patch(
       });
       // A changed date or vaccine changes which reminders are already fulfilled.
       await refreshReminders(tx, v);
-      if (updated.vaccine !== v.vaccine) await refreshReminders(tx, updated);
+      if (updated.vaccine !== v.vaccine || updated.serviceType !== v.serviceType)
+        await refreshReminders(tx, updated);
       await logActivity(
         'farm',
         v.farmId,
         'vaccination-edited',
-        `Vaccination ${v.code} edited${changes.length ? ` — ${changes.join('; ')}` : ''}`.slice(0, 500),
+        `Service record ${v.code} edited${changes.length ? ` — ${changes.join('; ')}` : ''}`.slice(0, 500),
         req.user?.name,
         tx,
       );

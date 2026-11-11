@@ -256,7 +256,7 @@ function GlobalSearch({
           if (e.key === 'Enter' && data?.[0]) go(data[0]);
           if (e.key === 'Escape') setOpen(false);
         }}
-        placeholder="Search owners, farms, tags, cases..."
+        placeholder="Search owner, farm, ear tag or case..."
         aria-label="Global search"
         className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-[15px] placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
       />
@@ -620,7 +620,7 @@ export function AppLayout() {
             <div className="truncate text-[15px] font-semibold text-slate-900">{title}</div>
           </div>
           <SyncStatus />
-          <GlobalSearch className="hidden w-72 md:block" />
+          <GlobalSearch className="hidden w-64 md:block xl:w-80" />
           <button
             type="button"
             className="rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"

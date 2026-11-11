@@ -85,8 +85,200 @@ export const SPECIES_ID_LETTER: Record<Species, string> = {
   Other: 'X',
 };
 
-export const FARM_TYPES = ['backyard', 'commercial', 'pasture', 'mixed', 'poultry'] as const;
+/** Farm scale. What the farm raises (piggery, cattle-only…) is worked out from its population. */
+export const FARM_TYPES = ['backyard', 'commercial'] as const;
 export type FarmType = (typeof FARM_TYPES)[number];
+export const FARM_TYPE_LABELS: Record<FarmType, string> = { backyard: 'Backyard', commercial: 'Commercial' };
+
+/** Type of livestock raised, worked out from the species on the farm. */
+export const LIVESTOCK_RAISED = [
+  'Piggery',
+  'Cattle Only',
+  'Carabao Only',
+  'Goat Only',
+  'Sheep Only',
+  'Poultry',
+  'Mixed',
+  'No Livestock Yet',
+] as const;
+export type LivestockRaised = (typeof LIVESTOCK_RAISED)[number];
+const POULTRY: string[] = ['Chicken', 'Duck', 'Other Poultry'];
+export function livestockRaised(species: string[]): LivestockRaised {
+  const set = [...new Set(species)];
+  if (!set.length) return 'No Livestock Yet';
+  if (set.every((s) => POULTRY.includes(s))) return 'Poultry';
+  if (set.length > 1) return 'Mixed';
+  const one: Record<string, LivestockRaised> = {
+    Swine: 'Piggery',
+    Cattle: 'Cattle Only',
+    Carabao: 'Carabao Only',
+    Goat: 'Goat Only',
+    Sheep: 'Sheep Only',
+  };
+  return one[set[0]] ?? 'Mixed';
+}
+
+/** Where the office got an owner or farm record (the office gathers data; raisers do not self-register). */
+export const RECORD_SOURCES = ['DA_LIST', 'FARM_VISIT', 'BARANGAY', 'OTHER'] as const;
+export type RecordSource = (typeof RECORD_SOURCES)[number];
+export const RECORD_SOURCE_LABELS: Record<RecordSource, string> = {
+  DA_LIST: 'DA Masterlist',
+  FARM_VISIT: 'Farm Visit',
+  BARANGAY: 'Barangay Referral',
+  OTHER: 'Other',
+};
+
+/** Standard livestock classifications per species: production stage, with the sex and age group it implies. */
+export interface Classification {
+  code: string;
+  label: string;
+  sex: 'Male' | 'Female' | 'Mixed';
+  age: 'Young' | 'Grower' | 'Adult';
+}
+const c = (code: string, label: string, sex: Classification['sex'], age: Classification['age']) => ({
+  code,
+  label,
+  sex,
+  age,
+});
+export const CLASSIFICATIONS: Record<Species, Classification[]> = {
+  Swine: [
+    c('piglet', 'Piglet', 'Mixed', 'Young'),
+    c('weaner', 'Weaner', 'Mixed', 'Young'),
+    c('grower', 'Grower / Finisher', 'Mixed', 'Grower'),
+    c('gilt', 'Gilt', 'Female', 'Grower'),
+    c('sow', 'Sow', 'Female', 'Adult'),
+    c('boar', 'Boar', 'Male', 'Adult'),
+  ],
+  Cattle: [
+    c('calf', 'Calf', 'Mixed', 'Young'),
+    c('heifer', 'Heifer', 'Female', 'Grower'),
+    c('bullock', 'Bullock / Steer', 'Male', 'Grower'),
+    c('cow', 'Cow', 'Female', 'Adult'),
+    c('bull', 'Bull', 'Male', 'Adult'),
+  ],
+  Carabao: [
+    c('calf', 'Calf', 'Mixed', 'Young'),
+    c('heifer', 'Heifer', 'Female', 'Grower'),
+    c('bullock', 'Bullock', 'Male', 'Grower'),
+    c('caracow', 'Caracow', 'Female', 'Adult'),
+    c('carabull', 'Carabull', 'Male', 'Adult'),
+  ],
+  Goat: [
+    c('kid', 'Kid', 'Mixed', 'Young'),
+    c('doeling', 'Doeling', 'Female', 'Grower'),
+    c('buckling', 'Buckling', 'Male', 'Grower'),
+    c('doe', 'Doe', 'Female', 'Adult'),
+    c('buck', 'Buck', 'Male', 'Adult'),
+  ],
+  Sheep: [
+    c('lamb', 'Lamb', 'Mixed', 'Young'),
+    c('ewe', 'Ewe', 'Female', 'Adult'),
+    c('ram', 'Ram', 'Male', 'Adult'),
+  ],
+  Chicken: [
+    c('chick', 'Chick', 'Mixed', 'Young'),
+    c('pullet', 'Pullet', 'Female', 'Grower'),
+    c('broiler', 'Broiler', 'Mixed', 'Grower'),
+    c('layer', 'Layer / Hen', 'Female', 'Adult'),
+    c('rooster', 'Rooster', 'Male', 'Adult'),
+  ],
+  Duck: [
+    c('duckling', 'Duckling', 'Mixed', 'Young'),
+    c('grower', 'Grower', 'Mixed', 'Grower'),
+    c('layer', 'Layer', 'Female', 'Adult'),
+    c('drake', 'Drake', 'Male', 'Adult'),
+  ],
+  'Other Poultry': [
+    c('young', 'Young', 'Mixed', 'Young'),
+    c('female', 'Adult Female', 'Female', 'Adult'),
+    c('male', 'Adult Male', 'Male', 'Adult'),
+  ],
+  Other: [c('young', 'Young', 'Mixed', 'Young'), c('adult', 'Adult', 'Mixed', 'Adult')],
+};
+export type Breakdown = Record<string, number>;
+/** Classification label for a code within a species (falls back to the code). */
+export const classLabel = (species: string, code: string) =>
+  CLASSIFICATIONS[species as Species]?.find((x) => x.code === code)?.label ?? code;
+/** Totals of a breakdown grouped by sex, age group and production stage. */
+export function summarizeBreakdown(species: string, b: Breakdown | null | undefined) {
+  const list = CLASSIFICATIONS[species as Species] ?? CLASSIFICATIONS.Other;
+  const bySex: Record<string, number> = {};
+  const byAge: Record<string, number> = {};
+  const byStage: { code: string; label: string; count: number }[] = [];
+  for (const k of list) {
+    const n = b?.[k.code] ?? 0;
+    byStage.push({ code: k.code, label: k.label, count: n });
+    if (!n) continue;
+    bySex[k.sex] = (bySex[k.sex] ?? 0) + n;
+    byAge[k.age] = (byAge[k.age] ?? 0) + n;
+  }
+  const total = byStage.reduce((a, x) => a + x.count, 0);
+  return { bySex, byAge, byStage, total };
+}
+
+/** One-line summary of a breakdown, e.g. "Sow 4 · Piglet 20 · Boar 1" (empty when not classified). */
+export function breakdownText(species: string, b: Breakdown | null | undefined) {
+  const list = CLASSIFICATIONS[species as Species] ?? CLASSIFICATIONS.Other;
+  return list
+    .filter((k) => (b?.[k.code] ?? 0) > 0)
+    .map((k) => `${k.label} ${b![k.code]}`)
+    .join(' · ');
+}
+
+/** Veterinary services recorded on the Deworming & Veterinary Services page (deworming is the main one). */
+export const SERVICE_TYPES = ['DEWORMING', 'VACCINATION', 'CHECKUP', 'TREATMENT', 'OTHER'] as const;
+export type ServiceType = (typeof SERVICE_TYPES)[number];
+export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
+  DEWORMING: 'Deworming',
+  VACCINATION: 'Vaccination',
+  CHECKUP: 'Veterinary Check-up',
+  TREATMENT: 'Treatment',
+  OTHER: 'Other Field Service',
+};
+/** Species listed first in service forms (the office deworms goats and cattle most). */
+export const SERVICE_SPECIES_ORDER = [
+  'Goat',
+  'Cattle',
+  'Carabao',
+  'Swine',
+  'Sheep',
+  'Chicken',
+  'Duck',
+  'Other Poultry',
+  'Other',
+] as const;
+
+/** Farm visits: why the visit was made and what was found. */
+export const VISIT_PURPOSES = ['ROUTINE', 'DEWORMING', 'CHECKUP', 'MONITORING', 'OTHER'] as const;
+export type VisitPurpose = (typeof VISIT_PURPOSES)[number];
+export const VISIT_PURPOSE_LABELS: Record<VisitPurpose, string> = {
+  ROUTINE: 'Routine / Masterlist Update',
+  DEWORMING: 'Deworming',
+  CHECKUP: 'Veterinary Check-up',
+  MONITORING: 'Disease Monitoring',
+  OTHER: 'Other',
+};
+export const VISIT_FINDINGS = ['NO_SIGNS', 'SICK_ANIMALS'] as const;
+export type VisitFinding = (typeof VISIT_FINDINGS)[number];
+export const VISIT_FINDING_LABELS: Record<VisitFinding, string> = {
+  NO_SIGNS: 'No signs of disease',
+  SICK_ANIMALS: 'Sick animals found',
+};
+
+/** Diseases monitored by the office (ASF first). "Other" lets staff type a different disease. */
+export const MONITORED_DISEASES = [
+  'African Swine Fever (ASF)',
+  'Classical Swine Fever (Hog Cholera)',
+  'Foot and Mouth Disease (FMD)',
+  'Hemorrhagic Septicemia',
+  'Avian Influenza (Bird Flu)',
+  'Newcastle Disease',
+  'Porcine Reproductive and Respiratory Syndrome (PRRS)',
+  'Swine Erysipelas',
+  'Surra (Trypanosomiasis)',
+  'Anthrax',
+] as const;
 
 export const SEXES = ['Mixed', 'Male', 'Female'] as const;
 export const LIFE_STAGES = ['Mixed', 'young', 'grower', 'adult', 'breeder'] as const;

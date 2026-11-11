@@ -1,4 +1,12 @@
-import { CASE_STATUS_LABELS } from '@livestock/shared';
+import {
+  CASE_STATUS_LABELS,
+  SERVICE_TYPE_LABELS,
+  type ServiceType,
+  VISIT_FINDING_LABELS,
+  VISIT_PURPOSE_LABELS,
+  type VisitFinding,
+  type VisitPurpose,
+} from '@livestock/shared';
 import { ymd } from '../lib/dates';
 
 export function serializeCase(c: any) {
@@ -44,15 +52,14 @@ export function serializeCase(c: any) {
 }
 
 export function serializeVaccination(v: any) {
-  const target =
-    v.target === 'GROUP'
-      ? `Group ${v.group?.code ?? '—'} · ${v.count} head`
-      : `Animal ${v.animal?.code ?? '—'}`;
+  const target = v.target === 'GROUP' ? `${v.species} · ${v.count} head` : `Animal ${v.animal?.code ?? '—'}`;
   return {
     id: v.id,
     code: v.code,
     date: ymd(v.date),
     nextDate: ymd(v.nextDate),
+    serviceType: v.serviceType,
+    serviceLabel: SERVICE_TYPE_LABELS[v.serviceType as ServiceType] ?? v.serviceType,
     vaccine: v.vaccine,
     species: v.species,
     target: v.target,
@@ -92,5 +99,25 @@ export function serializeTransfer(t: any, farmNames: Map<number, string>) {
     toFarmName: farmNames.get(t.toFarmId) ?? null,
     type: t.type,
     remarks: t.remarks,
+  };
+}
+
+export function serializeVisit(v: any) {
+  return {
+    id: v.id,
+    code: v.code,
+    date: ymd(v.date),
+    farmId: v.farmId,
+    farmName: v.farm?.name ?? null,
+    barangay: v.farm?.barangay ?? null,
+    caseId: v.caseId ?? null,
+    caseCode: v.case?.code ?? null,
+    caseDisease: v.case?.disease ?? null,
+    purpose: v.purpose,
+    purposeLabel: VISIT_PURPOSE_LABELS[v.purpose as VisitPurpose] ?? v.purpose,
+    findings: v.findings,
+    findingsLabel: VISIT_FINDING_LABELS[v.findings as VisitFinding] ?? v.findings,
+    visitedBy: v.visitedBy,
+    remarks: v.remarks,
   };
 }

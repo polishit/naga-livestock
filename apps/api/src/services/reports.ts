@@ -2,7 +2,15 @@ import {
   CASE_OUTCOME_LABELS,
   CASE_STATUS_LABELS,
   CASE_STATUSES,
+  CLASSIFICATIONS,
+  FARM_TYPE_LABELS,
   INVESTIGATION_VISIT_LABELS,
+  RECORD_SOURCE_LABELS,
+  SERVICE_TYPE_LABELS,
+  VISIT_FINDING_LABELS,
+  VISIT_PURPOSE_LABELS,
+  addMonths,
+  isoMonth,
   REPORT_TYPES,
   RESPONSE_STATUS_LABELS,
   RESPONSE_TYPE_LABELS,
@@ -18,6 +26,12 @@ import {
   type InvestigationVisitType,
   type ResponseStatus,
   type ResponseType,
+  type FarmType,
+  type RecordSource,
+  type ServiceType,
+  type Species,
+  type VisitFinding,
+  type VisitPurpose,
 } from '@livestock/shared';
 import { prisma } from '../db';
 import { dateOnly, today, ymd } from '../lib/dates';
@@ -32,6 +46,7 @@ import {
 } from './metrics';
 import { accomplishmentReport } from './insights';
 import { getSettings } from './settings';
+import { monthlySummary } from './monthly';
 import { OVERDUE_DAYS, liveReminder } from '../routes/vaccinations';
 
 export interface ReportParams {
@@ -68,6 +83,59 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
   switch (id) {
     case 'accomplishment':
       return accomplishmentReport(p, base);
+    case 'monthly-report': {
+      const month = (p.to ?? p.from ?? today()).slice(0, 7) || isoMonth();
+      const m = await monthlySummary(month, p.barangay);
+      const rows: Record<string, string | number | null>[] = [];
+      const add = (section: string, item: string, value: string | number, remarks = '') =>
+        rows.push({ section, item, value, remarks });
+      add('I. Livestock Population', 'Total livestock (heads)', m.population.total);
+      add('I. Livestock Population', 'Farms in the masterlist', m.population.farms);
+      add('I. Livestock Population', 'Livestock owners', m.population.owners);
+      for (const s2 of m.population.bySpecies)
+        add(
+          'I. Livestock Population',
+          s2.species,
+          s2.population,
+          `${s2.farms} farm${s2.farms === 1 ? '' : 's'}`,
+        );
+      add('II. Disease Surveillance', 'Disease reports received', m.diseases.reported);
+      add('II. Disease Surveillance', 'Confirmed positive', m.diseases.positive);
+      add('II. Disease Surveillance', 'Open cases (all months)', m.diseases.openCases);
+      for (const d of m.diseases.byDisease) add('II. Disease Surveillance', d.name, d.count, 'report(s)');
+      for (const sv of m.services) {
+        const sec = sv.type === 'DEWORMING' ? 'III. Deworming' : 'IV. Veterinary Check-ups & Other Services';
+        add(sec, sv.label, sv.head, `${sv.records} record(s) · ${sv.farms} farm(s)`);
+        for (const b2 of sv.bySpecies)
+          add(sec, `  ${sv.label} — ${b2.species}`, b2.head, `${b2.farms} farm(s)`);
+      }
+      add('V. Farm Visits', 'Farm visits conducted', m.visits.total, `${m.visits.farms} farm(s)`);
+      add('V. Farm Visits', 'Visits with sick animals found', m.visits.sickFound);
+      for (const v2 of m.visits.byPurpose) if (v2.count) add('V. Farm Visits', v2.label, v2.count);
+      return {
+        ...base,
+        title: `${def.title} — ${m.label}`,
+        subtitle: await subtitle({
+          barangay: p.barangay,
+          from: `${month}-01`,
+          to: isoDate(new Date(Date.parse(`${addMonths(month, 1)}-01T00:00:00Z`) - 86400_000)).slice(0, 10),
+        }),
+        columns: [
+          col('section', 'Section'),
+          col('item', 'Particulars'),
+          col('value', 'Total', 'right'),
+          col('remarks', 'Remarks'),
+        ],
+        rows,
+        summary: [
+          { label: 'Total livestock', value: m.population.total },
+          { label: 'Disease reports', value: m.diseases.reported },
+          { label: 'Heads dewormed', value: m.services.find((x) => x.type === 'DEWORMING')?.head ?? 0 },
+          { label: 'Farm visits', value: m.visits.total },
+        ],
+        note: 'Population is the current masterlist count. Disease reports, services and visits cover the selected month.',
+      };
+    }
     case 'population-by-barangay': {
       const t = populationTotals(await loadFarms(p));
       return {
@@ -168,6 +236,45 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           .sort((a, b) => a[0] - b[0])
           .map(([oid, o]) => ({ code: owners.find((x) => x.id === oid)?.code ?? '', ...o })),
         summary: [{ label: 'Owners', value: byOwner.size }],
+      };
+    }
+    case 'population-classification': {
+      const pop = populationTotals(await loadFarms(p));
+      const rows: Record<string, string | number | null>[] = [];
+      for (const sp of pop.bySpecies.filter((x) => !p.species || x.species === p.species)) {
+        const classes = CLASSIFICATIONS[sp.species as Species] ?? [];
+        const classified = Object.values(sp.breakdown).reduce((x, y) => x + y, 0);
+        for (const c of classes)
+          rows.push({
+            species: sp.species,
+            class: c.label,
+            sex: c.sex,
+            age: c.age,
+            head: sp.breakdown[c.code] ?? 0,
+          });
+        if (sp.population > classified)
+          rows.push({
+            species: sp.species,
+            class: 'Not yet classified',
+            sex: '—',
+            age: '—',
+            head: sp.population - classified,
+          });
+        rows.push({ species: `${sp.species} total`, class: '', sex: '', age: '', head: sp.population });
+      }
+      return {
+        ...base,
+        subtitle: await subtitle({ barangay: p.barangay, species: p.species }),
+        columns: [
+          col('species', 'Species'),
+          col('class', 'Classification'),
+          col('sex', 'Sex'),
+          col('age', 'Age Group'),
+          col('head', 'No. of Heads', 'right'),
+        ],
+        rows,
+        summary: [{ label: 'Total livestock', value: pop.total }],
+        note: 'Classification counts come from the latest farm visit or monthly update. Heads without a breakdown are shown as "Not yet classified".',
       };
     }
     case 'population-groups': {
@@ -520,44 +627,74 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         note: 'Documentation only — not automated recommendations.',
       };
     }
+    case 'deworming-records':
+    case 'service-records':
     case 'vaccination-records': {
+      const types: ServiceType[] =
+        id === 'deworming-records'
+          ? ['DEWORMING']
+          : id === 'vaccination-records'
+            ? ['VACCINATION']
+            : ['CHECKUP', 'TREATMENT', 'OTHER'];
       const v = await prisma.vaccination.findMany({
         where: {
           voidedAt: null,
+          serviceType: { in: types },
           ...(p.species ? { species: p.species } : {}),
           ...(p.barangay ? { farm: { barangay: p.barangay } } : {}),
         },
-        include: { farm: true },
-        orderBy: { id: 'asc' },
+        include: { farm: { include: { owner: true } } },
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
       });
       const rows = v.filter((x) => inRange(x.date, p));
+      const head = rows.reduce((a, x) => a + x.count, 0);
+      const product =
+        id === 'vaccination-records'
+          ? 'Vaccine'
+          : id === 'deworming-records'
+            ? 'Dewormer'
+            : 'Medicine / product';
       return {
         ...base,
         columns: [
-          col('code', 'Record'),
+          col('code', 'Record No.'),
           col('date', 'Date'),
-          col('vaccine', 'Vaccine'),
-          col('species', 'Species'),
+          ...(id === 'service-records' ? [col('service', 'Service')] : []),
           col('farm', 'Farm'),
-          col('target', 'Target'),
-          col('doses', 'Doses'),
-          col('dose', 'Dose #'),
+          col('owner', 'Livestock Owner'),
+          col('barangay', 'Barangay'),
+          col('species', 'Species'),
+          col('head', 'No. of Heads', 'right'),
+          col('product', product),
+          col('by', 'Done By'),
+          col('remarks', 'Remarks'),
         ],
         rows: rows.map((x) => ({
           code: x.code,
           date: fmtDate(ymd(x.date)),
-          vaccine: x.vaccine,
-          species: x.species,
+          service: SERVICE_TYPE_LABELS[x.serviceType as ServiceType] ?? x.serviceType,
           farm: x.farm.name,
-          target: x.target === 'GROUP' ? 'Group' : 'Animal',
-          doses: x.count,
-          dose: x.doseNumber,
+          owner: x.farm.owner.fullName,
+          barangay: x.farm.barangay,
+          species: x.species,
+          head: x.count,
+          product: x.vaccine ?? '—',
+          by: x.administeredBy ?? '—',
+          remarks: x.remarks ?? '—',
         })),
         summary: [
-          { label: 'Vaccination events', value: rows.length },
-          { label: 'Doses administered', value: rows.reduce((a, x) => a + x.count, 0) },
+          { label: 'Records', value: rows.length },
+          {
+            label:
+              id === 'deworming-records'
+                ? 'Heads dewormed'
+                : id === 'vaccination-records'
+                  ? 'Heads vaccinated'
+                  : 'Heads served',
+            value: head,
+          },
+          { label: 'Farms served', value: new Set(rows.map((x) => x.farmId)).size },
         ],
-        note: '* Doses are raw totals and may include repeat doses to the same animals.',
       };
     }
     case 'vaccination-coverage': {
@@ -636,35 +773,139 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         ],
       };
     }
-    case 'vaccination-by-barangay': {
+    case 'services-by-barangay': {
       const v = await prisma.vaccination.findMany({
         where: { voidedAt: null, ...(p.species ? { species: p.species } : {}) },
         include: { farm: true },
       });
       const rows = v.filter((x) => inRange(x.date, p) && (!p.barangay || x.farm.barangay === p.barangay));
-      const m = new Map<string, { events: number; doses: number; farms: Set<number> }>();
+      type Row = { farms: Set<number>; deworm: number; vax: number; checkup: number; other: number };
+      const m = new Map<string, Row>();
       for (const x of rows) {
-        const r = m.get(x.farm.barangay) ?? { events: 0, doses: 0, farms: new Set<number>() };
-        r.events += 1;
-        r.doses += x.count;
+        const r = m.get(x.farm.barangay) ?? {
+          farms: new Set<number>(),
+          deworm: 0,
+          vax: 0,
+          checkup: 0,
+          other: 0,
+        };
         r.farms.add(x.farmId);
+        if (x.serviceType === 'DEWORMING') r.deworm += x.count;
+        else if (x.serviceType === 'VACCINATION') r.vax += x.count;
+        else if (x.serviceType === 'CHECKUP') r.checkup += x.count;
+        else r.other += x.count;
         m.set(x.farm.barangay, r);
       }
+      const total = (k: keyof Omit<Row, 'farms'>) => [...m.values()].reduce((a2, r) => a2 + r[k], 0);
       return {
         ...base,
         columns: [
           col('barangay', 'Barangay'),
-          col('farms', 'Farms served'),
-          col('events', 'Events'),
-          col('doses', 'Doses'),
+          col('farms', 'Farms Served', 'right'),
+          col('deworm', 'Heads Dewormed', 'right'),
+          col('checkup', 'Heads Checked', 'right'),
+          col('vax', 'Heads Vaccinated', 'right'),
+          col('other', 'Other Services', 'right'),
         ],
         rows: [...m.entries()]
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([b, r]) => ({ barangay: b, farms: r.farms.size, events: r.events, doses: r.doses })),
+          .sort((x, y) => x[0].localeCompare(y[0]))
+          .map(([brgy, r]) => ({
+            barangay: brgy,
+            farms: r.farms.size,
+            deworm: r.deworm,
+            checkup: r.checkup,
+            vax: r.vax,
+            other: r.other,
+          })),
         summary: [
-          { label: 'Events', value: rows.length },
-          { label: 'Doses', value: rows.reduce((a, x) => a + x.count, 0) },
+          { label: 'Heads dewormed', value: total('deworm') },
+          { label: 'Heads checked', value: total('checkup') },
+          { label: 'Heads vaccinated', value: total('vax') },
+          { label: 'Other services (heads)', value: total('other') },
         ],
+      };
+    }
+    case 'farm-visits': {
+      const visits = await prisma.farmVisit.findMany({
+        where: { ...(p.barangay ? { farm: { barangay: p.barangay } } : {}) },
+        include: { farm: { include: { owner: true } }, case: { select: { code: true, disease: true } } },
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
+      });
+      const rows = visits.filter((x) => inRange(x.date, p));
+      return {
+        ...base,
+        columns: [
+          col('code', 'Visit No.'),
+          col('date', 'Date'),
+          col('farm', 'Farm'),
+          col('owner', 'Livestock Owner'),
+          col('barangay', 'Barangay'),
+          col('purpose', 'Purpose'),
+          col('findings', 'Findings'),
+          col('case', 'Related Case'),
+          col('by', 'Visited By'),
+          col('remarks', 'Remarks'),
+        ],
+        rows: rows.map((x) => ({
+          code: x.code,
+          date: fmtDate(ymd(x.date)),
+          farm: x.farm.name,
+          owner: x.farm.owner.fullName,
+          barangay: x.farm.barangay,
+          purpose: VISIT_PURPOSE_LABELS[x.purpose as VisitPurpose] ?? x.purpose,
+          findings: VISIT_FINDING_LABELS[x.findings as VisitFinding] ?? x.findings,
+          case: x.case ? `${x.case.code} · ${x.case.disease}` : '—',
+          by: x.visitedBy ?? '—',
+          remarks: x.remarks ?? '—',
+        })),
+        summary: [
+          { label: 'Farm visits', value: rows.length },
+          { label: 'Farms visited', value: new Set(rows.map((x) => x.farmId)).size },
+          {
+            label: 'Visits with sick animals',
+            value: rows.filter((x) => x.findings === 'SICK_ANIMALS').length,
+          },
+        ],
+      };
+    }
+    case 'farms-not-visited': {
+      // Farms with no visit in the last 90 days (or since the start date, when one is given).
+      const since = p.from ?? isoDate(new Date(Date.now() - 90 * 86400_000));
+      const rows = (await loadFarms(p))
+        .map(summarizeFarm)
+        .filter((r) => !r.lastVisitAt || r.lastVisitAt < since)
+        .sort(
+          (x, y) =>
+            (x.lastVisitAt ?? '').localeCompare(y.lastVisitAt ?? '') || x.barangay.localeCompare(y.barangay),
+        );
+      return {
+        ...base,
+        subtitle: await subtitle({ barangay: p.barangay, species: p.species, from: since }),
+        columns: [
+          col('code', 'Farm No.'),
+          col('name', 'Farm'),
+          col('owner', 'Livestock Owner'),
+          col('contact', 'Contact'),
+          col('barangay', 'Barangay'),
+          col('raised', 'Livestock Raised'),
+          col('total', 'No. of Heads', 'right'),
+          col('last', 'Last Visit'),
+        ],
+        rows: rows.map((r) => ({
+          code: r.code,
+          name: r.name,
+          owner: r.ownerName,
+          contact: r.ownerContact ?? '—',
+          barangay: r.barangay,
+          raised: r.livestockRaised,
+          total: r.total,
+          last: r.lastVisitAt ? fmtDate(r.lastVisitAt) : 'Never visited',
+        })),
+        summary: [
+          { label: 'Farms to visit', value: rows.length },
+          { label: 'Never visited', value: rows.filter((r) => !r.lastVisitAt).length },
+        ],
+        note: `Farms with no recorded visit since ${fmtDate(since)}.`,
       };
     }
     case 'owner-registry': {
@@ -704,8 +945,10 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('name', 'Farm'),
           col('owner', 'Owner'),
           col('barangay', 'Barangay'),
-          col('type', 'Type'),
-          col('total', 'Head'),
+          col('type', 'Farm Scale'),
+          col('raised', 'Livestock Raised'),
+          col('total', 'No. of Heads', 'right'),
+          col('source', 'Source'),
           col('lat', 'Latitude'),
           col('lng', 'Longitude'),
         ],
@@ -714,8 +957,10 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           name: r.name,
           owner: r.ownerName,
           barangay: r.barangay,
-          type: titleCase(r.type),
+          type: FARM_TYPE_LABELS[r.type as FarmType] ?? titleCase(r.type),
+          raised: r.livestockRaised,
           total: r.total,
+          source: r.source ? RECORD_SOURCE_LABELS[r.source as RecordSource] : '—',
           lat: r.lat ?? '—',
           lng: r.lng ?? '—',
         })),
@@ -964,7 +1209,6 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
       for (const f of farms) {
         const missing = [
           (f.lat == null || f.lng == null) && 'map location',
-          f.type === 'pasture' && f.pastureArea == null && 'pasture area',
           f.pastureArea != null &&
             f.pastureArea > 0 &&
             f.pastureLat == null &&

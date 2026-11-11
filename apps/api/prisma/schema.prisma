@@ -99,6 +99,8 @@ model Owner {
   street       String?             @db.VarChar(200)
   contact      String?             @db.VarChar(40)
   rsbsa        String?             @db.VarChar(60)
+  /// Where the office got the record: DA_LIST, FARM_VISIT, BARANGAY, OTHER
+  source       String?             @db.VarChar(20)
   remarks      String?             @db.Text
   status       OwnerStatus         @default(ACTIVE)
   registeredAt DateTime            @default(now())
@@ -146,6 +148,8 @@ model Farm {
   pastureLng      Float?
   lat             Float?
   lng             Float?
+  /// Where the office got the record: DA_LIST, FARM_VISIT, BARANGAY, OTHER
+  source          String?           @db.VarChar(20)
   remarks         String?           @db.Text
   archived        Boolean           @default(false)
   createdAt       DateTime          @default(now())
@@ -154,6 +158,7 @@ model Farm {
   groups          PopulationGroup[]
   cases           DiseaseCase[]
   vaccinations    Vaccination[]
+  visits          FarmVisit[]
 
   @@index([barangay])
   @@index([ownerId])
@@ -169,6 +174,8 @@ model PopulationGroup {
   lifeStage    String             @default("Mixed") @db.VarChar(30)
   count        Int                @default(0)
   healthStatus String             @default("Healthy") @db.VarChar(40)
+  /// Head count per classification code (e.g. {"sow": 4, "piglet": 20}); adds up to count when set
+  breakdown    Json?
   remarks      String?            @db.VarChar(500)
   lastVerified String?            @db.VarChar(7) // YYYY-MM of the latest verified update
   archived     Boolean            @default(false)
@@ -331,6 +338,7 @@ model DiseaseCase {
   investigations       Investigation[]
   labRecords           LabRecord[]
   responses            ResponseActivity[]
+  monitoringVisits     FarmVisit[]
 
   @@index([status])
   @@index([barangay])
@@ -426,7 +434,10 @@ model Vaccination {
   animalId       Int?
   species        String            @db.VarChar(40)
   count          Int
-  vaccine        String            @db.VarChar(120)
+  /// DEWORMING, VACCINATION, CHECKUP, TREATMENT, OTHER
+  serviceType    String            @default("VACCINATION") @db.VarChar(20)
+  /// Vaccine, dewormer or medicine used (required for vaccinations only)
+  vaccine        String?           @db.VarChar(120)
   date           DateTime          @db.Date
   nextDate       DateTime?         @db.Date
   doseNumber     Int               @default(1)
@@ -443,6 +454,32 @@ model Vaccination {
   group          PopulationGroup?  @relation(fields: [groupId], references: [id])
   animal         Animal?           @relation(fields: [animalId], references: [id])
 
+  @@index([date])
+  @@index([serviceType])
+}
+
+/// A field visit to a farm: routine masterlist update, deworming, check-up, or monitoring near a disease case.
+model FarmVisit {
+  id        Int          @id @default(autoincrement())
+  code      String       @unique @db.VarChar(20)
+  farmId    Int
+  /// The disease case this visit monitors (farms near a reported case)
+  caseId    Int?
+  date      DateTime     @db.Date
+  /// ROUTINE, DEWORMING, CHECKUP, MONITORING, OTHER
+  purpose   String       @db.VarChar(20)
+  /// NO_SIGNS, SICK_ANIMALS
+  findings  String       @default("NO_SIGNS") @db.VarChar(20)
+  visitedBy String?      @db.VarChar(120)
+  remarks   String?      @db.Text
+  createdBy String?      @db.VarChar(120)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  farm      Farm         @relation(fields: [farmId], references: [id])
+  case      DiseaseCase? @relation(fields: [caseId], references: [id])
+
+  @@index([farmId])
+  @@index([caseId])
   @@index([date])
 }
 

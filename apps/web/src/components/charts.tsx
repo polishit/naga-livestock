@@ -298,9 +298,14 @@ export function VaccinationLine({ data }: { data: { label: string; doses: number
 const TYPE_COLORS: Record<string, string> = {
   backyard: '#166534',
   commercial: '#16a34a',
-  mixed: '#f59e0b',
-  pasture: '#0ea5e9',
-  poultry: '#dc2626',
+  Piggery: '#e11d48',
+  'Cattle Only': '#b45309',
+  'Carabao Only': '#475569',
+  'Goat Only': '#16a34a',
+  'Sheep Only': '#65a30d',
+  Poultry: '#f59e0b',
+  Mixed: '#0ea5e9',
+  'No Livestock Yet': '#cbd5e1',
 };
 export function FarmTypeDonut({
   data,
@@ -355,6 +360,102 @@ export function LargestFarmsBars<T extends { name: string; total: number }>({
         <YAxis tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
         <Tooltip />
         <Bar dataKey="total" name="Head" fill="#166534" {...pick(onSelect)} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Monthly totals of field work: heads dewormed, heads checked, heads vaccinated and farm visits. */
+const FIELD_BARS = {
+  dewormed: { name: 'Heads dewormed', fill: '#0ea5e9' },
+  checkups: { name: 'Heads checked', fill: '#16a34a' },
+  vaccinated: { name: 'Heads vaccinated', fill: '#a855f7' },
+  visits: { name: 'Farm visits', fill: '#f59e0b' },
+} as const;
+export function ServiceTrendBars({
+  data,
+  bars = ['dewormed', 'checkups', 'visits'],
+}: {
+  data: ({ label: string } & Partial<Record<keyof typeof FIELD_BARS, number>>)[];
+  bars?: (keyof typeof FIELD_BARS)[];
+}) {
+  return (
+    <ResponsiveContainer>
+      <BarChart data={data} margin={{ left: -8, right: 12, top: 6 }}>
+        {GRID}
+        <XAxis dataKey="label" tick={AXIS} tickLine={false} />
+        <YAxis allowDecimals={false} tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
+        <Tooltip />
+        {LEGEND}
+        {bars.map((b) => (
+          <Bar
+            key={b}
+            dataKey={b}
+            name={FIELD_BARS[b].name}
+            fill={FIELD_BARS[b].fill}
+            radius={[2, 2, 0, 0]}
+          />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Disease reports per month (with confirmed positives when given). */
+export function ReportTrendLine({ data }: { data: { label: string; reports: number; positive?: number }[] }) {
+  const hasPositive = data.some((d) => d.positive != null);
+  return (
+    <ResponsiveContainer>
+      <LineChart data={data} margin={{ left: -8, right: 12, top: 6 }}>
+        {GRID}
+        <XAxis dataKey="label" tick={AXIS} tickLine={false} />
+        <YAxis allowDecimals={false} tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
+        <Tooltip />
+        {LEGEND}
+        <Line
+          type="linear"
+          dataKey="reports"
+          name="Disease reports"
+          stroke="#dc2626"
+          strokeWidth={2}
+          dot={{ r: 3, fill: '#fff' }}
+        />
+        {hasPositive && (
+          <Line
+            type="linear"
+            dataKey="positive"
+            name="Confirmed positive"
+            stroke="#7f1d1d"
+            strokeWidth={1.8}
+            strokeDasharray="4 3"
+            dot={{ r: 3, fill: '#fff' }}
+          />
+        )}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Heads per species (e.g. dewormed this month), coloured by species. */
+export function SpeciesHeadBars({
+  data,
+  name = 'Heads',
+}: {
+  data: { species: string; head: number }[];
+  name?: string;
+}) {
+  return (
+    <ResponsiveContainer>
+      <BarChart data={data} layout="vertical" margin={{ left: 4, right: 16 }}>
+        <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" horizontal={false} />
+        <XAxis type="number" allowDecimals={false} tick={AXIS} tickLine={false} />
+        <YAxis type="category" dataKey="species" width={90} tick={AXIS} />
+        <Tooltip />
+        <Bar dataKey="head" name={name} barSize={18}>
+          {data.map((d) => (
+            <Cell key={d.species} fill={SPECIES_COLORS[d.species as Species] ?? '#64748b'} />
+          ))}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );

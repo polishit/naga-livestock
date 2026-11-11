@@ -6,7 +6,7 @@ import {
   isoMonth,
   populationUpdateSchema,
 } from '@livestock/shared';
-import { prisma, type Prisma } from '../db';
+import { Prisma, prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { loadFarms, populationTotals } from '../services/metrics';
@@ -67,6 +67,7 @@ populationRouter.get(
           sex: g.sex,
           lifeStage: g.lifeStage,
           count: g.count,
+          breakdown: (g.breakdown as Record<string, number> | null) ?? null,
           tagged: g.animals.length,
           healthStatus: g.healthStatus,
           lastVerified: g.lastVerified,
@@ -107,6 +108,7 @@ populationRouter.post(
           sex: d.sex,
           lifeStage: d.lifeStage,
           count: d.count,
+          ...(d.breakdown && Object.keys(d.breakdown).length ? { breakdown: d.breakdown } : {}),
           healthStatus: d.healthStatus,
           remarks: d.remarks ?? null,
           lastVerified: month,
@@ -223,6 +225,15 @@ populationRouter.post(
             data: {
               count: Math.max(g.animals.length, running),
               lastVerified: !g.lastVerified || d.month > g.lastVerified ? d.month : g.lastVerified,
+              // The classification counts recorded with this head count (age, sex, production stage).
+              // Without one, an older classification that no longer adds up to the count is cleared.
+              ...(e.breakdown && Object.keys(e.breakdown).length
+                ? { breakdown: e.breakdown }
+                : g.breakdown &&
+                    Object.values(g.breakdown as Record<string, number>).reduce((a, n) => a + n, 0) !==
+                      Math.max(g.animals.length, running)
+                  ? { breakdown: Prisma.DbNull }
+                  : {}),
             },
           });
         out.push(u);

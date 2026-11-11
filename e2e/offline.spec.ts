@@ -8,11 +8,11 @@ test('writes made offline are queued in IndexedDB and synced when back online', 
 
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-  await page.getByRole('button', { name: 'Register owner' }).click();
+  await page.getByRole('button', { name: 'Add Owner', exact: true }).click();
   const d = dialog(page);
   await d.getByLabel('Full name').fill('Offline Ofelia');
   await d.getByLabel('Barangay').selectOption('Mabolo');
-  await d.getByRole('button', { name: 'Register owner' }).click();
+  await d.getByRole('button', { name: 'Add owner', exact: true }).click();
   await expectToast(page, /Saved offline/);
   await expect(page.getByText(/Offline · 1 queued/)).toBeVisible();
 

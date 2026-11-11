@@ -15,7 +15,7 @@ test('rejects a wrong password and validates required fields', async ({ page }) 
 test('signs in, shows the dashboard figures and signs out', async ({ page }) => {
   await login(page);
   await expect(page.getByRole('heading', { name: /Dr\. Liza/ })).toBeVisible();
-  await expect(page.getByText('Registered owners')).toBeVisible();
+  await expect(page.getByText('Livestock owners')).toBeVisible();
   await expect(page.getByText('3,473')).toBeVisible();
   await page.getByRole('button', { name: 'Logout' }).click();
   await expect(page).toHaveURL(/\/login/);
@@ -34,7 +34,7 @@ test('read-only users cannot see write actions and the API refuses writes', asyn
   await login(page, VIEWER);
   await page.goto('/owners');
   await expect(page.getByRole('heading', { name: 'Livestock Owners' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Register owner' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add Owner', exact: true })).toHaveCount(0);
   const res = await page.request.post('/api/owners', { data: { fullName: 'X', barangay: 'Pacol' } });
   expect(res.status()).toBe(403);
 });

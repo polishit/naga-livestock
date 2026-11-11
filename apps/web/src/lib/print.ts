@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import { fmtDate, fmtMonth, titleCase } from '@livestock/shared';
+import { breakdownText, fmtDate, fmtMonth, titleCase } from '@livestock/shared';
 import type { Letterhead } from './export';
 
 /** Escape text for HTML. */
@@ -88,6 +88,9 @@ export interface FarmProfileData {
     tagged: number;
     recordStatusLabel: string;
     remarks: string | null;
+    livestockRaised?: string;
+    source?: string | null;
+    lastVisitAt?: string | null;
     owner: { code: string; fullName: string; contact: string | null };
   };
   groups: {
@@ -100,10 +103,12 @@ export interface FarmProfileData {
     tagged: number;
     healthStatus: string;
     lastVerified: string | null;
+    breakdown?: Record<string, number> | null;
   }[];
   vaccinations: {
     date: string;
-    vaccine: string;
+    serviceLabel?: string;
+    vaccine: string | null;
     targetLabel: string;
     count: number;
     doseNumber: number;
@@ -132,11 +137,14 @@ export function printFarmProfile(d: FarmProfileData, lh: Letterhead, printedBy?:
     <div class="kv">
       <div><span>Farm name</span>${h(f.name)}</div><div><span>Owner</span>${h(f.owner.fullName)} (${h(f.owner.code)})</div>
       <div><span>Farm ID</span>${h(f.code)}</div><div><span>Owner contact</span>${h(f.owner.contact)}</div>
-      <div><span>Farm type</span>${h(titleCase(f.type))}</div><div><span>Barangay / Zone</span>${h(f.barangay)}${f.zone ? ` · ${h(f.zone)}` : ''}</div>
+      <div><span>Farm scale</span>${h(titleCase(f.type))}</div><div><span>Barangay / Zone</span>${h(f.barangay)}${f.zone ? ` · ${h(f.zone)}` : ''}</div>
       <div><span>Address</span>${h(f.address)}</div><div><span>Coordinates</span>${
         f.lat != null && f.lng != null ? `${f.lat.toFixed(6)}, ${f.lng.toFixed(6)}` : 'Not geotagged'
       }</div>
-      <div><span>Registered</span>${h(fmtDate(f.createdAt))}</div><div></div>
+      <div><span>Livestock raised</span>${h(f.livestockRaised ?? '')}</div><div><span>Last farm visit</span>${
+        f.lastVisitAt ? h(fmtDate(f.lastVisitAt)) : 'No visit recorded'
+      }</div>
+      <div><span>Added to masterlist</span>${h(fmtDate(f.createdAt))}</div><div></div>
       ${
         // Pasture rows only for farms whose animals graze on a pasture.
         f.pastureArea != null || f.pastureLocation || f.pastureLat != null
@@ -150,40 +158,37 @@ export function printFarmProfile(d: FarmProfileData, lh: Letterhead, printedBy?:
     </div>
     <div class="stats">
       <div class="stat">Current livestock<b>${h(f.total)}</b></div>
-      <div class="stat">Population groups<b>${h(d.groups.length)}</b></div>
+      <div class="stat">Species raised<b>${h(d.groups.filter((g) => g.count > 0).length)}</b></div>
       <div class="stat">Tagged animals<b>${h(f.tagged)}</b></div>
       <div class="stat">Population record<b style="font-size:13px">${h(f.recordStatusLabel)}</b></div>
     </div>
-    <h2>Population groups</h2>
+    <h2>Livestock Population</h2>
     ${table(
-      ['Group', 'Species', 'Breed', 'Sex', 'Life stage', 'Head', 'Tagged', 'Health', 'Last verified'],
+      ['Species', 'Breed', 'No. of Heads', 'Classification', 'Tagged', 'Health', 'Last Verified'],
       d.groups.map((g) => [
-        g.code,
         g.species,
         g.breed,
-        g.sex,
-        titleCase(g.lifeStage),
         g.count,
+        breakdownText(g.species, g.breakdown) || 'Not classified',
         g.tagged,
         g.healthStatus,
         g.lastVerified ? fmtMonth(g.lastVerified) : '—',
       ]),
-      'No population groups.',
+      'No livestock recorded.',
     )}
-    <h2>Recent vaccinations</h2>
+    <h2>Recent Deworming &amp; Veterinary Services</h2>
     ${table(
-      ['Date', 'Vaccine', 'Target', 'Head', 'Dose', 'Next schedule'],
+      ['Date', 'Service', 'Species / Heads', 'Product Used', 'Next Schedule'],
       vax.map((v) => [
         fmtDate(v.date),
-        v.vaccine,
-        v.targetLabel,
-        v.count,
-        v.doseNumber,
+        v.serviceLabel ?? 'Vaccination',
+        `${v.targetLabel}`,
+        v.vaccine ?? '—',
         v.nextDate ? fmtDate(v.nextDate) : '—',
       ]),
-      'No vaccinations recorded.',
+      'No services recorded.',
     )}
-    <h2>Disease incidents</h2>
+    <h2>Disease Incidents</h2>
     ${table(
       ['Case', 'Reported', 'Disease', 'Species', 'Status'],
       d.cases.map((c) => [
@@ -263,5 +268,166 @@ export function printOwnerCard(o: OwnerCardData, lh: Letterhead) {
       </div>
     </div>
     <div class="cut">Print at 100% scale (actual size) on card stock, then cut along the dashed lines and fold or laminate back to back.</div>`;
+  });
+}
+
+/** Data for the printable monthly report (from /api/monthly-summary). */
+export interface MonthlyReportData {
+  month: string;
+  label: string;
+  barangay: string | null;
+  population: {
+    total: number;
+    farms: number;
+    owners: number;
+    bySpecies: {
+      species: string;
+      population: number;
+      farms: number;
+      breakdown: Record<string, number>;
+      classified: number;
+    }[];
+  };
+  diseases: {
+    reported: number;
+    positive: number;
+    openCases: number;
+    byDisease: { name: string; count: number }[];
+    cases: {
+      id: number;
+      code: string;
+      disease: string;
+      species: string;
+      barangay: string;
+      farmName: string | null;
+      status: string;
+      affected: number;
+      deaths: number;
+      statusLabel: string;
+      reportedAt: string | null;
+      closed: boolean;
+    }[];
+  };
+  services: {
+    type: string;
+    label: string;
+    records: number;
+    head: number;
+    farms: number;
+    bySpecies: { species: string; head: number; farms: number }[];
+  }[];
+  visits: { total: number; farms: number; sickFound: number; byPurpose: { label: string; count: number }[] };
+  trend: { label: string; diseaseReports: number; dewormed: number; checkups: number; visits: number }[];
+}
+
+const MONTHLY_CSS = `
+.title{text-align:center;margin:4px 0 2px;font-size:15px;font-weight:700;letter-spacing:.4px}
+.period{text-align:center;color:#334155;margin-bottom:10px}
+.lead{margin:4px 0 6px}.tot td{font-weight:700;background:#f1f5f9}
+td.n,th.n{text-align:right}
+`;
+
+/** Standard Monthly Livestock Monitoring Report (population, disease surveillance, deworming, services, visits). */
+export function printMonthlyReport(m: MonthlyReportData, lh: Letterhead, preparedBy?: string) {
+  return printPage(`Monthly Report — ${m.label}`, async () => {
+    const num = (v: number) => v.toLocaleString();
+    const deworm = m.services.find((s) => s.type === 'DEWORMING');
+    const other = m.services.filter((s) => s.type !== 'DEWORMING');
+    const tableN = (cols: string[], right: number[], rows: unknown[][], empty: string, total?: unknown[]) => {
+      if (!rows.length) return `<div class="empty">${h(empty)}</div>`;
+      const cell = (tag: string, i: number, v: unknown) =>
+        `<${tag}${right.includes(i) ? ' class="n"' : ''}>${h(v)}</${tag}>`;
+      return `<table><thead><tr>${cols.map((c, i) => cell('th', i, c)).join('')}</tr></thead><tbody>${rows
+        .map((r) => `<tr>${r.map((v, i) => cell('td', i, v)).join('')}</tr>`)
+        .join(
+          '',
+        )}${total ? `<tr class="tot">${total.map((v, i) => cell('td', i, v)).join('')}</tr>` : ''}</tbody></table>`;
+    };
+    return `<style>${MONTHLY_CSS}</style>${letterhead(lh)}
+    <div class="title">MONTHLY LIVESTOCK MONITORING REPORT</div>
+    <div class="period">For the month of <b>${h(m.label)}</b>${m.barangay ? ` · Barangay ${h(m.barangay)}` : ' · All barangays'}</div>
+
+    <h2>I. Livestock Population</h2>
+    <p class="lead">Total of <b>${num(m.population.total)}</b> head in <b>${num(m.population.farms)}</b> farms owned by <b>${num(
+      m.population.owners,
+    )}</b> livestock owners (current masterlist).</p>
+    ${tableN(
+      ['Species', 'No. of Farms', 'No. of Heads', 'Classification (Age / Sex / Stage)'],
+      [1, 2],
+      m.population.bySpecies
+        .filter((s) => s.population > 0)
+        .map((s) => [
+          s.species,
+          num(s.farms),
+          num(s.population),
+          [
+            breakdownText(s.species, s.breakdown),
+            s.population > s.classified ? `${num(s.population - s.classified)} not classified` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ') || 'Not classified',
+        ]),
+      'No livestock recorded.',
+      ['Total', ' ', num(m.population.total), ' '],
+    )}
+
+    <h2>II. Disease Surveillance</h2>
+    <p class="lead">Disease reports received: <b>${num(m.diseases.reported)}</b> · Confirmed positive: <b>${num(
+      m.diseases.positive,
+    )}</b> · Open cases (all months): <b>${num(m.diseases.openCases)}</b></p>
+    ${tableN(
+      ['Case No.', 'Date Reported', 'Disease', 'Species', 'Barangay / Farm', 'Affected', 'Deaths', 'Status'],
+      [5, 6],
+      m.diseases.cases.map((c) => [
+        c.code,
+        c.reportedAt ? fmtDate(c.reportedAt) : '—',
+        c.disease,
+        c.species,
+        `${c.barangay}${c.farmName ? ` · ${c.farmName}` : ''}`,
+        c.affected,
+        c.deaths,
+        `${c.statusLabel}${c.closed ? ' (closed)' : ''}`,
+      ]),
+      'No disease reports this month.',
+    )}
+
+    <h2>III. Deworming</h2>
+    ${tableN(
+      ['Species', 'No. of Farms', 'No. of Heads Dewormed'],
+      [1, 2],
+      (deworm?.bySpecies ?? []).map((s) => [s.species, num(s.farms), num(s.head)]),
+      'No deworming recorded this month.',
+      deworm?.head ? ['Total', num(deworm.farms), num(deworm.head)] : undefined,
+    )}
+
+    <h2>IV. Veterinary Check-ups and Other Services</h2>
+    ${tableN(
+      ['Service', 'Records', 'No. of Farms', 'No. of Heads'],
+      [1, 2, 3],
+      other.map((s) => [s.label, num(s.records), num(s.farms), num(s.head)]),
+      'No services recorded.',
+    )}
+
+    <h2>V. Farm Visits</h2>
+    <p class="lead">Farm visits conducted: <b>${num(m.visits.total)}</b> (${num(m.visits.farms)} farms) · Visits where sick animals were found: <b>${num(
+      m.visits.sickFound,
+    )}</b></p>
+    ${tableN(
+      ['Purpose of Visit', 'No. of Visits'],
+      [1],
+      m.visits.byPurpose.filter((p) => p.count).map((p) => [p.label, num(p.count)]),
+      'No farm visits recorded this month.',
+    )}
+
+    <h2>VI. Six-Month Summary</h2>
+    ${tableN(
+      ['Month', 'Disease Reports', 'Heads Dewormed', 'Heads Checked', 'Farm Visits'],
+      [1, 2, 3, 4],
+      m.trend.map((t) => [t.label, num(t.diseaseReports), num(t.dewormed), num(t.checkups), num(t.visits)]),
+      '—',
+    )}
+
+    <div class="sign"><div>Prepared by${preparedBy ? `<br/><b>${h(preparedBy)}</b>` : ''}</div><div>Noted by<br/><b>City Veterinarian</b></div></div>
+    <div class="foot">Generated ${h(fmtDate(new Date()))} · ${h(lh.office)}, ${h(lh.city)}</div>`;
   });
 }

@@ -17,7 +17,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
-import { cn } from '@/lib/utils';
+import { cn, toTitle } from '@/lib/utils';
 
 /* ---------------- Button ---------------- */
 
@@ -181,7 +181,7 @@ export function CardHeader({
 }) {
   return (
     <div className={cn('card-header', className)}>
-      <h3 className="card-title">{title}</h3>
+      <h3 className="card-title">{typeof title === 'string' ? toTitle(title) : title}</h3>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
@@ -346,6 +346,7 @@ export function Dialog({
     </DialogPrimitive.Root>
   );
 }
+
 /* ---------------- Tabs ---------------- */
 
 export function Tabs<T extends string>({

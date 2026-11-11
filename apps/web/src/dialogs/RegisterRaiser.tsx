@@ -80,7 +80,7 @@ export function RegisterRaiser({
       <Dialog
         open={step === 'done'}
         onOpenChange={(o) => !o && onOpenChange(false)}
-        title="Raiser registered"
+        title="Added to the Masterlist"
         size="sm"
         guardChanges={false}
         footer={
@@ -94,7 +94,7 @@ export function RegisterRaiser({
           <div className="text-[14.5px] text-slate-700">
             <p>
               Saved: the owner{farmId ? ', the farm' : ''}
-              {groups ? ` and ${groups} animal group${groups === 1 ? '' : 's'}` : ''}.
+              {groups ? ` and ${groups} species head count${groups === 1 ? '' : 's'}` : ''}.
             </p>
             {!farmId && (
               <p className="mt-1 text-slate-500">You can add the farm later from the owner’s page.</p>
@@ -107,7 +107,7 @@ export function RegisterRaiser({
         <div className="mt-4 grid gap-2">
           {farmId > 0 && (
             <Button variant={groups ? 'outline' : 'default'} onClick={() => setStep('group')}>
-              {groups ? 'Add another species / group' : 'Add the animals (head count)'}
+              {groups ? 'Add another species' : 'Add the livestock (head count)'}
             </Button>
           )}
           {farmId > 0 && (
@@ -129,7 +129,7 @@ export function RegisterRaiser({
               setStep('owner');
             }}
           >
-            Register another raiser
+            Add another owner
           </Button>
         </div>
       </Dialog>

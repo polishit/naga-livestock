@@ -30,7 +30,6 @@ import {
   titleCase,
   userCreateSchema,
   userUpdateSchema,
-  vaccinationCreateSchema,
   voidSchema,
   type CaseStatus,
   type ResponseType,
@@ -38,6 +37,7 @@ import {
 import { useAuth } from '@/lib/auth';
 import { speciesOnFarm, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
 import { MapView, type LatLng } from '@/components/MapView';
+import { DiseasePicker } from '@/components/livestock';
 import { err, useZodForm } from '@/components/forms';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
 
@@ -214,7 +214,11 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
         <Field label="Suspected disease *" error={err(e, 'disease')} className="sm:col-span-2">
-          <Input {...form.register('disease')} aria-invalid={!!e.disease} />
+          <DiseasePicker
+            value={form.watch('disease') ?? ''}
+            onChange={(v) => form.setValue('disease', v as any, { shouldDirty: true })}
+            invalid={!!e.disease}
+          />
         </Field>
         <Field
           label="Animals affected *"
@@ -978,161 +982,6 @@ export function ResponseDialog({
         </Field>
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
           <Textarea rows={3} {...form.register('remarks')} />
-        </Field>
-      </form>
-    </Dialog>
-  );
-}
-
-export function VaccinationDialog({ open, onOpenChange, farmId }: DialogProps & { farmId?: number }) {
-  const { data: lookups } = useLookups();
-  const { user } = useAuth();
-  const form = useZodForm(vaccinationCreateSchema, {});
-  useResetOnOpen(open, form, {
-    farmId: farmId ? String(farmId) : '',
-    target: 'GROUP',
-    groupId: '',
-    animalId: '',
-    count: '1',
-    vaccine: '',
-    date: isoDate(),
-    nextDate: '',
-    doseNumber: '1',
-    batch: '',
-    administeredBy: user?.name ?? '',
-    remarks: '',
-  } as any);
-  const save = useSave<any>('POST', '/api/vaccinations', {
-    success: 'Vaccination recorded.',
-    label: (b) => `Vaccination: ${b.vaccine}`,
-    form,
-    onDone: () => onOpenChange(false),
-  });
-  const e = form.formState.errors;
-  const fId = Number(form.watch('farmId'));
-  const target = form.watch('target');
-  const groups = (lookups?.groups ?? []).filter((g) => g.farmId === fId);
-  const animals = (lookups?.animals ?? []).filter((a) => a.farmId === fId);
-  const group = groups.find((g) => String(g.id) === String(form.watch('groupId')));
-  const vaxDate = form.watch('date');
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Record vaccination"
-      footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button form="vax-form" type="submit" loading={save.isPending}>
-            Save
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="vax-form"
-        noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
-      >
-        <Field label="Farm *" error={err(e, 'farmId')} className="sm:col-span-2">
-          <Select
-            {...form.register('farmId', {
-              onChange: () => {
-                form.setValue('groupId', '' as any);
-                form.setValue('animalId', '' as any);
-              },
-            })}
-            aria-invalid={!!e.farmId}
-          >
-            <option value="">Select...</option>
-            {lookups?.farms.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.code} · {f.name} ({f.barangay})
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Target" error={err(e, 'target')}>
-          <Select {...form.register('target')}>
-            <option value="GROUP">Population group</option>
-            <option value="ANIMAL">Tagged animal</option>
-          </Select>
-        </Field>
-        {target === 'ANIMAL' ? (
-          <Field label="Animal *" error={err(e, 'groupId') ?? err(e, 'animalId')}>
-            <Select {...form.register('animalId')} disabled={!fId}>
-              <option value="">{fId ? 'Select...' : 'Select farm first'}</option>
-              {animals.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.code} · {a.earTag ?? 'no tag'} · {a.species}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : (
-          <Field label="Group *" error={err(e, 'groupId')}>
-            <Select
-              {...form.register('groupId', {
-                onChange: (ev) => {
-                  // The number vaccinated starts at the group's head count.
-                  const g = groups.find((x) => String(x.id) === ev.target.value);
-                  if (g) form.setValue('count', String(g.count) as any, { shouldValidate: true });
-                },
-              })}
-              disabled={!fId}
-            >
-              <option value="">{fId ? 'Select...' : 'Select farm first'}</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.code} · {g.species} · {g.count} head
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        <Field
-          label="Number vaccinated"
-          error={err(e, 'count')}
-          hint={target === 'GROUP' && group ? `Group ${group.code} has ${group.count} head` : undefined}
-        >
-          <Input
-            type="number"
-            min={1}
-            max={target === 'GROUP' ? group?.count : 1}
-            {...form.register('count')}
-            disabled={target === 'ANIMAL'}
-          />
-        </Field>
-        <Field label="Vaccine name *" error={err(e, 'vaccine')}>
-          <Input {...form.register('vaccine')} list="vaccine-names" aria-invalid={!!e.vaccine} />
-        </Field>
-        <datalist id="vaccine-names">
-          <option value="Hog Cholera Vaccine" />
-          <option value="NCD Vaccine" />
-          <option value="Hemosep Vaccine" />
-          <option value="FMD Vaccine" />
-          <option value="Anti-Rabies Vaccine" />
-        </datalist>
-        <Field label="Date" error={err(e, 'date')}>
-          <Input type="date" min={MIN_DATE} max={isoDate()} {...form.register('date')} />
-        </Field>
-        <Field label="Next schedule" error={err(e, 'nextDate')} hint="Optional — creates a reminder">
-          <Input type="date" min={vaxDate || isoDate()} {...form.register('nextDate')} />
-        </Field>
-        <Field label="Dose number" error={err(e, 'doseNumber')}>
-          <Input type="number" min={1} {...form.register('doseNumber')} />
-        </Field>
-        <Field label="Batch / lot" error={err(e, 'batch')}>
-          <Input {...form.register('batch')} />
-        </Field>
-        <Field label="Administered by" error={err(e, 'administeredBy')}>
-          <Input {...form.register('administeredBy')} />
-        </Field>
-        <Field label="Remarks" error={err(e, 'remarks')}>
-          <Input {...form.register('remarks')} />
         </Field>
       </form>
     </Dialog>

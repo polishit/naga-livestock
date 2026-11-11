@@ -14,6 +14,8 @@ import {
   lastMonths,
   type ReportResult,
   type ResponseType,
+  SERVICE_TYPE_LABELS,
+  type ServiceType,
 } from '@livestock/shared';
 import { prisma } from '../db';
 import { today, ymd } from '../lib/dates';
@@ -94,6 +96,10 @@ async function periodCounts(p: Period, f: Filters = {}) {
     }),
   ]);
   const fines = strays.filter((s) => s.fineAmount != null);
+  const vaxOnly = vax.filter((v) => v.serviceType === 'VACCINATION');
+  const deworm = vax.filter((v) => v.serviceType === 'DEWORMING');
+  const checkups = vax.filter((v) => v.serviceType === 'CHECKUP');
+  const otherServices = vax.filter((v) => v.serviceType === 'TREATMENT' || v.serviceType === 'OTHER');
   return {
     casesReported: cases.length,
     casesPositive: cases.filter((c) => c.status === 'POSITIVE').length,
@@ -105,12 +111,18 @@ async function periodCounts(p: Period, f: Filters = {}) {
     newFarms: farms,
     animalsTagged: animals,
     transfers,
-    vaccinationEvents: vax.length,
-    vaccinationDoses: sum(vax.map((v) => v.count)),
-    vaccinationByVaccine: [...new Set(vax.map((v) => `${v.vaccine}|${v.species}`))]
+    vaccinationEvents: vaxOnly.length,
+    vaccinationDoses: sum(vaxOnly.map((v) => v.count)),
+    dewormingEvents: deworm.length,
+    dewormedHead: sum(deworm.map((v) => v.count)),
+    checkupEvents: checkups.length,
+    checkupHead: sum(checkups.map((v) => v.count)),
+    otherServiceEvents: otherServices.length,
+    otherServiceHead: sum(otherServices.map((v) => v.count)),
+    vaccinationByVaccine: [...new Set(vaxOnly.map((v) => `${v.vaccine}|${v.species}`))]
       .map((k) => {
         const [vaccine, species] = k.split('|');
-        const rows = vax.filter((v) => v.vaccine === vaccine && v.species === species);
+        const rows = vaxOnly.filter((v) => v.vaccine === vaccine && v.species === species);
         return { vaccine, species, events: rows.length, doses: sum(rows.map((v) => v.count)) };
       })
       .sort((a, b) => b.doses - a.doses),
@@ -186,10 +198,10 @@ export async function comparePeriods(f: Filters & { months?: number }) {
       better: 'down',
     },
     {
-      key: 'doses',
-      label: 'Vaccine doses given',
-      current: a.vaccinationDoses,
-      previous: b.vaccinationDoses,
+      key: 'dewormed',
+      label: 'Head dewormed',
+      current: a.dewormedHead,
+      previous: b.dewormedHead,
       better: 'up',
     },
     {
@@ -368,7 +380,7 @@ export async function targetProgress(year: number) {
   const targets = await getTargets(year);
   const vax = await prisma.vaccination.findMany({
     where: { voidedAt: null, date: { gte: day(`${year}-01-01`), lte: day(`${year}-12-31`) } },
-    select: { vaccine: true, species: true, count: true },
+    select: { vaccine: true, serviceType: true, species: true, count: true },
   });
   const t = today();
   const yearDone =
@@ -386,7 +398,11 @@ export async function targetProgress(year: number) {
         vax
           .filter(
             (v) =>
-              v.species === tg.species && v.vaccine.trim().toLowerCase() === tg.vaccine.trim().toLowerCase(),
+              v.species === tg.species &&
+              // A target names a vaccine or product, or a service such as "Deworming".
+              [v.vaccine ?? '', SERVICE_TYPE_LABELS[v.serviceType as ServiceType] ?? '']
+                .map((x) => x.trim().toLowerCase())
+                .includes(tg.vaccine.trim().toLowerCase()),
           )
           .map((v) => v.count),
       );
@@ -450,6 +466,18 @@ export async function accomplishmentReport(
   for (const m of c.measures)
     add('Disease response', m.label, m.heads ? `${m.count} (${m.heads.toLocaleString()} head)` : m.count);
 
+  add('Deworming & veterinary services', 'Deworming activities', c.dewormingEvents);
+  add('Deworming & veterinary services', 'Head dewormed', c.dewormedHead.toLocaleString());
+  add(
+    'Deworming & veterinary services',
+    'Veterinary check-ups',
+    `${c.checkupEvents} (${c.checkupHead.toLocaleString()} head)`,
+  );
+  add(
+    'Deworming & veterinary services',
+    'Treatments and other field services',
+    `${c.otherServiceEvents} (${c.otherServiceHead.toLocaleString()} head)`,
+  );
   add('Vaccination', 'Vaccination activities', c.vaccinationEvents);
   add('Vaccination', 'Vaccine doses given', c.vaccinationDoses.toLocaleString());
   for (const v of c.vaccinationByVaccine)
@@ -483,7 +511,7 @@ export async function accomplishmentReport(
     rows,
     summary: [
       { label: 'Cases reported', value: c.casesReported },
-      { label: 'Doses given', value: c.vaccinationDoses.toLocaleString() },
+      { label: 'Head dewormed', value: c.dewormedHead.toLocaleString() },
       { label: 'Field investigations', value: c.visits },
       { label: 'Stray incidents', value: c.strays },
     ],
@@ -631,11 +659,14 @@ export async function taskList(): Promise<Task[]> {
   for (const v of due) {
     const d = ymd(v.nextDate)!;
     tasks.push({
-      group: 'Vaccinations due',
-      title: `${v.vaccine} dose ${v.doseNumber + 1}`,
+      group: 'Deworming & vaccinations due',
+      title:
+        v.serviceType === 'VACCINATION'
+          ? `${v.vaccine ?? 'Vaccination'} dose ${v.doseNumber + 1}`
+          : `${SERVICE_TYPE_LABELS[v.serviceType as ServiceType] ?? 'Service'}${v.vaccine ? ` · ${v.vaccine}` : ''}`,
       sub: `${v.farm.name} · ${v.target === 'GROUP' ? `${v.group?.code} · ${v.count} head` : v.animal?.code}`,
-      href: '/vaccinations?tab=upcoming',
-      action: 'Record dose',
+      href: '/services?tab=upcoming',
+      action: 'Record it',
       due: d,
       overdue: d < t,
     });
