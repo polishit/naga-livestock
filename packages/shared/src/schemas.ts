@@ -397,10 +397,6 @@ export const strayUpdateSchema = z.object({
   finePaid: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()).optional(),
   orNumber: optText(40),
   paidAt: pastDate(),
-  impoundedAt: pastDate(),
-  impoundPlace: optText(200),
-  releasedAt: pastDate(),
-  releasedTo: optText(150),
 });
 
 /** The stray incident as it will be saved (current record merged with the changes). */
@@ -412,41 +408,16 @@ export interface StrayState {
   finePaid?: boolean | null;
   orNumber?: string | null;
   paidAt?: string | null;
-  impoundedAt?: string | null;
-  impoundPlace?: string | null;
-  releasedAt?: string | null;
-  releasedTo?: string | null;
 }
 
 /**
- * Penalty and impoundment rules shared by the form and the API:
- * - an impounded animal needs the impound date and place; a released one needs the release date and
- *   who received it;
- * - release dates belong only to released or closed incidents, impound dates not to a fresh report;
- * - dates follow the order discovered → impounded → released;
- * - a paid fine needs the amount and the official receipt number.
+ * Penalty rules shared by the form and the API:
+ * - a paid fine needs the amount and the official receipt number;
+ * - the payment cannot be before the animal was found.
  */
 export function strayErrors(v: StrayState): Record<string, string> {
   const e: Record<string, string> = {};
   const found = v.foundOn ?? null;
-  if (v.status === 'IMPOUNDED') {
-    if (!v.impoundedAt) e.impoundedAt = 'Enter the date the animal was impounded';
-    if (!v.impoundPlace) e.impoundPlace = 'Enter where the animal is impounded';
-  }
-  if (v.status === 'RELEASED') {
-    if (!v.releasedAt) e.releasedAt = 'Enter the release date';
-    if (!v.releasedTo) e.releasedTo = 'Enter who received the animal';
-  }
-  if (v.status === 'REPORTED' && v.impoundedAt)
-    e.status = 'Set the status to Impounded (or later) when an impound date is entered';
-  if ((v.status === 'REPORTED' || v.status === 'IMPOUNDED') && v.releasedAt)
-    e.status = 'Set the status to Released when a release date is entered';
-  if (found && v.impoundedAt && v.impoundedAt < found)
-    e.impoundedAt = 'Cannot be before the animal was found';
-  if (v.releasedAt && v.impoundedAt && v.releasedAt < v.impoundedAt)
-    e.releasedAt = 'Cannot be before the impound date';
-  else if (found && v.releasedAt && v.releasedAt < found)
-    e.releasedAt = 'Cannot be before the animal was found';
   if (v.finePaid) {
     if (!v.fineAmount) e.fineAmount = 'Enter the fine amount';
     if (!v.orNumber) e.orNumber = 'Enter the official receipt (OR) number';
@@ -456,7 +427,7 @@ export function strayErrors(v: StrayState): Record<string, string> {
   return e;
 }
 
-/** The incident form: field rules plus the penalty / impoundment rules, given when it was found. */
+/** The incident form: field rules plus the penalty rules, given when it was found. */
 export const strayFormSchema = (foundOn?: string | null) =>
   strayUpdateSchema.superRefine((v, ctx) => {
     const errors = strayErrors({ ...v, status: v.status ?? 'REPORTED', foundOn });

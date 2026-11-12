@@ -9,7 +9,6 @@ import {
   ClipboardList,
   FileText,
   FileWarning,
-  FolderOpen,
   Home,
   LayoutGrid,
   Map,
@@ -53,8 +52,8 @@ export const NAV: NavSection[] = [
   },
   {
     id: 'registry',
-    label: 'Masterlist',
-    short: 'Masterlist',
+    label: 'Livestock Registry',
+    short: 'Registry',
     icon: BookOpen,
     items: [
       {
@@ -66,9 +65,22 @@ export const NAV: NavSection[] = [
       { to: '/farms', label: 'Farms', icon: Home, hint: 'Farms, livestock raised and last visit' },
       {
         to: '/population',
-        label: 'Livestock Population',
+        label: 'Population Monitoring',
         icon: ClipboardList,
         hint: 'Head count by species, age, sex and stage',
+      },
+      { to: '/animals', label: 'Animal ID / Ear Tags', icon: Tag, hint: 'Individually tagged animals' },
+      {
+        to: '/ownership',
+        label: 'Ownership Records',
+        icon: ArrowRightLeft,
+        hint: 'Animal sales and transfers',
+      },
+      {
+        to: '/strays',
+        label: 'Stray & Violations',
+        icon: CircleAlert,
+        hint: 'Wandering animals and violations',
       },
     ],
   },
@@ -158,26 +170,6 @@ export const NAV: NavSection[] = [
         hint: 'Ready-made reports; download as Excel, CSV or PDF',
       },
       { to: '/analytics', label: 'Analytics', icon: BarChart3, hint: 'Charts and trends' },
-    ],
-  },
-  {
-    id: 'records',
-    label: 'Other Records',
-    icon: FolderOpen,
-    items: [
-      { to: '/animals', label: 'Ear Tags', icon: Tag, hint: 'Individually tagged animals' },
-      {
-        to: '/ownership',
-        label: 'Ownership Records',
-        icon: ArrowRightLeft,
-        hint: 'Animal sales and transfers',
-      },
-      {
-        to: '/strays',
-        label: 'Stray & Violations',
-        icon: CircleAlert,
-        hint: 'Wandering animals and violations',
-      },
     ],
   },
   {

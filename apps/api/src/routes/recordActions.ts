@@ -146,10 +146,9 @@ recordActionsRouter.delete(
     const id = idParam(req);
     const s = await prisma.strayIncident.findUnique({ where: { id } });
     if (!s) throw notFound('Incident');
-    // Once the office acted on it (impounded, fined), the report is part of the record: void it instead.
+    // Once the office acted on it (fined, closed), the report is part of the record: void it instead.
     const reasons = [
       s.status !== 'REPORTED' && `its status is ${s.status.toLowerCase()}`,
-      s.impoundedAt && 'the animal was impounded',
       s.fineAmount != null && Number(s.fineAmount) > 0 && 'a fine was recorded',
       s.voidedAt && 'it is already voided',
     ].filter(Boolean) as string[];

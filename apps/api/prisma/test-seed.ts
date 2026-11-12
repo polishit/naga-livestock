@@ -3,7 +3,7 @@
  * Demo data for Naga City: 21 owners, 29 farms, 60 population groups (3,473 head), 15 tagged animals,
  * 13 disease cases, 32 vaccination records, 6 stray reports, 5 PCIC policies and this year's
  * vaccination targets. Every form has at least one complete example: pastures, an archived owner,
- * farm and group, sold and dead animals, impound / release / fines, every visit type, lab results,
+ * farm and group, sold and dead animals, stray fines, every visit type, lab results,
  * every response measure (planned, ongoing, late, completed), a closed case, a related case, and
  * records voided by mistake. Recent records are dated relative to today, so the hotspot, the
  * comparison, My tasks and the reminders always have something to show on the day of the demo.
@@ -955,7 +955,7 @@ async function main() {
     });
   }
 
-  /* stray incidents: one at each stage, with impound, release and fine details where they apply */
+  /* stray incidents: open and closed, with fine details where they apply */
   type StraySeed = {
     at: string;
     species: string;
@@ -967,21 +967,16 @@ async function main() {
     description: string;
     lat?: number;
     lng?: number;
-    status: 'REPORTED' | 'IMPOUNDED' | 'RELEASED' | 'CLOSED';
+    status: 'REPORTED' | 'CLOSED';
     violations?: number;
     violationType?: string;
     fineAmount?: number;
     finePaid?: boolean;
     orNumber?: string;
     paidAt?: string;
-    impoundedAt?: string;
-    impoundPlace?: string;
-    releasedAt?: string;
-    releasedTo?: string;
     remarks?: string;
     voided?: { at: string; reason: string };
   };
-  const POUND = 'City Veterinary Office impounding area, Brgy. Carolina';
   const strays: StraySeed[] = [
     {
       // Tagged animal: the ear tag links the report to the animal and its owner.
@@ -995,14 +990,12 @@ async function main() {
       description: 'Male carabao wandering on the road, rope broken. Reported by a tricycle driver.',
       lat: 13.6655,
       lng: 123.2731,
-      status: 'IMPOUNDED',
+      status: 'REPORTED',
       violations: 1,
       violationType: 'Animal on a public road or highway',
       fineAmount: 500,
       finePaid: false,
-      impoundedAt: '2026-09-20',
-      impoundPlace: POUND,
-      remarks: 'Owner informed by phone; to pay the fine before release.',
+      remarks: 'Owner informed by phone; to pay the fine.',
     },
     {
       at: '2026-09-24T09:36:00',
@@ -1023,17 +1016,13 @@ async function main() {
       description: 'Carabao entered a neighbour’s rice field and damaged about 200 m² of palay.',
       lat: 13.6425,
       lng: 123.2101,
-      status: 'RELEASED',
+      status: 'CLOSED',
       violations: 1,
       violationType: 'Damage to crops or property',
       fineAmount: 1000,
       finePaid: true,
       orNumber: 'OR-7712345',
       paidAt: '2026-10-01',
-      impoundedAt: '2026-09-28',
-      impoundPlace: POUND,
-      releasedAt: '2026-10-01',
-      releasedTo: 'Antonio Flores (owner)',
     },
     {
       at: '2026-10-02T09:36:00',
@@ -1051,10 +1040,6 @@ async function main() {
       finePaid: true,
       orNumber: 'OR-7712398',
       paidAt: '2026-10-03',
-      impoundedAt: '2026-10-02',
-      impoundPlace: POUND,
-      releasedAt: '2026-10-03',
-      releasedTo: 'Teresa Garcia (owner)',
       remarks: 'Owner warned in writing; pen fence repaired. Case closed.',
     },
     {
@@ -1102,10 +1087,6 @@ async function main() {
         finePaid: s.finePaid ?? false,
         orNumber: s.orNumber ?? null,
         paidAt: s.paidAt ? D(s.paidAt) : null,
-        impoundedAt: s.impoundedAt ? D(s.impoundedAt) : null,
-        impoundPlace: s.impoundPlace ?? null,
-        releasedAt: s.releasedAt ? D(s.releasedAt) : null,
-        releasedTo: s.releasedTo ?? null,
         remarks: s.remarks ?? null,
         voidedAt: s.voided ? DT(s.voided.at) : null,
         voidedBy: s.voided ? LIZA : null,

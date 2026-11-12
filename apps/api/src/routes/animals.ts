@@ -508,10 +508,6 @@ function serializeStray(s: any) {
     finePaid: s.finePaid,
     orNumber: s.orNumber,
     paidAt: ymd(s.paidAt),
-    impoundedAt: ymd(s.impoundedAt),
-    impoundPlace: s.impoundPlace,
-    releasedAt: ymd(s.releasedAt),
-    releasedTo: s.releasedTo,
     voided: s.voidedAt != null,
     voidedBy: s.voidedBy ?? null,
     voidReason: s.voidReason ?? null,
@@ -561,7 +557,7 @@ straysRouter.get(
     res.json({
       incidents: rows.length,
       violations: rows.reduce((a, r) => a + r.violations, 0),
-      open: rows.filter((r) => r.status === 'REPORTED' || r.status === 'IMPOUNDED').length,
+      open: rows.filter((r) => r.status === 'REPORTED').length,
       unpaidFines: unpaid.length,
       unpaidAmount: unpaid.reduce((a, r) => a + Number(r.fineAmount), 0),
       last: rows[0] ? { code: rows[0].code, discoveredAt: rows[0].discoveredAt } : null,
@@ -649,7 +645,7 @@ straysRouter.patch(
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(strayUpdateSchema, req.body);
-    assertNotFuture({ paidAt: d.paidAt, impoundedAt: d.impoundedAt, releasedAt: d.releasedAt });
+    assertNotFuture({ paidAt: d.paidAt });
     const before = await prisma.strayIncident.findUnique({
       where: { id },
       include: { owner: true },
@@ -661,16 +657,8 @@ straysRouter.patch(
       ...(d.status ? { status: d.status } : {}),
       ...(d.violations !== undefined ? { violations: d.violations } : {}),
       ...(d.finePaid !== undefined ? { finePaid: d.finePaid } : {}),
-      ...sent(req.body, d, [
-        'ownerId',
-        'remarks',
-        'violationType',
-        'fineAmount',
-        'orNumber',
-        'impoundPlace',
-        'releasedTo',
-      ] as const),
-      ...(['paidAt', 'impoundedAt', 'releasedAt'] as const).reduce(
+      ...sent(req.body, d, ['ownerId', 'remarks', 'violationType', 'fineAmount', 'orNumber'] as const),
+      ...(['paidAt'] as const).reduce(
         (o, k) => (k in (req.body ?? {}) ? { ...o, [k]: dateOnly(d[k]) ?? null } : o),
         {} as Record<string, Date | null>,
       ),
@@ -695,10 +683,6 @@ straysRouter.patch(
       finePaid: after.finePaid,
       orNumber: after.orNumber,
       paidAt: ymd(after.paidAt),
-      impoundedAt: ymd(after.impoundedAt),
-      impoundPlace: after.impoundPlace,
-      releasedAt: ymd(after.releasedAt),
-      releasedTo: after.releasedTo,
     });
     if (Object.keys(errors).length)
       throw badRequest('Validation failed', {
@@ -711,12 +695,6 @@ straysRouter.patch(
     });
     const bits = [
       before.status !== s.status ? `${before.status.toLowerCase()} → ${s.status.toLowerCase()}` : null,
-      !before.impoundedAt && s.impoundedAt
-        ? `impounded ${fmtDate(ymd(s.impoundedAt))} at ${s.impoundPlace}`
-        : null,
-      !before.releasedAt && s.releasedAt
-        ? `released to ${s.releasedTo} on ${fmtDate(ymd(s.releasedAt))}`
-        : null,
       !before.finePaid && s.finePaid
         ? `fine ₱${Number(s.fineAmount).toLocaleString()} paid, OR ${s.orNumber}`
         : null,

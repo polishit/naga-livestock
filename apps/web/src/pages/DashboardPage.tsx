@@ -1,17 +1,15 @@
 import {
   AlertTriangle,
-  ClipboardCheck,
   FlaskConical,
   House,
   MapPinOff,
   PawPrint,
-  Plus,
   ShieldAlert,
   Syringe,
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   BARANGAYS,
   CASE_STATUSES,
@@ -41,8 +39,7 @@ import { Button, Card, CardHeader } from '@/components/ui';
 import type { Overview } from './types';
 
 export default function DashboardPage() {
-  const { user, canEdit } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [barangay, setBarangay] = useState('');
   const [species, setSpecies] = useState('');
   const [caseStatus, setCaseStatus] = useState('');
@@ -66,7 +63,7 @@ export default function DashboardPage() {
     <div>
       <PageHeader
         title={`${greet}, ${firstName}`}
-        subtitle="Masterlist, disease surveillance, deworming and farm visits across Naga City."
+        subtitle="Livestock registry, disease surveillance, deworming and farm visits across Naga City."
         actions={
           <>
             <FilterSelect
@@ -93,16 +90,6 @@ export default function DashboardPage() {
               all="All case statuses"
               className="w-[calc(50%-4px)] sm:w-44"
             />
-            {canEdit && (
-              <>
-                <Button onClick={() => navigate('/services?tab=visits&visit=1')}>
-                  <ClipboardCheck /> Record Farm Visit
-                </Button>
-                <Button variant="outline" onClick={() => navigate('/cases/new')}>
-                  <Plus /> Report Incident
-                </Button>
-              </>
-            )}
           </>
         }
       />
@@ -115,36 +102,59 @@ export default function DashboardPage() {
           <WelcomeCard />
           <HotspotBanner />
           <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-            <StatCard label="Livestock owners" value={fmtNumber(data.stats.owners)} icon={Users} />
+            {/* Each box opens the records behind its number (with the barangay chosen above). */}
+            <StatCard
+              label="Livestock owners"
+              value={fmtNumber(data.stats.owners)}
+              icon={Users}
+              to={`/owners${qs({ barangay })}`}
+            />
             <StatCard
               label="Farms in the masterlist"
               value={fmtNumber(data.stats.farms)}
               sub={`${data.stats.outdatedFarms} head counts out of date`}
               icon={House}
+              to={`/farms${qs({ barangay })}`}
             />
             <StatCard
               label="Total livestock"
               value={fmtNumber(data.stats.livestock)}
               sub={`${data.stats.verifiedPct}% of farms counted this month`}
               icon={PawPrint}
+              to={`/population${qs({ barangay, species })}`}
             />
             <StatCard
               label="Suspected (open reports)"
               value={data.stats.suspected}
               icon={AlertTriangle}
               tone="orange"
+              to={`/cases${qs({ barangay, status: 'SUSPECTED' })}`}
             />
-            <StatCard label="Awaiting lab result" value={data.stats.inLab} icon={FlaskConical} tone="blue" />
-            <StatCard label="Confirmed positive" value={data.stats.positive} icon={ShieldAlert} tone="red" />
+            <StatCard
+              label="Awaiting lab result"
+              value={data.stats.inLab}
+              icon={FlaskConical}
+              tone="blue"
+              to="/investigation"
+            />
+            <StatCard
+              label="Confirmed positive"
+              value={data.stats.positive}
+              icon={ShieldAlert}
+              tone="red"
+              to={`/cases${qs({ barangay, status: 'POSITIVE' })}`}
+            />
             <StatCard
               label="Heads dewormed this month"
               value={fmtNumber(dewormed?.head ?? 0)}
               sub={`${dewormed?.farms ?? 0} farm(s)`}
               icon={Syringe}
               tone="blue"
+              to="/services?tab=records&type=DEWORMING"
             />
             <StatCard
               label="Farm visits this month"
+              to="/services?tab=visits"
               value={month?.visits.total ?? 0}
               sub={
                 data.stats.awaitingGeotag

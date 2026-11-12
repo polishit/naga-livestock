@@ -72,7 +72,7 @@ export default function PopulationPage() {
   return (
     <div>
       <PageHeader
-        title="Livestock Population"
+        title="Population Monitoring"
         subtitle="Current head count from the masterlist, with the breakdown by age, sex and production stage."
         actions={
           canEdit && (

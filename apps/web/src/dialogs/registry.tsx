@@ -1,5 +1,5 @@
-import { AlertTriangle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { forwardRef, useEffect, useState } from 'react';
 import { Controller } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -66,18 +66,21 @@ export interface OwnerRecord {
 }
 
 /** Where the office got the record: the CVO builds the masterlist from DA lists and farm visits. */
-function SourceSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <Select {...props}>
-      <option value="">Not specified</option>
-      {RECORD_SOURCES.map((s) => (
-        <option key={s} value={s}>
-          {RECORD_SOURCE_LABELS[s]}
-        </option>
-      ))}
-    </Select>
-  );
-}
+// forwardRef so the form can show the saved value (react-hook-form passes a ref through register).
+const SourceSelect = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
+  function SourceSelect(props, ref) {
+    return (
+      <Select ref={ref} {...props}>
+        <option value="">Not specified</option>
+        {RECORD_SOURCES.map((s) => (
+          <option key={s} value={s}>
+            {RECORD_SOURCE_LABELS[s]}
+          </option>
+        ))}
+      </Select>
+    );
+  },
+);
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -87,12 +90,46 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Used by the "Register a raiser" guide to chain the owner → farm → animals forms. */
+/** Used by the Add Owner guide to chain the owner → farm → livestock forms. */
 interface WizardProps {
-  /** e.g. "Step 1 of 3", shown in the title. */
+  /** e.g. "Step 1 of 3", shown in the title. In a guide step the form saves quietly and shows Next. */
   step?: string;
-  /** Called with the new record's id instead of opening its page. */
+  /** Called with the record's id (new or edited) instead of opening its page. */
   onCreated?: (id: number) => void;
+  /** Shows a Back button that returns to the previous step. */
+  onBack?: () => void;
+}
+
+/** Footer for the guide steps: Back, Cancel and Next (or Save on the last step). */
+function StepFooter({
+  formId,
+  loading,
+  onBack,
+  onCancel,
+  next,
+}: {
+  formId: string;
+  loading: boolean;
+  onBack?: () => void;
+  onCancel: () => void;
+  next: string;
+}) {
+  return (
+    <>
+      {onBack && (
+        <Button variant="outline" onClick={onBack} className="mr-auto">
+          <ChevronLeft /> Back
+        </Button>
+      )}
+      <Button variant="outline" onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button form={formId} type="submit" loading={loading}>
+        {next}
+        {next === 'Next' && <ChevronRight />}
+      </Button>
+    </>
+  );
 }
 
 export function OwnerDialog({
@@ -101,6 +138,7 @@ export function OwnerDialog({
   owner,
   step,
   onCreated,
+  onBack,
 }: DialogProps & WizardProps & { owner?: OwnerRecord }) {
   const navigate = useNavigate();
   const editing = !!owner;
@@ -122,11 +160,12 @@ export function OwnerDialog({
     editing ? 'PATCH' : 'POST',
     editing ? `/api/owners/${owner!.id}` : '/api/owners',
     {
-      success: editing ? 'Livestock owner updated.' : 'Livestock owner added to the masterlist.',
+      success: step ? '' : editing ? 'Livestock owner updated.' : 'Livestock owner added to the masterlist.',
       label: (b) => `${editing ? 'Update' : 'Add'} owner ${b.fullName}`,
       form,
       onDone: (res) => {
-        if (!editing && !isQueued(res) && onCreated) return onCreated((res as { id: number }).id);
+        if (step && !isQueued(res) && onCreated)
+          return onCreated(editing ? owner!.id : (res as { id: number }).id);
         onOpenChange(false);
         if (!editing && !isQueued(res)) navigate(`/owners/${(res as { id: number }).id}`);
       },
@@ -138,17 +177,31 @@ export function OwnerDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={
-        editing ? `Edit Livestock Owner ${owner!.code}` : `${step ? `${step}: ` : ''}Add Livestock Owner`
+        step
+          ? `${step}: Livestock Owner`
+          : editing
+            ? `Edit Livestock Owner ${owner!.code}`
+            : 'Add Livestock Owner'
       }
       footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button form="owner-form" type="submit" loading={save.isPending}>
-            {editing ? 'Save changes' : 'Add owner'}
-          </Button>
-        </>
+        step ? (
+          <StepFooter
+            formId="owner-form"
+            loading={save.isPending}
+            onBack={onBack}
+            onCancel={() => onOpenChange(false)}
+            next="Next"
+          />
+        ) : (
+          <>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button form="owner-form" type="submit" loading={save.isPending}>
+              {editing ? 'Save changes' : 'Add owner'}
+            </Button>
+          </>
+        )
       }
     >
       <form
@@ -202,7 +255,7 @@ export function OwnerDialog({
         <Field label="Source of record" error={err(e, 'source')} hint="Where the office got this information">
           <SourceSelect {...form.register('source')} />
         </Field>
-        {editing && (
+        {editing && !step && (
           <Field label="Status" error={err(e, 'status')}>
             <Select {...form.register('status')}>
               {OWNER_STATUSES.filter((s) => s !== 'ARCHIVED').map((s) => (
@@ -559,15 +612,6 @@ function pointOf(lat: unknown, lng: unknown) {
     : null;
 }
 
-/** A farm has a pasture when any pasture detail was recorded. */
-export function farmHasPasture(f?: {
-  pastureArea: number | null;
-  pastureLocation: string | null;
-  pastureLat: number | null;
-}) {
-  return !!f && (f.pastureArea != null || !!f.pastureLocation || f.pastureLat != null);
-}
-
 export function FarmDialog({
   open,
   onOpenChange,
@@ -575,6 +619,7 @@ export function FarmDialog({
   farm,
   step,
   onCreated,
+  onBack,
 }: DialogProps & WizardProps & { ownerId?: number; farm?: FarmEditRecord }) {
   const navigate = useNavigate();
   const { data: lookups } = useLookups();
@@ -588,10 +633,6 @@ export function FarmDialog({
     type: farm?.type ?? 'backyard',
     barangay: farm?.barangay ?? '',
     zone: farm?.zone ?? '',
-    pastureArea: farm?.pastureArea ?? '',
-    pastureLocation: farm?.pastureLocation ?? '',
-    pastureLat: farm?.pastureLat ?? '',
-    pastureLng: farm?.pastureLng ?? '',
     address: farm?.address ?? '',
     lat: farm?.lat ?? '',
     lng: farm?.lng ?? '',
@@ -599,27 +640,20 @@ export function FarmDialog({
     source: farm?.source ?? (editing ? '' : 'FARM_VISIT'),
   } as any);
   const geo = useAddressLookup(form, { address: 'address', barangay: 'barangay' });
-  // A map click on the pasture map fills in the pasture's address the same way.
-  const pastureGeo = useAddressLookup(form, { address: 'pastureLocation' });
-  // Pasture details are asked only when the animals graze on a pasture.
-  const [hasPasture, setHasPasture] = useState(false);
   useEffect(() => {
-    if (open) {
-      geo.reset();
-      pastureGeo.reset();
-      setHasPasture(farmHasPasture(farm));
-    }
+    if (open) geo.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const save = useSave<any, { id: number }>(
     editing ? 'PATCH' : 'POST',
     editing ? `/api/farms/${farm!.id}` : '/api/farms',
     {
-      success: editing ? 'Farm updated.' : 'Farm added to the masterlist.',
+      success: step ? '' : editing ? 'Farm updated.' : 'Farm added to the masterlist.',
       label: (b) => `${editing ? 'Update' : 'Add'} farm ${b.name}`,
       form,
       onDone: (res) => {
-        if (!editing && !isQueued(res) && onCreated) return onCreated((res as { id: number }).id);
+        if (step && !isQueued(res) && onCreated)
+          return onCreated(editing ? farm!.id : (res as { id: number }).id);
         onOpenChange(false);
         if (!editing && !isQueued(res)) navigate(`/farms/${(res as { id: number }).id}`);
         if (editing && !isQueued(res))
@@ -631,7 +665,6 @@ export function FarmDialog({
   );
   const e = form.formState.errors;
   const point = pointOf(form.watch('lat'), form.watch('lng'));
-  const pasture = pointOf(form.watch('pastureLat'), form.watch('pastureLng'));
   const owners = (lookups?.owners ?? []).filter(
     (o) => !ownerQ || `${o.fullName} ${o.code} ${o.barangay}`.toLowerCase().includes(ownerQ.toLowerCase()),
   );
@@ -645,42 +678,40 @@ export function FarmDialog({
     }
   };
 
-  const submit = form.handleSubmit((v) => {
-    if (!hasPasture) {
-      // No pasture: any pasture details entered before are removed.
-      save.mutate({ ...v, pastureArea: null, pastureLocation: null, pastureLat: null, pastureLng: null });
-      return;
-    }
-    if (!v.pastureLocation && v.pastureLat == null) {
-      form.setError('pastureLocation', {
-        type: 'manual',
-        message: 'Describe where the pasture is, or click its spot on the pasture map',
-      });
-      return;
-    }
-    save.mutate(v);
-  });
+  const submit = form.handleSubmit((v) => save.mutate(v));
+  // The owner is already known when the farm is added from the guide or from the owner's page.
+  const ownerKnown = !!step || (!editing && !!ownerId);
 
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? `Edit Farm ${farm!.code}` : `${step ? `${step}: ` : ''}Add Farm`}
+      title={step ? `${step}: Farm` : editing ? `Edit Farm ${farm!.code}` : 'Add Farm'}
       size="lg"
       footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button form="farm-form" type="submit" loading={save.isPending}>
-            {editing ? 'Save changes' : 'Add farm'}
-          </Button>
-        </>
+        step ? (
+          <StepFooter
+            formId="farm-form"
+            loading={save.isPending}
+            onBack={onBack}
+            onCancel={() => onOpenChange(false)}
+            next="Next"
+          />
+        ) : (
+          <>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button form="farm-form" type="submit" loading={save.isPending}>
+              {editing ? 'Save changes' : 'Add farm'}
+            </Button>
+          </>
+        )
       }
     >
       <form id="farm-form" noValidate onSubmit={submit} className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {editing ? (
+          {ownerKnown ? null : editing ? (
             <Field
               label="Owner"
               hint="To move this farm to another owner, use Archive on the owner's page → Reassign."
@@ -768,7 +799,6 @@ export function FarmDialog({
           </p>
           <MapView
             className="h-64 sm:h-80"
-            pastures={hasPasture && pasture ? [{ id: 0, name: 'Pasture', ...pasture }] : []}
             pick={{
               value: point,
               onChange: (p) => {
@@ -781,61 +811,6 @@ export function FarmDialog({
           />
           <AddressLookupHint state={geo.state} onApplySuggestion={geo.applySuggestion} />
         </div>
-
-        <section aria-label="Pasture" className="rounded-lg border border-slate-200 p-4 lg:col-span-2">
-          <Checkbox
-            label="The animals graze on a pasture (grazing area)"
-            checked={hasPasture}
-            onChange={setHasPasture}
-          />
-          {hasPasture && (
-            <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-2">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Pasture area (ha)" error={err(e, 'pastureArea')}>
-                  <Input type="number" step="0.01" min={0} {...form.register('pastureArea')} />
-                </Field>
-                <Field
-                  label="Pasture location *"
-                  hint="Filled in when you click the pasture map"
-                  error={err(e, 'pastureLocation')}
-                  className="sm:col-span-2"
-                >
-                  <Input
-                    placeholder="e.g. Communal pasture, Zone 3, Brgy. Carolina"
-                    {...form.register('pastureLocation')}
-                  />
-                </Field>
-                <Field label="Pasture latitude" error={err(e, 'pastureLat')}>
-                  <Input inputMode="decimal" {...form.register('pastureLat')} />
-                </Field>
-                <Field label="Pasture longitude" error={err(e, 'pastureLng')}>
-                  <Input inputMode="decimal" {...form.register('pastureLng')} />
-                </Field>
-              </div>
-              <div>
-                <p className="mb-2 text-[13px] text-slate-500">
-                  Click where the animals graze (a green &quot;P&quot; on maps). Outbreak radius checks
-                  include the pasture.
-                </p>
-                <MapView
-                  className="h-56 sm:h-64"
-                  farms={point ? [{ id: 0, name: 'Farm', ...point }] : []}
-                  pick={{
-                    value: pasture,
-                    onChange: (p) => {
-                      form.setValue('pastureLat', String(p.lat) as any);
-                      form.setValue('pastureLng', String(p.lng) as any);
-                      form.clearErrors('pastureLocation');
-                      pastureGeo.lookup(p.lat, p.lng);
-                    },
-                  }}
-                  fitKey={hasPasture ? 'pasture' : 'none'}
-                />
-                <AddressLookupHint state={pastureGeo.state} onApplySuggestion={pastureGeo.applySuggestion} />
-              </div>
-            </div>
-          )}
-        </section>
       </form>
     </Dialog>
   );
@@ -849,6 +824,7 @@ export function GroupDialog({
   farmId,
   step,
   onCreated,
+  onBack,
 }: DialogProps & WizardProps & { farmId: number }) {
   const form = useZodForm(groupCreateSchema, {});
   useResetOnOpen(open, form, {
@@ -871,7 +847,7 @@ export function GroupDialog({
     }
   }, [open]);
   const save = useSave<any>('POST', '/api/population/groups', {
-    success: 'Livestock added to the farm.',
+    success: step ? '' : 'Livestock added to the farm.',
     label: (b) => `Add ${b.species} group`,
     form,
     onDone: (res) => {
@@ -886,14 +862,24 @@ export function GroupDialog({
       onOpenChange={onOpenChange}
       title={`${step ? `${step}: ` : ''}Add Livestock (Species and Head Count)`}
       footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button form="group-form" type="submit" loading={save.isPending}>
-            Add livestock
-          </Button>
-        </>
+        step ? (
+          <StepFooter
+            formId="group-form"
+            loading={save.isPending}
+            onBack={onBack}
+            onCancel={() => onOpenChange(false)}
+            next="Save"
+          />
+        ) : (
+          <>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button form="group-form" type="submit" loading={save.isPending}>
+              Add livestock
+            </Button>
+          </>
+        )
       }
     >
       <form

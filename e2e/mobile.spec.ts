@@ -4,7 +4,7 @@ import { dialog, expectToast, login } from './helpers';
 test('mobile: navigation drawer, card lists and a full-screen form', async ({ page }) => {
   await login(page);
   // Phone bottom bar: tap a module, then pick a page from its list.
-  await page.getByRole('navigation', { name: 'Modules' }).getByRole('button', { name: 'Masterlist' }).click();
+  await page.getByRole('navigation', { name: 'Modules' }).getByRole('button', { name: 'Registry' }).click();
   await expect(page.getByText('Owners from the DA list and farm visits')).toBeVisible();
   await page.getByRole('link', { name: /Livestock Owners/ }).click();
   await expect(page.getByRole('heading', { name: 'Livestock Owners' })).toBeVisible();
@@ -14,8 +14,13 @@ test('mobile: navigation drawer, card lists and a full-screen form', async ({ pa
   const d = dialog(page);
   await d.getByLabel('Full name').fill('Mobile Miguel');
   await d.getByLabel('Barangay').selectOption('Tabuco');
-  await d.getByRole('button', { name: 'Add owner', exact: true }).click();
-  await expectToast(page, 'Livestock owner added to the masterlist.');
+  await d.getByRole('button', { name: 'Next' }).click();
+  // Add Owner continues to the farm step; Cancel there keeps the owner and closes the guide.
+  await expect(dialog(page).getByText('Step 2 of 3: Farm')).toBeVisible();
+  await dialog(page).getByRole('button', { name: 'Cancel' }).click();
+  await expectToast(page, 'Owner saved. Add the farm later from the owner page.');
+  await page.getByLabel('Search table').fill('Mobile Miguel');
+  await page.getByText('Mobile Miguel').first().click();
   await expect(page.getByRole('heading', { name: 'Mobile Miguel' })).toBeVisible();
 
   // The side menu still opens, showing the current module.

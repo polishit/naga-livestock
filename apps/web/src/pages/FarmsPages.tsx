@@ -41,13 +41,7 @@ import { ActiveBadge, CaseStatusBadge, RecordStatusBadge, SpeciesChip } from '@/
 import { ActivityTimeline, LastVisit, RaisedBadge, SpeciesCard, sourceLabel } from '@/components/livestock';
 import { Badge, Button, Card, CardHeader, Checkbox, Tabs } from '@/components/ui';
 import { AnimalDialog } from '@/dialogs/animals';
-import {
-  FarmDialog,
-  GroupDialog,
-  GroupEditDialog,
-  PopulationUpdateDialog,
-  farmHasPasture,
-} from '@/dialogs/registry';
+import { FarmDialog, GroupDialog, GroupEditDialog, PopulationUpdateDialog } from '@/dialogs/registry';
 import { FarmVisitDialog, ServiceDialog, ServiceEditDialog, type VisitRecord } from '@/dialogs/services';
 import { DeleteDialog } from '@/dialogs/corrections';
 import type { CaseRow, FarmSummary, VaccinationRow } from './types';
@@ -288,7 +282,9 @@ interface FarmDetail {
   }[];
 }
 
-type FarmTab = 'overview' | 'livestock' | 'visits' | 'cases' | 'history' | 'animals';
+type FarmTab = 'overview' | 'livestock' | 'cases' | 'history' | 'animals';
+/** Visits and services shown before "Show more" on the farm overview. */
+const VISITS_SHOWN = 5;
 type Dlg = null | 'edit' | 'group' | 'update' | 'animal' | 'service' | 'group-edit' | 'visit';
 
 export function FarmDetailPage() {
@@ -298,7 +294,8 @@ export function FarmDetailPage() {
   const qc = useQueryClient();
   const lh = useLetterhead();
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as FarmTab) || 'overview';
+  // Old links to ?tab=visits open the overview, where the visits now are.
+  const tab = ((params.get('tab') === 'visits' ? 'overview' : params.get('tab')) as FarmTab) || 'overview';
   const setTab = (t: FarmTab) => setParams(t === 'overview' ? {} : { tab: t }, { replace: true });
   const [deleting, setDeleting] = useState(false);
   const [dlg, setDlg] = useState<Dlg>(null);
@@ -306,6 +303,7 @@ export function FarmDetailPage() {
   const [classifyId, setClassifyId] = useState<number | null>(null);
   const [editVisit, setEditVisit] = useState<VisitRecord | null>(null);
   const [editService, setEditService] = useState<VaccinationRow | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const { data, isLoading, error } = useApi<FarmDetail>(`/api/farms/${id}`);
   if (error) return <ErrorBox error={error} />;
   if (isLoading || !data) return <Loading />;
@@ -492,7 +490,6 @@ export function FarmDetailPage() {
         tabs={[
           { id: 'overview', label: 'Overview' },
           { id: 'livestock', label: `Livestock (${live.length})` },
-          { id: 'visits', label: `Visits & Services (${activity.length})` },
           { id: 'cases', label: `Disease Cases (${data.cases.length})` },
           { id: 'history', label: 'Head Count History' },
           { id: 'animals', label: `Ear Tags (${data.animals.length})` },
@@ -512,21 +509,6 @@ export function FarmDetailPage() {
                     ['Livestock raised', <RaisedBadge value={f.livestockRaised} />],
                     ['Barangay / Zone', `${f.barangay}${f.zone ? ` · ${f.zone}` : ''}`],
                     ['Address', f.address],
-                    // Pasture details appear only for farms whose animals graze on a pasture.
-                    ...(farmHasPasture(f)
-                      ? ([
-                          ['Pasture area', f.pastureArea != null ? `${f.pastureArea} ha` : null],
-                          [
-                            'Pasture location',
-                            [
-                              f.pastureLocation,
-                              f.pastureLat != null ? `${f.pastureLat}, ${f.pastureLng}` : null,
-                            ]
-                              .filter(Boolean)
-                              .join(' · '),
-                          ],
-                        ] as [string, string | null][])
-                      : []),
                     [
                       'Map location',
                       f.mapped ? `${f.lat}, ${f.lng}` : <Badge tone="red">No map location</Badge>,
@@ -562,16 +544,8 @@ export function FarmDetailPage() {
               <Card>
                 <CardHeader title="Location" />
                 <div className="p-4">
-                  {f.mapped || f.pastureLat != null ? (
-                    <MapView
-                      className="h-[260px]"
-                      farms={f.mapped ? [f] : []}
-                      pastures={
-                        f.pastureLat != null
-                          ? [{ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }]
-                          : []
-                      }
-                    />
+                  {f.mapped ? (
+                    <MapView className="h-[260px]" farms={[f]} />
                   ) : (
                     <div className="flex h-[200px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-sm text-slate-500">
                       This farm has no map location yet.
@@ -613,18 +587,35 @@ export function FarmDetailPage() {
               </div>
             </Card>
             <Card className="lg:col-span-2">
-              <CardHeader
-                title="Recent Visits & Services"
-                actions={
-                  <Button size="xs" variant="outline" onClick={() => setTab('visits')}>
-                    View all
-                  </Button>
-                }
-              />
+              <CardHeader title={`Farm Visits & Veterinary Services (${activity.length})`} />
+              <div className="flex flex-wrap gap-3 border-b border-slate-100 px-4 py-2 text-[12.5px] text-slate-600">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Visit, no signs of disease
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-red-500" /> Visit, sick animals found
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-sky-500" /> Deworming
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" /> Vaccination
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-slate-400" /> Check-up / other service
+                </span>
+              </div>
               <ActivityTimeline
-                items={activity.slice(0, 4)}
+                items={showAll ? activity : activity.slice(0, VISITS_SHOWN)}
                 empty="No farm visits or services recorded yet. Select “Record Farm Visit” after each visit."
               />
+              {activity.length > VISITS_SHOWN && (
+                <div className="border-t border-slate-100 px-4 py-2.5 text-center">
+                  <Button size="sm" variant="outline" onClick={() => setShowAll((v) => !v)}>
+                    {showAll ? 'Show less' : `Show more (${activity.length - VISITS_SHOWN} more)`}
+                  </Button>
+                </div>
+              )}
             </Card>
           </div>
         )}
@@ -738,49 +729,6 @@ export function FarmDetailPage() {
               </Card>
             )}
           </div>
-        )}
-        {tab === 'visits' && (
-          <Card>
-            <CardHeader
-              title="Farm Visits & Veterinary Services"
-              actions={
-                editable && (
-                  <>
-                    <Button size="xs" variant="outline" onClick={() => setDlg('service')}>
-                      <Stethoscope /> Record Service
-                    </Button>
-                    <Button
-                      size="xs"
-                      onClick={() => {
-                        setEditVisit(null);
-                        setDlg('visit');
-                      }}
-                    >
-                      <ClipboardCheck /> Record Farm Visit
-                    </Button>
-                  </>
-                )
-              }
-            />
-            <div className="flex flex-wrap gap-3 border-b border-slate-100 px-4 py-2 text-[12.5px] text-slate-600">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" /> Visit, no signs of disease
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-red-500" /> Visit, sick animals found
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-sky-500" /> Deworming
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-amber-500" /> Vaccination
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-slate-400" /> Check-up / other service
-              </span>
-            </div>
-            <ActivityTimeline items={activity} empty="No farm visits or services recorded yet." />
-          </Card>
         )}
         {tab === 'cases' && (
           <Card>

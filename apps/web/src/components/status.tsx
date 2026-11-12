@@ -64,14 +64,7 @@ export function LabResultBadge({ result }: { result: string }) {
 }
 
 export function StrayStatusBadge({ status }: { status: string }) {
-  const tone: Tone =
-    status === 'CLOSED'
-      ? 'slate'
-      : status === 'RELEASED'
-        ? 'blue'
-        : status === 'IMPOUNDED'
-          ? 'amber'
-          : 'orange';
+  const tone: Tone = status === 'CLOSED' ? 'slate' : 'orange';
   return <Badge tone={tone}>{titleCase(status)}</Badge>;
 }
 

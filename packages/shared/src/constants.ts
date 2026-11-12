@@ -483,7 +483,8 @@ export const CASE_OUTCOME_LABELS: Record<CaseOutcome, string> = {
   OTHER: 'Other',
 };
 
-export const STRAY_STATUSES = ['REPORTED', 'IMPOUNDED', 'RELEASED', 'CLOSED'] as const;
+/** A stray incident is open (reported) or closed. */
+export const STRAY_STATUSES = ['REPORTED', 'CLOSED'] as const;
 export type StrayStatus = (typeof STRAY_STATUSES)[number];
 
 /** Kinds of stray-livestock violation (the list in the incident form). */

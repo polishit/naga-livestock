@@ -145,16 +145,6 @@ export function printFarmProfile(d: FarmProfileData, lh: Letterhead, printedBy?:
         f.lastVisitAt ? h(fmtDate(f.lastVisitAt)) : 'No visit recorded'
       }</div>
       <div><span>Added to masterlist</span>${h(fmtDate(f.createdAt))}</div><div></div>
-      ${
-        // Pasture rows only for farms whose animals graze on a pasture.
-        f.pastureArea != null || f.pastureLocation || f.pastureLat != null
-          ? `<div><span>Pasture area</span>${f.pastureArea != null ? `${h(f.pastureArea)} ha` : '—'}</div><div><span>Pasture location</span>${h(f.pastureLocation ?? '')}${
-              f.pastureLat != null && f.pastureLng != null
-                ? `${f.pastureLocation ? ' · ' : ''}${f.pastureLat.toFixed(6)}, ${f.pastureLng.toFixed(6)}`
-                : ''
-            }</div>`
-          : ''
-      }
     </div>
     <div class="stats">
       <div class="stat">Current livestock<b>${h(f.total)}</b></div>

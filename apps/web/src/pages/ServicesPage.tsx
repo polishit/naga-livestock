@@ -1,6 +1,6 @@
-import { ClipboardCheck, Plus, Printer } from 'lucide-react';
+import { Plus, Printer } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
   MIN_DATE,
@@ -18,11 +18,12 @@ import {
 import { useAuth } from '@/lib/auth';
 import { useApi } from '@/lib/hooks';
 import { printReport } from '@/lib/export';
-import { cn, qs } from '@/lib/utils';
+import { qs } from '@/lib/utils';
 import { ChartCard, ServiceTrendBars, SpeciesHeadBars } from '@/components/charts';
 import { DataTable, type Column } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { ActivityTimeline } from '@/components/livestock';
+import { ScheduleCalendar } from '@/components/ScheduleCalendar';
 import { ErrorBox, FilterSelect, Loading, PageHeader, StatCard } from '@/components/page';
 import { Badge, Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
 import { VoidDialog } from '@/dialogs/surveillance';
@@ -66,6 +67,7 @@ const speciesRank = (s: string) => {
 
 export default function ServicesPage() {
   const { canEdit, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const lh = useLetterhead();
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) || 'overview';
@@ -109,7 +111,12 @@ export default function ServicesPage() {
     days: number;
     overdueDays: number;
     rows: (VaccinationRow & { overdue?: boolean })[];
-  }>(tab === 'upcoming' || tab === 'overview' ? `/api/vaccinations/upcoming${qs({ barangay })}` : null);
+  }>(
+    tab === 'upcoming' || tab === 'overview'
+      ? // The calendar shows the next 6 months.
+        `/api/vaccinations/upcoming${qs({ barangay, days: tab === 'upcoming' ? '183' : '' })}`
+      : null,
+  );
   const coverage = useApi<{ from: string; to: string; rows: CoverageRow[] }>(
     tab === 'coverage' ? `/api/vaccinations/coverage${qs({ barangay, from, to })}` : null,
   );
@@ -220,14 +227,9 @@ export default function ServicesPage() {
         subtitle="Deworming (goats and cattle first), check-ups, vaccinations and other field services, with the farm visits they were given on."
         actions={
           canEdit && (
-            <>
-              <Button onClick={() => setOpen(true)}>
-                <Plus /> Record Service
-              </Button>
-              <Button variant="outline" onClick={() => setVisitOpen(true)}>
-                <ClipboardCheck /> Record Farm Visit
-              </Button>
-            </>
+            <Button onClick={() => setOpen(true)}>
+              <Plus /> Record Service
+            </Button>
           )
         }
       />
@@ -267,6 +269,16 @@ export default function ServicesPage() {
           all="All barangays"
           className="w-[calc(50%-4px)] sm:w-44"
         />
+        {tab === 'records' && (
+          <FilterSelect
+            label="Service"
+            value={type}
+            onChange={setType}
+            options={SERVICE_TYPES.map((t) => ({ value: t, label: SERVICE_TYPE_LABELS[t] }))}
+            all="All services"
+            className="w-[calc(50%-4px)] sm:w-48"
+          />
+        )}
         {tab === 'records' && (
           <FilterSelect
             label="Species"
@@ -314,27 +326,6 @@ export default function ServicesPage() {
           </Button>
         )}
       </div>
-      {tab === 'records' && (
-        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Service type">
-          {['', ...SERVICE_TYPES].map((t) => (
-            <button
-              key={t || 'all'}
-              type="button"
-              onClick={() => setType(t)}
-              aria-pressed={type === t}
-              className={cn(
-                'rounded-full border px-3 py-1 text-[13.5px] font-medium',
-                type === t
-                  ? 'border-brand bg-brand text-white'
-                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
-              )}
-            >
-              {t ? SERVICE_TYPE_LABELS[t as ServiceType] : 'All services'}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div className="mt-4">
         {tab === 'overview' &&
           (summary.error ? (
@@ -430,6 +421,7 @@ export default function ServicesPage() {
                 columns={columns}
                 minWidth={1100}
                 defaultSort={{ key: 'date', dir: 'desc' }}
+                sortable={false}
                 footerNote={
                   rows.length
                     ? `${rows.reduce((a, x) => a + x.count, 0).toLocaleString()} heads served in the records shown`
@@ -454,7 +446,7 @@ export default function ServicesPage() {
                   tone: v.findings === 'SICK_ANIMALS' ? 'red' : 'green',
                   title: (
                     <>
-                      <Link to={`/farms/${v.farmId}?tab=visits`} className="link">
+                      <Link to={`/farms/${v.farmId}`} className="link">
                         {v.farmName}
                       </Link>
                       <span className="font-normal text-slate-500">· {v.barangay}</span>
@@ -487,43 +479,52 @@ export default function ServicesPage() {
 
         {tab === 'upcoming' && (
           <Card>
-            <DataTable
-              rows={upcoming.data?.rows}
-              loading={upcoming.isLoading}
-              rowKey={(r) => r.id}
-              pageSize={0}
-              hideFooter
-              defaultSort={{ key: 'nextDate', dir: 'asc' }}
-              columns={[
-                {
-                  key: 'nextDate',
-                  header: 'Due Date',
-                  cell: (r) => (
-                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      {r.nextDate ? fmtDate(r.nextDate) : '—'}{' '}
-                      {r.overdue && <Badge tone="red">Overdue</Badge>}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'serviceType',
-                  header: 'Service',
-                  cell: (r) => <Badge tone={SERVICE_TONE[r.serviceType] ?? 'slate'}>{r.serviceLabel}</Badge>,
-                },
-                { key: 'farmName', header: 'Farm' },
-                { key: 'barangay', header: 'Barangay' },
-                { key: 'targetLabel', header: 'Species / Heads' },
-                { key: 'vaccine', header: 'Product Used', cell: (r) => r.vaccine ?? '—' },
-                { key: 'date', header: 'Last Given', cell: (r) => fmtDate(r.date) },
-              ]}
-              empty={`Nothing due in the next ${upcoming.data?.days ?? 30} days.`}
-            />
-            {!!upcoming.data?.overdueDays && (
-              <p className="border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-500">
-                Overdue: the next schedule was in the last {upcoming.data.overdueDays} days and no later
-                record of the same service has been entered.
-              </p>
+            {!upcoming.data ? (
+              <Loading />
+            ) : (
+              <ScheduleCalendar
+                items={upcoming.data.rows
+                  .filter((r) => r.nextDate)
+                  .map((r) => ({
+                    id: r.id,
+                    date: r.nextDate!,
+                    label: `${r.serviceLabel} · ${r.species}`,
+                    tone: r.overdue ? 'red' : (SERVICE_TONE[r.serviceType] ?? 'slate'),
+                    detail: (
+                      <>
+                        <b className="font-medium text-slate-800">{r.farmName}</b> · {r.barangay} ·{' '}
+                        {r.targetLabel}
+                        {r.vaccine ? ` · ${r.vaccine}` : ''} · last given {fmtDate(r.date)}
+                        {r.overdue && (
+                          <span className="ml-1.5">
+                            <Badge tone="red">Overdue</Badge>
+                          </span>
+                        )}
+                      </>
+                    ),
+                    action: (
+                      <Button size="xs" variant="outline" onClick={() => navigate(`/farms/${r.farmId}`)}>
+                        Open farm
+                      </Button>
+                    ),
+                  }))}
+                empty="Nothing scheduled. Enter a next schedule date when recording a service to get a reminder."
+              />
             )}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 px-4 py-2.5 text-[12.5px] text-slate-600">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm bg-sky-200" /> Deworming
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm bg-amber-200" /> Vaccination
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm bg-emerald-200" /> Check-up
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm bg-red-200" /> Overdue (not yet given)
+              </span>
+            </div>
           </Card>
         )}
 

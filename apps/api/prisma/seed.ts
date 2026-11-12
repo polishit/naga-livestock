@@ -38,7 +38,6 @@ const ahead = (n: number) => ago(-n);
 const LIZA = 'Dr. Liza Admin';
 const MARK = 'Dr. Mark Inspector';
 const JOY = 'Dr. Joy Inspector';
-const POUND = 'City Veterinary Office impounding area, Brgy. Carolina';
 const RADDL = 'RADDL Region V, Pili';
 const HC = 'Hog Cholera Vaccine';
 const NCD = 'NCD Vaccine';
@@ -214,7 +213,7 @@ const ANIMALS: AnimalSeed[] = [
     markings: 'Dark brown, notched left ear',
     cowlick: 'Cowlick on right shoulder',
   },
-  // NC-K-0002: the impounded stray; a transfer that was reversed.
+  // NC-K-0002: the stray carabao (open, fine unpaid); a transfer that was reversed.
   {
     farm: 'Hillside Ranch',
     species: 'Carabao',
@@ -1210,16 +1209,14 @@ async function main() {
       description: 'Carabao wandering on the road, rope broken. Reported by a tricycle driver.',
       lat: 13.6655,
       lng: 123.2731,
-      status: 'IMPOUNDED' as const,
+      status: 'REPORTED' as const,
       violations: 1,
       violationType: 'Animal on a public road or highway',
       fineAmount: 500,
-      impoundedAt: D(ago(20)),
-      impoundPlace: POUND,
-      remarks: 'Owner informed by phone; to pay the fine before release.',
+      remarks: 'Owner informed by phone; to pay the fine.',
     },
     {
-      // Released after the fine was paid.
+      // Closed after the fine was paid.
       at: `${ago(30)}T07:10:00`,
       species: 'Swine',
       ownerId: 7,
@@ -1228,20 +1225,16 @@ async function main() {
       description: 'Sow roaming at the market entrance. Second time this year.',
       lat: 13.6372,
       lng: 123.2359,
-      status: 'RELEASED' as const,
+      status: 'CLOSED' as const,
       violations: 2,
       violationType: 'Repeat offense',
       fineAmount: 1500,
       finePaid: true,
       orNumber: 'OR-7712398',
       paidAt: D(ago(29)),
-      impoundedAt: D(ago(30)),
-      impoundPlace: POUND,
-      releasedAt: D(ago(29)),
-      releasedTo: 'Teresa Garcia (owner)',
     },
     {
-      // Settled without impounding.
+      // Settled with a warning.
       at: `${ago(45)}T15:20:00`,
       species: 'Goat',
       ownerId: 5,

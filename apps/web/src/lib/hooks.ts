@@ -82,6 +82,7 @@ function withClearedFields<T>(body: T, raw: Record<string, unknown>): T {
   for (const [k, v] of Object.entries(raw)) if (v === '' && out[k] === undefined) out[k] = null;
   return out as T;
 }
+
 export function useSave<TBody, TRes = unknown>(
   method: 'POST' | 'PATCH' | 'PUT',
   url: string | ((body: TBody) => string),
@@ -110,7 +111,8 @@ export function useSave<TBody, TRes = unknown>(
     },
     onSuccess: (res) => {
       if (isQueued(res)) toast.info('Saved offline — it will sync automatically when you are back online.');
-      else toast.success(opts.success);
+      // An empty message saves quietly (e.g. the steps of the Add Owner guide show one message at the end).
+      else if (opts.success) toast.success(opts.success);
       qc.invalidateQueries();
       opts.onDone?.(res);
     },

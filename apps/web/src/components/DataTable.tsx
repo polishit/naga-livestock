@@ -36,6 +36,8 @@ interface Props<T> {
   toolbarDivider?: boolean;
   /** Column key used as the card title on phones (defaults to the second column). */
   mobileTitle?: string;
+  /** false: headers are plain text (no click-to-sort); rows keep the defaultSort order. */
+  sortable?: boolean;
 }
 
 /** Table headers are always shown in Title Case so every table looks the same. */
@@ -59,6 +61,7 @@ export function DataTable<T>({
   dense,
   toolbarDivider,
   mobileTitle,
+  sortable = true,
 }: Props<T>) {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState(defaultSort ?? null);
@@ -192,7 +195,7 @@ export function DataTable<T>({
                     c.headerClassName,
                   )}
                 >
-                  {c.sort === false ? (
+                  {c.sort === false || !sortable ? (
                     head(c.header)
                   ) : (
                     <button

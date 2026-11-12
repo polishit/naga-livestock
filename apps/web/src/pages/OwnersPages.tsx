@@ -53,14 +53,14 @@ interface OwnerRow {
 export function OwnersPage() {
   const navigate = useNavigate();
   const { canEdit } = useAuth();
-  const [barangay, setBarangay] = useState('');
+  const [params] = useSearchParams();
+  // ?barangay=… comes from the dashboard boxes.
+  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
   const [status, setStatus] = useState('');
   const [archived, setArchived] = useState(false);
-  const [params] = useSearchParams();
   // ?rsbsa=no lists the owners still without an RSBSA number (linked from Record completeness).
   const [rsbsa, setRsbsa] = useState(params.get('rsbsa') ?? '');
   const [source, setSource] = useState('');
-  const [open, setOpen] = useState(false);
   const [raiser, setRaiser] = useState(false);
   const {
     data: all,
@@ -79,15 +79,10 @@ export function OwnersPage() {
         subtitle={`Owner masterlist · ${activeCount} livestock owner${activeCount === 1 ? '' : 's'} (from DA lists and farm visits)`}
         actions={
           canEdit && (
-            <>
-              <Button variant="outline" onClick={() => setOpen(true)}>
-                <Plus /> Add Owner
-              </Button>
-              {/* Owner, farm and animals in one guided flow. */}
-              <Button onClick={() => setRaiser(true)}>
-                <UserPlus /> Add Owner, Farm and Livestock
-              </Button>
-            </>
+            // One guided flow: owner → farm → livestock, with Back and Next.
+            <Button onClick={() => setRaiser(true)}>
+              <UserPlus /> Add Owner
+            </Button>
           )
         }
       />
@@ -97,7 +92,7 @@ export function OwnersPage() {
         <Card>
           <DataTable
             rows={data}
-            empty="No owners found. Clear the filters, or select “Add Owner, Farm and Livestock”."
+            empty="No owners found. Clear the filters, or select “Add Owner”."
             loading={isLoading}
             rowKey={(r) => r.id}
             onRowClick={(r) => navigate(`/owners/${r.id}`)}
@@ -165,7 +160,6 @@ export function OwnersPage() {
           />
         </Card>
       )}
-      <OwnerDialog open={open} onOpenChange={setOpen} />
       <RegisterRaiser open={raiser} onOpenChange={setRaiser} />
     </div>
   );

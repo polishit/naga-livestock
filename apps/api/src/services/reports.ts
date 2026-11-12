@@ -1057,8 +1057,6 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('owner', 'Owner'),
           col('barangay', 'Barangay'),
           col('violation', 'Violation'),
-          col('impound', 'Impounded'),
-          col('release', 'Released'),
           col('fine', 'Fine'),
           col('status', 'Status'),
         ],
@@ -1070,8 +1068,6 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           owner: x.owner?.fullName ?? 'Unknown',
           barangay: `${x.barangay} — ${x.location}`,
           violation: `${x.violationType ?? '—'}${x.violations ? ` (${x.violations})` : ''}`,
-          impound: x.impoundedAt ? `${fmtDate(ymd(x.impoundedAt))} · ${x.impoundPlace ?? ''}` : '—',
-          release: x.releasedAt ? `${fmtDate(ymd(x.releasedAt))} · to ${x.releasedTo ?? ''}` : '—',
           fine:
             x.fineAmount != null && Number(x.fineAmount) > 0
               ? `${peso(Number(x.fineAmount))} · ${x.finePaid ? `Paid, OR ${x.orNumber}` : 'Unpaid'}`
@@ -1081,7 +1077,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         summary: [
           { label: 'Incidents', value: rows.length },
           { label: 'Violations', value: rows.reduce((a, x) => a + x.violations, 0) },
-          { label: 'Impounded', value: rows.filter((x) => x.impoundedAt).length },
+          { label: 'Closed', value: rows.filter((x) => x.status === 'CLOSED').length },
           {
             label: 'Fines collected',
             value: peso(fined.filter((x) => x.finePaid).reduce((a, x) => a + Number(x.fineAmount), 0)),
@@ -1207,14 +1203,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         orderBy: { id: 'asc' },
       });
       for (const f of farms) {
-        const missing = [
-          (f.lat == null || f.lng == null) && 'map location',
-          f.pastureArea != null &&
-            f.pastureArea > 0 &&
-            f.pastureLat == null &&
-            !f.pastureLocation &&
-            'pasture location',
-        ].filter(Boolean);
+        const missing = [(f.lat == null || f.lng == null) && 'map location'].filter(Boolean);
         if (missing.length)
           rows.push({
             type: 'Farm',

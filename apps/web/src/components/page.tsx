@@ -1,7 +1,7 @@
 import { ArrowLeft, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { cn, toTitle } from '@/lib/utils';
 import { Spinner } from './ui';
 
 /**
@@ -63,6 +63,9 @@ export function StatCard({
   icon: Icon,
   tone = 'green',
   className,
+  to,
+  onClick,
+  active,
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -70,6 +73,12 @@ export function StatCard({
   icon?: LucideIcon;
   tone?: 'green' | 'red' | 'blue' | 'orange';
   className?: string;
+  /** Opens this page when the box is clicked (the records behind the number). */
+  to?: string;
+  /** Runs when the box is clicked (e.g. filter the list below). */
+  onClick?: () => void;
+  /** Highlights the box (its filter is on). */
+  active?: boolean;
 }) {
   const toneCls = {
     green: 'bg-emerald-50 text-emerald-700',
@@ -77,28 +86,50 @@ export function StatCard({
     blue: 'bg-sky-50 text-sky-600',
     orange: 'bg-orange-50 text-orange-600',
   }[tone];
-  return (
-    <div className={cn('card p-4', className)}>
+  const body = (
+    <>
       <div className="flex items-start gap-2.5">
         {Icon && (
           <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', toneCls)}>
             <Icon className="h-[17px] w-[17px]" strokeWidth={1.9} />
           </span>
         )}
-        <div className="min-w-0 pt-1.5 text-[13px] font-medium leading-snug text-slate-600">{label}</div>
+        <div className="min-w-0 pt-1.5 text-[13px] font-medium leading-snug text-slate-600">
+          {typeof label === 'string' ? toTitle(label) : label}
+        </div>
       </div>
       <div className="mt-2.5 text-[26px] font-semibold leading-none tracking-tight text-slate-900">
         {value}
       </div>
       {sub && <div className="mt-1.5 text-[12.5px] leading-snug text-slate-500">{sub}</div>}
-    </div>
+    </>
   );
+  const cls = cn(
+    'card flex h-full w-full flex-col justify-start p-4 text-left',
+    (to || onClick) &&
+      'transition hover:ring-2 hover:ring-brand/40 focus-visible:ring-2 focus-visible:ring-brand',
+    active && 'ring-2 ring-brand',
+    className,
+  );
+  if (to)
+    return (
+      <Link to={to} className={cls}>
+        {body}
+      </Link>
+    );
+  if (onClick)
+    return (
+      <button type="button" onClick={onClick} aria-pressed={active} className={cls}>
+        {body}
+      </button>
+    );
+  return <div className={cls}>{body}</div>;
 }
 
 export function MiniStat({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="card px-3 py-2.5">
-      <div className="text-[12.5px] text-slate-600">{label}</div>
+      <div className="text-[12.5px] text-slate-600">{typeof label === 'string' ? toTitle(label) : label}</div>
       <div className="mt-0.5 text-[20px] font-semibold text-slate-900">{value}</div>
     </div>
   );

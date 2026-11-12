@@ -317,9 +317,12 @@ test('admin removes a service record, edits a species, and confirms a possible d
   await page.getByRole('button', { name: 'Add Owner', exact: true }).click();
   await dialog(page).getByLabel('Full name').fill('Juan Dela Cruz');
   await dialog(page).getByLabel('Barangay').selectOption('Cararayan');
-  await dialog(page).getByRole('button', { name: 'Add owner', exact: true }).click();
+  await dialog(page).getByRole('button', { name: 'Next' }).click();
   await expect(dialog(page).getByText(/Possible duplicate: OWN-0001/)).toBeVisible();
   await dialog(page).getByLabel('This is a different person — save anyway').check();
-  await dialog(page).getByRole('button', { name: 'Add owner', exact: true }).click();
-  await expectToast(page, 'Livestock owner added to the masterlist.');
+  await dialog(page).getByRole('button', { name: 'Next' }).click();
+  // Add Owner continues to the farm step; Cancel there keeps the owner and closes the guide.
+  await expect(dialog(page).getByText('Step 2 of 3: Farm')).toBeVisible();
+  await dialog(page).getByRole('button', { name: 'Cancel' }).click();
+  await expectToast(page, 'Owner saved. Add the farm later from the owner page.');
 });

@@ -93,7 +93,7 @@ const HELP: Record<string, Help> = {
     terms: REMOVE_TERMS,
   },
   '/population': {
-    title: 'Livestock Population',
+    title: 'Population Monitoring',
     purpose: 'Head count from the masterlist, by species, farm and barangay.',
     steps: [
       'By Species: total heads per species with the breakdown by age, sex and production stage.',
@@ -134,10 +134,10 @@ const HELP: Record<string, Help> = {
   },
   '/strays': {
     title: 'Stray & Violations',
-    purpose: 'Animals found wandering, impounded or released, and the fines.',
+    purpose: 'Animals found wandering, the violations and the fines.',
     steps: [
       'Select "Report incident", describe the animal and click where it was found.',
-      'Select the incident to update it. Impound details appear when the status is Impounded; release details when Released.',
+      'Select the incident to update it: owner, violation and fine. Set the status to Closed when it is settled.',
       'Enter the fine. Tick "Fine paid" when it is paid, then enter the OR number.',
     ],
     terms: [['OR number', 'Official receipt number of the paid fine.']],

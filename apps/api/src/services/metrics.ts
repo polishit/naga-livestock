@@ -444,22 +444,15 @@ export async function radiusAnalysis(caseId: number, radiusMeters?: number) {
   });
   if (!c) return null;
   const farms = await loadFarms();
-  // A farm is placed by its own pin, and also by its pasture when the animals graze elsewhere.
+  // A farm is placed by its own map pin (pastures are no longer used).
   const hasFarm = (x: LoadedFarm) => x.lat != null && x.lng != null;
-  const hasPasture = (x: LoadedFarm) => x.pastureLat != null && x.pastureLng != null;
-  const excluded = farms.filter((x) => !hasFarm(x) && !hasPasture(x));
+  const excluded = farms.filter((x) => !hasFarm(x));
   if (c.lat == null || c.lng == null) {
     return { case: c, radius, geocoded: false as const, farms: [], totals: null, excluded: excluded.length };
   }
   const within = farms
-    .filter((x) => hasFarm(x) || hasPasture(x))
-    .map((x) => {
-      const toFarm = hasFarm(x) ? distanceMeters(c.lat!, c.lng!, x.lat!, x.lng!) : Infinity;
-      const toPasture = hasPasture(x)
-        ? distanceMeters(c.lat!, c.lng!, x.pastureLat!, x.pastureLng!)
-        : Infinity;
-      return { farm: x, distance: Math.min(toFarm, toPasture), viaPasture: toPasture < toFarm };
-    })
+    .filter(hasFarm)
+    .map((x) => ({ farm: x, distance: distanceMeters(c.lat!, c.lng!, x.lat!, x.lng!) }))
     .filter((r) => r.distance <= radius || r.farm.id === c.farmId)
     .sort((a, b) => a.distance - b.distance);
   // Monitoring: each nearby farm is checked individually after the case is reported.
@@ -477,7 +470,7 @@ export async function radiusAnalysis(caseId: number, radiusMeters?: number) {
     return {
       ...s,
       distance: isGz ? 0 : roundDistance(r.distance),
-      role: isGz ? 'Ground-zero farm' : r.viaPasture ? 'Nearby farm (pasture)' : 'Nearby farm',
+      role: isGz ? 'Ground-zero farm' : 'Nearby farm',
       monitoring: (last ? last.findings : 'NOT_VISITED') as 'NOT_VISITED' | 'NO_SIGNS' | 'SICK_ANIMALS',
       monitoredAt: last ? ymd(last.date) : null,
     };

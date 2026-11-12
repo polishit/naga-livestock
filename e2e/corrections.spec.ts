@@ -31,8 +31,14 @@ test('delete is refused for an owner with records, and works for one entered by 
   const d = dialog(page);
   await d.getByLabel('Full name').fill('Mistaken Entry');
   await d.getByLabel('Barangay').selectOption('Pacol');
-  await d.getByRole('button', { name: 'Add owner', exact: true }).click();
-  await expectToast(page, 'Livestock owner added to the masterlist.');
+  await d.getByRole('button', { name: 'Next' }).click();
+  // Add Owner continues to the farm step; Cancel there keeps the owner and closes the guide.
+  await expect(dialog(page).getByText('Step 2 of 3: Farm')).toBeVisible();
+  await dialog(page).getByRole('button', { name: 'Cancel' }).click();
+  await expectToast(page, 'Owner saved. Add the farm later from the owner page.');
+  await page.getByLabel('Search table').fill('Mistaken Entry');
+  await page.getByRole('row', { name: /Mistaken Entry/ }).click();
+  await expect(page.getByRole('heading', { name: 'Mistaken Entry' })).toBeVisible();
   await more(page).click();
   await page.getByRole('menuitem', { name: /Delete \(entered by mistake\)/ }).click();
   await dialog(page).getByRole('button', { name: 'Delete permanently' }).click();
@@ -100,9 +106,9 @@ test('archived farms are listed and can be restored', async ({ page }) => {
   await expectToast(page, 'Farm restored.');
 });
 
-test('a fresh stray report can be deleted; an impounded one only voided', async ({ page }) => {
+test('a fresh stray report can be deleted; a closed one only voided', async ({ page }) => {
   await page.goto('/strays');
-  await page.getByLabel('Status').selectOption('IMPOUNDED');
+  await page.getByLabel('Status').selectOption('CLOSED');
   await page.getByRole('row').nth(1).click();
   const d = dialog(page);
   await expect(d.getByRole('button', { name: 'Void (reported in error)' })).toBeVisible();

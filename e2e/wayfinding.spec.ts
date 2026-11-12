@@ -50,41 +50,51 @@ test('every page has "How to use this page" help', async ({ page }) => {
   }
 });
 
-test('register a raiser: owner, farm and animals one after another', async ({ page }) => {
+test('add owner: owner, farm and livestock with Back and Next, then one success message', async ({
+  page,
+}) => {
   await page.route('**/api/geocode/reverse**', (route) =>
     route.fulfill({ json: { address: 'Purok 2, Mabolo, Naga', barangay: 'Mabolo' } }),
   );
   await page.getByRole('button', { name: 'New' }).click();
-  await page.getByRole('menuitem', { name: /Add owner, farm and livestock/ }).click();
+  await page.getByRole('menuitem', { name: /Add an owner/ }).click();
   let d = dialog(page);
-  await expect(d.getByText('Step 1 of 3: Add Livestock Owner')).toBeVisible();
+  await expect(d.getByText('Step 1 of 3: Livestock Owner')).toBeVisible();
+  await expect(d.getByRole('button', { name: 'Back' })).toHaveCount(0);
   await d.getByLabel('Full name').fill('Rosario Wayfinder');
   await d.getByLabel('Barangay').selectOption('Mabolo');
   await d.getByLabel('Contact number').fill('0917-555-0199');
-  await d.getByRole('button', { name: 'Add owner', exact: true }).click();
-  await expectToast(page, 'Livestock owner added to the masterlist.');
+  await d.getByRole('button', { name: 'Next' }).click();
 
   d = dialog(page);
-  await expect(d.getByText('Step 2 of 3: Add Farm')).toBeVisible();
+  await expect(d.getByText('Step 2 of 3: Farm')).toBeVisible();
+  // The owner was just entered, so the farm step does not ask for it again.
+  await expect(d.getByLabel('Search owner')).toHaveCount(0);
+  await expect(d.getByLabel('Owner', { exact: true })).toHaveCount(0);
   await d.getByLabel('Farm name').fill('Wayfinder Backyard');
   await clickMap(page, d, 0.6, 0.4);
   await expect(d.getByLabel('Barangay')).toHaveValue('Mabolo');
-  await d.getByRole('button', { name: 'Add farm', exact: true }).click();
-  await expectToast(page, 'Farm added to the masterlist.');
+  await d.getByRole('button', { name: 'Next' }).click();
 
   d = dialog(page);
   await expect(d.getByText('Step 3 of 3: Add Livestock (Species and Head Count)')).toBeVisible();
-  await d.getByLabel('Species').selectOption('Swine');
-  await d.getByLabel('Head count').fill('6');
-  await d.getByRole('button', { name: 'Add livestock' }).click();
-  await expectToast(page, 'Livestock added to the farm.');
+  // Back returns to the farm step with what was entered.
+  await d.getByRole('button', { name: 'Back' }).click();
+  d = dialog(page);
+  await expect(d.getByText('Step 2 of 3: Farm')).toBeVisible();
+  await expect(d.getByLabel('Farm name')).toHaveValue('Wayfinder Backyard');
+  await d.getByRole('button', { name: 'Next' }).click();
 
   d = dialog(page);
-  await expect(d.getByText('Added to the Masterlist')).toBeVisible();
-  await expect(d.getByText('Saved: the owner, the farm and 1 species head count.')).toBeVisible();
-  await shot(page, 'raiser-done');
-  await d.getByRole('button', { name: 'Open the farm profile' }).click();
-  await expect(page.getByRole('heading', { name: /Wayfinder Backyard/ })).toBeVisible();
+  await d.getByLabel('Species').selectOption('Swine');
+  await d.getByLabel('Head count').fill('6');
+  await d.getByRole('button', { name: 'Save' }).click();
+  // One success message at the end; no summary screen.
+  await expectToast(page, 'Owner, farm and livestock added to the masterlist.');
+  await expect(dialog(page)).toHaveCount(0);
+  await page.goto('/farms');
+  await page.getByLabel('Search table').fill('Wayfinder');
+  await expect(page.getByRole('row', { name: /Wayfinder Backyard/ })).toBeVisible();
 });
 
 test('reports open on the monthly report; analytics compares periods and links to records', async ({

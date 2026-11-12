@@ -45,8 +45,8 @@ export function QuickNew() {
     },
     {
       icon: UserPlus,
-      label: 'Add owner, farm and livestock',
-      hint: 'New entry for the masterlist, step by step',
+      label: 'Add an owner',
+      hint: 'Owner, farm and livestock, step by step',
       run: () => setRaiser(true),
     },
     {
@@ -58,7 +58,7 @@ export function QuickNew() {
     {
       icon: CircleAlert,
       label: 'Report a stray animal',
-      hint: 'Found wandering or impounded',
+      hint: 'Found wandering, or a violation',
       run: () => navigate('/strays?new=1'),
     },
   ];

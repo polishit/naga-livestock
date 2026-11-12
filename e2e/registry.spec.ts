@@ -11,15 +11,21 @@ test('register, edit and archive a livestock owner', async ({ page }) => {
   await page.goto('/owners');
   await page.getByRole('button', { name: 'Add Owner', exact: true }).click();
   const d = dialog(page);
-  await d.getByRole('button', { name: 'Add owner', exact: true }).click();
+  await expect(d.getByText('Step 1 of 3: Livestock Owner')).toBeVisible();
+  await d.getByRole('button', { name: 'Next' }).click();
   await expect(d.getByText('Required').first()).toBeVisible();
   await expect(d.getByText('Select a barangay')).toBeVisible();
   await d.getByLabel('Full name').fill('Benito Santiago');
   await d.getByLabel('Barangay').selectOption('Pacol');
   await d.getByLabel('Zone / Purok').fill('Zone 4');
   await d.getByLabel('Contact number').fill('0918-111-2222');
-  await d.getByRole('button', { name: 'Add owner', exact: true }).click();
-  await expectToast(page, 'Livestock owner added to the masterlist.');
+  await d.getByRole('button', { name: 'Next' }).click();
+  // Add Owner continues to the farm step; Cancel there keeps the owner and closes the guide.
+  await expect(dialog(page).getByText('Step 2 of 3: Farm')).toBeVisible();
+  await dialog(page).getByRole('button', { name: 'Cancel' }).click();
+  await expectToast(page, 'Owner saved. Add the farm later from the owner page.');
+  await page.getByLabel('Search table').fill('Benito Santiago');
+  await page.getByRole('row', { name: /Benito Santiago/ }).click();
   await expect(page.getByRole('heading', { name: 'Benito Santiago' })).toBeVisible();
   await expect(page.getByText(/OWN-00\d\d · Pacol/)).toBeVisible();
 
@@ -162,16 +168,13 @@ test('report a stray animal and update the incident', async ({ page }) => {
   await expect(row).toContainText('Pinned');
   await row.click();
   const u = dialog(page);
-  await u.getByLabel('Status').selectOption('IMPOUNDED');
+  // Only two statuses: Reported and Closed (no impound or release).
+  await expect(u.getByLabel('Status').locator('option')).toHaveText(['Reported', 'Closed']);
   await u.getByLabel('Number of violations').fill('1');
-  // Impounding needs the date and the place.
-  await u.getByRole('button', { name: 'Save changes' }).click();
-  await expect(u.getByText('Enter where the animal is impounded')).toBeVisible();
-  await u.getByLabel('Impound date').fill(new Date().toLocaleDateString('en-CA'));
-  await u.getByLabel('Impound place').fill('City pound');
+  await u.getByLabel('Status').selectOption('CLOSED');
   await u.getByRole('button', { name: 'Save changes' }).click();
   await expectToast(page, 'Incident updated.');
-  await expect(page.getByRole('row', { name: /STR-0007/ })).toContainText('Impounded');
+  await expect(page.getByRole('row', { name: /STR-0007/ })).toContainText('Closed');
 });
 
 test('set the location of a farm without coordinates (old geotagging link)', async ({ page }) => {

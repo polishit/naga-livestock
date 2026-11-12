@@ -127,8 +127,7 @@ async function periodCounts(p: Period, f: Filters = {}) {
       })
       .sort((a, b) => b.doses - a.doses),
     strays: strays.length,
-    impounded: strays.filter((s) => s.impoundedAt != null).length,
-    released: strays.filter((s) => s.releasedAt != null).length,
+    closedStrays: strays.filter((s) => s.status === 'CLOSED').length,
     finesImposed: sum(fines.map((s) => Number(s.fineAmount))),
     finesCollected: sum(fines.filter((s) => s.finePaid).map((s) => Number(s.fineAmount))),
     visits,
@@ -494,8 +493,7 @@ export async function accomplishmentReport(
     );
 
   add('Stray livestock & violations', 'Stray incidents reported', c.strays);
-  add('Stray livestock & violations', 'Animals impounded', c.impounded);
-  add('Stray livestock & violations', 'Animals released to owners', c.released);
+  add('Stray livestock & violations', 'Incidents closed', c.closedStrays);
   add('Stray livestock & violations', 'Fines imposed', peso(c.finesImposed));
   add('Stray livestock & violations', 'Fines collected', peso(c.finesCollected));
 

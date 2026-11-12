@@ -14,6 +14,8 @@ export function adapterFromUrl(url: string) {
     connectionLimit: Number(u.searchParams.get('connection_limit') ?? 10),
     // MySQL 8 defaults to caching_sha2_password.
     allowPublicKeyRetrieval: true,
+    // A far-away database needs more than the default 1 second to finish the secure (TLS) handshake.
+    connectTimeout: 10_000,
     ...(sslaccept ? { ssl: { rejectUnauthorized: sslaccept === 'strict' } } : {}),
   });
 }

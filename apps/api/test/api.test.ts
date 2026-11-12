@@ -931,51 +931,42 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     return { ownerId: o.body.id as number, farmId: f.body.id as number, animals };
   }
 
-  it('records impoundment, release and a paid fine with their rules', async () => {
+  it('records a violation and a paid fine, then closes the incident', async () => {
     const s = await admin
       .post('/api/strays')
       .send({ species: 'Goat', barangay: 'Pacol', location: 'Highway shoulder', ownerId: 5 });
     expect(s.status).toBe(201);
     const url = `/api/strays/${s.body.id}`;
-    const noPlace = await admin.patch(url).send({ status: 'IMPOUNDED' });
-    expect(noPlace.status).toBe(400);
-    expect(Object.keys(noPlace.body.fieldErrors).sort()).toEqual(['impoundPlace', 'impoundedAt']);
-    const imp = await admin.patch(url).send({
-      status: 'IMPOUNDED',
-      impoundedAt: today,
-      impoundPlace: 'City pound',
+    // Only two statuses remain: Reported and Closed.
+    const old = await admin.patch(url).send({ status: 'IMPOUNDED' });
+    expect(old.status).toBe(400);
+    const fined = await admin.patch(url).send({
       violationType: 'Animal on a public road or highway',
       fineAmount: '500',
     });
-    expect(imp.status).toBe(200);
-    expect(imp.body).toMatchObject({ impoundPlace: 'City pound', fineAmount: 500, finePaid: false });
+    expect(fined.status).toBe(200);
+    expect(fined.body).toMatchObject({ status: 'REPORTED', fineAmount: 500, finePaid: false });
+    expect(fined.body.impoundPlace).toBeUndefined();
     // Sending only the remarks keeps everything else.
     await admin.patch(url).send({ remarks: 'Owner informed by phone' });
     const kept = (await admin.get(url)).body;
-    expect(kept).toMatchObject({ status: 'IMPOUNDED', impoundedAt: today, fineAmount: 500 });
-    const early = await admin
-      .patch(url)
-      .send({ status: 'RELEASED', releasedAt: '2020-01-01', releasedTo: 'Owner' });
-    expect(early.body.fieldErrors.releasedAt[0]).toMatch(/before the impound date/);
+    expect(kept).toMatchObject({ status: 'REPORTED', fineAmount: 500 });
     const noOr = await admin.patch(url).send({ finePaid: true });
     expect(noOr.body.fieldErrors.orNumber[0]).toMatch(/official receipt/);
     const summary = (await admin.get('/api/strays/owner/5/summary')).body;
     expect(summary.unpaidFines).toBeGreaterThanOrEqual(1);
     const done = await admin.patch(url).send({
-      status: 'RELEASED',
-      releasedAt: today,
-      releasedTo: 'Owner (Juan)',
+      status: 'CLOSED',
       finePaid: true,
       orNumber: 'OR-778812',
       paidAt: today,
     });
     expect(done.status).toBe(200);
-    const backwards = await admin.patch(url).send({ status: 'IMPOUNDED' });
-    expect(backwards.body.fieldErrors.status[0]).toMatch(/Released/);
     const report = (await admin.get('/api/reports/stray-incidents')).body;
     const row = report.rows.find((r: { code: string }) => r.code === s.body.code);
     expect(row.fine).toMatch(/Paid, OR OR-778812/);
-    expect(row.impound).toMatch(/City pound/);
+    expect(row.status).toBe('Closed');
+    expect(report.columns.some((c: { key: string }) => c.key === 'impound')).toBe(false);
   });
 
   it("keeps a tagged stray's owner consistent with the registered tag", async () => {
@@ -1007,7 +998,7 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     expect(shared.isAsfDisease('Hog Cholera')).toBe(false);
   });
 
-  it('keeps unsent farm fields on a partial update and counts pastures in the outbreak radius', async () => {
+  it('keeps unsent farm fields on a partial update; the outbreak radius uses the farm pin only', async () => {
     const before = (await prisma.farm.findUnique({ where: { id: 28 } }))!;
     const renamed = await admin.patch('/api/farms/28').send({ name: `${before.name} ` });
     expect(renamed.status).toBe(200);
@@ -1024,10 +1015,9 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
       pastureLng: 123.2385,
     });
     expect(p.status).toBe(200);
-    const inside = (await admin.get('/api/radius?caseId=1&radius=1000')).body;
-    const f = inside.farms.find((x: { id: number }) => x.id === 28);
-    expect(f.role).toBe('Nearby farm (pasture)');
-    expect((await admin.get('/api/farms/28')).body.farm.pastureLocation).toMatch(/Communal/);
+    // Pastures are no longer used: a pasture pin near the case does not bring the farm into the radius.
+    const still = (await admin.get('/api/radius?caseId=1&radius=1000')).body;
+    expect(still.farms.some((x: { id: number }) => x.id === 28)).toBe(false);
   });
 
   it('links PCIC policies to insured ear tags', async () => {
@@ -1432,9 +1422,7 @@ describe('removing and correcting records', () => {
     const s1 = await mk();
     expect((await admin.delete(`/api/strays/${s1.body.id}`)).status).toBe(200);
     const s2 = await mk();
-    await admin
-      .patch(`/api/strays/${s2.body.id}`)
-      .send({ status: 'IMPOUNDED', impoundedAt: today, impoundPlace: 'City pound' });
+    await admin.patch(`/api/strays/${s2.body.id}`).send({ status: 'CLOSED' });
     const refused = await admin.delete(`/api/strays/${s2.body.id}`);
     expect(refused.body.error).toMatch(/Void it instead/);
     expect((await admin.post(`/api/strays/${s2.body.id}/void`).send({ reason: 'Wrong animal' })).status).toBe(
@@ -1546,14 +1534,12 @@ describe('CVO revisions: masterlist, deworming, farm visits, monthly report', ()
   });
 
   it('logs farm visits, shows them on the farm and marks monitored farms near a case', async () => {
-    const v = await admin
-      .post('/api/farm-visits')
-      .send({
-        farmId: 13,
-        date: new Date().toISOString().slice(0, 10),
-        purpose: 'CHECKUP',
-        remarks: 'All healthy',
-      });
+    const v = await admin.post('/api/farm-visits').send({
+      farmId: 13,
+      date: new Date().toISOString().slice(0, 10),
+      purpose: 'CHECKUP',
+      remarks: 'All healthy',
+    });
     expect(v.status).toBe(201);
     expect(v.body).toMatchObject({ purposeLabel: 'Veterinary Check-up', findings: 'NO_SIGNS' });
     expect(v.body.code).toMatch(/^VIS-/);

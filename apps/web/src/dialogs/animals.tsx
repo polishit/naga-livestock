@@ -223,6 +223,7 @@ export function AnimalDialog({
     </Dialog>
   );
 }
+
 /** Move a tagged animal to another group on the same farm (e.g. young stock to the adult group). */
 export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { animal: AnimalRecord }) {
   const { data: lookups } = useLookups();
@@ -618,17 +619,13 @@ export interface StrayRecord {
   finePaid: boolean;
   orNumber: string | null;
   paidAt: string | null;
-  impoundedAt: string | null;
-  impoundPlace: string | null;
-  releasedAt: string | null;
-  releasedTo: string | null;
   /** Voided: reported in error. Kept, read-only, and left out of every figure. */
   voided?: boolean;
   voidedBy?: string | null;
   voidReason?: string | null;
 }
 
-/** Incident details, violation, impoundment / release and penalty. Read-only users can view it. */
+/** Incident details, violation and penalty. Read-only users can view it. */
 export function StrayUpdateDialog({
   open,
   onOpenChange,
@@ -649,10 +646,6 @@ export function StrayUpdateDialog({
     finePaid: stray?.finePaid ?? false,
     orNumber: stray?.orNumber ?? '',
     paidAt: stray?.paidAt ?? '',
-    impoundedAt: stray?.impoundedAt ?? '',
-    impoundPlace: stray?.impoundPlace ?? '',
-    releasedAt: stray?.releasedAt ?? '',
-    releasedTo: stray?.releasedTo ?? '',
   } as any);
   const save = useSave<any>('PATCH', `/api/strays/${stray?.id}`, {
     success: 'Incident updated.',
@@ -663,24 +656,17 @@ export function StrayUpdateDialog({
   if (!stray) return null;
   // A voided report is read-only. A fresh report nobody acted on yet can be deleted; otherwise void it.
   const canEdit = canWrite && !stray.voided;
-  const deletable =
-    stray.status === 'REPORTED' && !stray.impoundedAt && !(stray.fineAmount && stray.fineAmount > 0);
+  const deletable = stray.status === 'REPORTED' && !(stray.fineAmount && stray.fineAmount > 0);
   const status = form.watch('status');
   const finePaid = form.watch('finePaid');
   const hasFine = Number(form.watch('fineAmount') || 0) > 0;
-  // Show each part only when it applies: impoundment once the animal is impounded (or later),
-  // release once it is released or closed, payment details once there is a fine and it is paid.
-  const showImpound = status !== 'REPORTED';
-  const showRelease = status === 'RELEASED' || status === 'CLOSED';
-  const unpaidRelease = showRelease && hasFine && !finePaid;
+  // Payment details show once there is a fine and it is paid; closing with an unpaid fine is flagged.
+  const unpaidClose = status === 'CLOSED' && hasFine && !finePaid;
   const today = isoDate();
   // Hidden parts are emptied before saving so the record holds only what applies.
   const clearHidden = () => {
     const v = form.getValues() as Record<string, unknown>;
     const set = (k: string, val: unknown) => form.setValue(k as any, val as any);
-    if (v.status === 'REPORTED') ['impoundedAt', 'impoundPlace'].forEach((k) => set(k, ''));
-    if (v.status !== 'RELEASED' && v.status !== 'CLOSED')
-      ['releasedAt', 'releasedTo'].forEach((k) => set(k, ''));
     const fine = Number(v.fineAmount || 0) > 0;
     if (!fine) set('finePaid', false);
     if (!fine || !v.finePaid) ['orNumber', 'paidAt'].forEach((k) => set(k, ''));
@@ -802,40 +788,6 @@ export function StrayUpdateDialog({
             <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />
           </div>
 
-          {showImpound && (
-            <>
-              <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Impoundment</h3>
-              <Field
-                label={`Impound date${status === 'IMPOUNDED' ? ' *' : ''}`}
-                error={err(e, 'impoundedAt')}
-              >
-                <Input type="date" min={foundOn} max={today} {...form.register('impoundedAt')} />
-              </Field>
-              <Field
-                label={`Impound place${status === 'IMPOUNDED' ? ' *' : ''}`}
-                error={err(e, 'impoundPlace')}
-              >
-                <Input placeholder="e.g. City pound, Brgy. hall" {...form.register('impoundPlace')} />
-              </Field>
-            </>
-          )}
-          {showRelease && (
-            <>
-              <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Release</h3>
-              <Field label={`Release date${status === 'RELEASED' ? ' *' : ''}`} error={err(e, 'releasedAt')}>
-                <Input
-                  type="date"
-                  min={form.watch('impoundedAt') || foundOn}
-                  max={today}
-                  {...form.register('releasedAt')}
-                />
-              </Field>
-              <Field label={`Released to${status === 'RELEASED' ? ' *' : ''}`} error={err(e, 'releasedTo')}>
-                <Input placeholder="Name of the person who claimed it" {...form.register('releasedTo')} />
-              </Field>
-            </>
-          )}
-
           <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Penalty</h3>
           <Field label="Fine (₱)" error={err(e, 'fineAmount')}>
             <Input type="number" min={0} step="0.01" {...form.register('fineAmount')} />
@@ -864,7 +816,7 @@ export function StrayUpdateDialog({
               </Field>
             </>
           )}
-          {unpaidRelease && (
+          {unpaidClose && (
             <p
               role="status"
               className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-800 sm:col-span-2"

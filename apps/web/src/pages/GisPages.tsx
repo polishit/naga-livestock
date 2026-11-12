@@ -273,13 +273,6 @@ export function GisMapPage() {
                   ? [{ ...selFarm, selected: true }]
                   : []
             }
-            pastures={
-              layers.farms
-                ? shownFarms
-                    .filter((f) => f.pastureLat != null)
-                    .map((f) => ({ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }))
-                : []
-            }
             cases={layers.cases ? mappedCases : selCase?.mapped ? [selCase] : []}
             strays={layers.strays ? (strays ?? []) : []}
             circles={ringCases.map((c) => ({ lat: c.lat!, lng: c.lng!, radius }))}
@@ -1200,47 +1193,47 @@ export function RadiusPage() {
       {error && <ErrorBox error={error} />}
       {data && data.totals && (
         <>
+          {/* Four boxes of the same size; each one filters the list below (click again to show all). */}
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
               label="Farms within radius"
               value={data.totals.farms}
               sub={`Ground-zero farm + ${data.totals.nearby} nearby · ${fmtNumber(data.totals.livestock)} head`}
+              onClick={() => setMonitor('')}
+              active={!monitor}
             />
-            <button
-              type="button"
-              className="text-left"
+            <StatCard
+              label="Not yet visited"
+              value={data.totals.notVisited}
+              sub="Nearby farms with no visit since the report"
+              tone="orange"
               onClick={() => setMonitor(monitor === 'NOT_VISITED' ? '' : 'NOT_VISITED')}
-            >
-              <StatCard
-                label="Not yet visited"
-                value={data.totals.notVisited}
-                sub="Nearby farms with no visit since the report"
-                tone="orange"
-                className={monitor === 'NOT_VISITED' ? 'ring-2 ring-amber-400' : ''}
-              />
-            </button>
-            <button
-              type="button"
-              className="text-left"
+              active={monitor === 'NOT_VISITED'}
+            />
+            <StatCard
+              label="Visited — no signs"
+              value={Math.max(0, data.totals.nearby - data.totals.notVisited - data.totals.sick)}
+              sub="Nearby farms checked with no signs of disease"
+              onClick={() => setMonitor(monitor === 'NO_SIGNS' ? '' : 'NO_SIGNS')}
+              active={monitor === 'NO_SIGNS'}
+            />
+            <StatCard
+              label="Sick animals found"
+              value={data.totals.sick}
+              sub="Visited farms that need a report"
+              tone="red"
               onClick={() => setMonitor(monitor === 'SICK_ANIMALS' ? '' : 'SICK_ANIMALS')}
-            >
-              <StatCard
-                label="Sick animals found"
-                value={data.totals.sick}
-                sub="Visited farms that need a report"
-                tone="red"
-                className={monitor === 'SICK_ANIMALS' ? 'ring-2 ring-red-400' : ''}
-              />
-            </button>
-            <div className="card p-4">
-              <div className="text-[13px] text-slate-600">Species within radius</div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {data.totals.species.map((s) => (
-                  <SpeciesChip key={s.species} species={s.species} count={s.count} />
-                ))}
-              </div>
-            </div>
+              active={monitor === 'SICK_ANIMALS'}
+            />
           </div>
+          {data.totals.species.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[13px] text-slate-600">
+              <span className="mr-1 font-medium">Species within radius:</span>
+              {data.totals.species.map((s) => (
+                <SpeciesChip key={s.species} species={s.species} count={s.count} />
+              ))}
+            </div>
+          )}
           {data.excluded > 0 && (
             <div className="mt-4 flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[14.5px] text-slate-700">
               <Info className="h-4 w-4 text-sky-600" /> {data.excluded} active farm(s) left out — no map
@@ -1257,9 +1250,6 @@ export function RadiusPage() {
                 farms={data.farms
                   .filter((f) => f.role !== 'Ground-zero farm')
                   .map((f) => ({ ...f, inRadius: true, ring: MONITOR_RING[f.monitoring] }))}
-                pastures={data.farms
-                  .filter((f) => f.pastureLat != null)
-                  .map((f) => ({ id: f.id, name: f.name, lat: f.pastureLat, lng: f.pastureLng }))}
                 groundZero={data.center}
                 circles={data.center ? [{ ...data.center, radius: data.radius }] : []}
                 focusCircle={data.center ? { ...data.center, radius: data.radius } : undefined}

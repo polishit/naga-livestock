@@ -48,8 +48,6 @@ enum LabResult {
 
 enum StrayStatus {
   REPORTED
-  IMPOUNDED
-  RELEASED
   CLOSED
 }
 
@@ -276,7 +274,7 @@ model StrayIncident {
   finePaid      Boolean     @default(false)
   orNumber      String?     @db.VarChar(40)
   paidAt        DateTime?   @db.Date
-  /// Impoundment and release
+  /// Impoundment and release (no longer used; kept so older records are not lost)
   impoundedAt   DateTime?   @db.Date
   impoundPlace  String?     @db.VarChar(200)
   releasedAt    DateTime?   @db.Date

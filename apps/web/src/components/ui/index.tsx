@@ -17,7 +17,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
-import { cn, toTitle } from '@/lib/utils';
+import { cn, headTitle, toTitle } from '@/lib/utils';
 
 /* ---------------- Button ---------------- */
 
@@ -286,7 +286,7 @@ export function Dialog({
           <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden />
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 sm:py-4">
             <DialogPrimitive.Title className="text-[17px] font-semibold text-slate-900">
-              {title}
+              {typeof title === 'string' ? headTitle(title) : title}
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
               className="rounded p-1 text-slate-500 hover:bg-slate-100"
@@ -377,7 +377,7 @@ export function Tabs<T extends string>({
                 : 'border-transparent text-slate-500 hover:text-slate-800',
             )}
           >
-            {t.label}
+            {typeof t.label === 'string' ? toTitle(t.label) : t.label}
           </button>
         ))}
       </div>

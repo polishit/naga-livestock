@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { clickMap, dialog, expectToast, login } from './helpers';
+import { dialog, expectToast, login } from './helpers';
 
 const SHOTS = process.env.SHOTS_DIR;
 const shot = async (page: import('@playwright/test').Page, name: string) => {
@@ -119,7 +119,7 @@ test('print a farm profile and an owner ID card with QR codes', async ({ page, c
   await cardWin.close();
 });
 
-test('stray incident: impoundment, release and fine with receipt', async ({ page }) => {
+test('stray incident: violation and fine with receipt', async ({ page }) => {
   const s = await page.request.post('/api/strays', {
     data: { species: 'Goat', barangay: 'Pacol', location: 'National highway', ownerId: 5 },
   });
@@ -129,14 +129,8 @@ test('stray incident: impoundment, release and fine with receipt', async ({ page
   await page.goto(`/strays?open=${id}`);
   const d = dialog(page);
   await expect(d.getByText(`${code} · Stray goat`)).toBeVisible();
-  await d.getByLabel('Status').selectOption('IMPOUNDED');
-  await d.getByRole('button', { name: 'Save changes' }).click();
-  await expect(d.getByText('Enter the date the animal was impounded')).toBeVisible();
-  await expect(d.getByText('Enter where the animal is impounded')).toBeVisible();
   const today = new Date().toLocaleDateString('en-CA');
   await d.getByLabel('Violation type').selectOption('Animal on a public road or highway');
-  await d.getByLabel('Impound date').fill(today);
-  await d.getByLabel('Impound place').fill('City pound, Balatas');
   await d.getByLabel('Fine (₱)').fill('500');
   await d.getByLabel('Fine paid').check();
   await d.getByRole('button', { name: 'Save changes' }).click();
@@ -166,37 +160,17 @@ test('ASF case lists the response steps and logs a missing one', async ({ page }
   await shot(page, 'asf-steps');
 });
 
-test('farm pasture is optional and pinned on its own map', async ({ page }) => {
-  await page.route('**/api/geocode/reverse**', (route) =>
-    route.fulfill({ json: { address: 'Communal pasture, upper Carolina', barangay: 'Carolina' } }),
-  );
+test('farms have no pasture fields', async ({ page }) => {
   await page.goto('/farms/10');
   await page.getByRole('button', { name: 'Edit Farm' }).click();
   const d = dialog(page);
-  const pasture = d.getByRole('region', { name: 'Pasture' });
-  const grazes = pasture.getByLabel('The animals graze on a pasture (grazing area)');
-  await grazes.check();
-  // A pasture needs a location: clicking the pasture map fills it in.
-  await clickMap(page, pasture, 0.3, 0.3);
-  await expect(pasture.getByLabel('Pasture location *')).toHaveValue('Communal pasture, upper Carolina');
-  await expect(pasture.getByLabel('Pasture latitude')).not.toHaveValue('');
-  await shot(page, 'pasture-pin');
-  await d.getByRole('button', { name: 'Save changes' }).click();
-  await expectToast(page, 'Farm updated.');
-  await expect(page.getByText(/Communal pasture, upper Carolina · 13\.\d+/)).toBeVisible();
-  await expect(page.locator('.leaflet-marker-icon').filter({ hasText: 'P' })).toHaveCount(1);
-
-  // Without a pasture, the pasture fields and rows disappear.
-  await page.getByRole('button', { name: 'Edit Farm' }).click();
-  await grazes.uncheck();
-  await expect(pasture.getByLabel('Pasture location *')).toHaveCount(0);
-  await d.getByRole('button', { name: 'Save changes' }).click();
-  await expectToast(page, 'Farm updated.');
+  await expect(d.getByText('Pasture', { exact: false })).toHaveCount(0);
+  await d.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByText('Pasture location')).toHaveCount(0);
   await expect(page.locator('.leaflet-marker-icon').filter({ hasText: 'P' })).toHaveCount(0);
 });
 
-test('stray incident shows impound, release and payment parts only when they apply', async ({ page }) => {
+test('stray incident shows the payment part only when there is a fine', async ({ page }) => {
   await page.goto('/strays');
   await page.getByRole('row').nth(1).click();
   const d = dialog(page);
@@ -205,9 +179,7 @@ test('stray incident shows impound, release and payment parts only when they app
   await expect(d.getByLabel('Release date')).toHaveCount(0);
   await d.getByLabel('Fine (₱)').fill('');
   await expect(d.getByLabel('Fine paid')).toHaveCount(0);
-  await d.getByLabel('Status').selectOption('RELEASED');
-  await expect(d.getByLabel('Impound date')).toBeVisible();
-  await expect(d.getByLabel('Release date *')).toBeVisible();
+  await d.getByLabel('Status').selectOption('CLOSED');
   await d.getByLabel('Fine (₱)').fill('300');
   await d.getByLabel('Fine paid').uncheck();
   await expect(d.getByLabel('Official receipt (OR) no. *')).toHaveCount(0);
