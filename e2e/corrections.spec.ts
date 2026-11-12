@@ -66,7 +66,7 @@ test('void a duplicate case; it leaves the lists and can be undone', async ({ pa
   await page.goto('/cases/9');
   await page.getByRole('button', { name: 'Undo void' }).click();
   await expectToast(page, 'Case reopened.');
-  await expect(page.getByLabel('Next step')).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Case steps' })).toBeVisible();
 });
 
 test('fix a typo in a vaccination and in a site visit', async ({ page }) => {
@@ -78,12 +78,13 @@ test('fix a typo in a vaccination and in a site visit', async ({ page }) => {
   await expectToast(page, 'Record updated.');
 
   await page.goto('/cases/1?tab=investigation');
-  await page.getByRole('table').getByRole('button', { name: 'Edit' }).first().click();
-  await expect(dialog(page).getByText('Edit investigation')).toBeVisible();
+  const visits = page.getByRole('listitem', { name: 'Step 2: Site visit' });
+  await visits.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(dialog(page).getByText('Edit Site Visit — CASE-0001')).toBeVisible();
   await dialog(page).getByLabel('Findings / summary').fill('Findings corrected after review.');
   await dialog(page).getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Investigation updated.');
-  await expect(page.getByRole('cell', { name: /Findings corrected after review\./ })).toBeVisible();
+  await expectToast(page, 'Site visit updated.');
+  await expect(visits.getByText('Findings corrected after review.')).toBeVisible();
 });
 
 test('archived farms are listed and can be restored', async ({ page }) => {

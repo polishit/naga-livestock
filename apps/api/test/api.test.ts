@@ -166,10 +166,18 @@ describe('disease surveillance', () => {
       locationSource: 'Farm Coordinates',
       status: 'SUSPECTED',
     });
-    const s = await admin.post(`/api/cases/${res.body.id}/status`).send({ status: 'SAMPLE_COLLECTED' });
-    expect(s.status).toBe(200);
+    // The status is never typed in: adding a sample moves the case on by itself.
+    const lab = await admin.post(`/api/cases/${res.body.id}/labs`).send({ sampleId: 'AUTO-1' });
+    expect(lab.body.caseStatus).toBe('SAMPLE_COLLECTED');
     const { body } = await admin.get(`/api/cases/${res.body.id}`);
-    expect(body.history.map((h: { status: string }) => h.status)).toEqual(['SAMPLE_COLLECTED', 'SUSPECTED']);
+    expect(body.history.map((h: { status: string }) => h.status)).toEqual([
+      'SAMPLE_COLLECTED',
+      'SUSPECTED',
+      'SUSPECTED',
+    ]);
+    expect(body.history[0].note).toMatch(/Status set from the laboratory samples/);
+    await admin.post(`/api/labs/${lab.body.id}/void`).send({ reason: 'Test sample' });
+    expect((await admin.get(`/api/cases/${res.body.id}`)).body.case.status).toBe('SUSPECTED');
   });
 
   it('rejects a farm that does not belong to the owner', async () => {
@@ -294,32 +302,79 @@ describe('logic fixes: disease cases', () => {
     expect(future.body.fieldErrors.reportedAt[0]).toMatch(/future/);
   });
 
-  it('enforces the status workflow and ties final results to the lab', async () => {
-    // CASE-0006 is Suspected with no lab record.
-    const skip = await admin.post('/api/cases/6/status').send({ status: 'SENT_TO_LAB' });
-    expect(skip.body.fieldErrors.status[0]).toMatch(/one stage at a time/);
-    const pos = await admin.post('/api/cases/6/status').send({ status: 'POSITIVE' });
-    expect(pos.body.fieldErrors.status[0]).toMatch(/positive laboratory result/);
-    // CASE-0003 is Awaiting result with a pending lab record (id 3): record the result, then confirm.
-    const lab = await admin.patch('/api/labs/3').send({
-      sampleId: 'RADDL-0003',
-      collectedAt: '2026-09-08',
-      sentAt: '2026-09-08',
-      result: 'NEGATIVE',
-      resultDate: '2026-09-15',
-    });
-    expect(lab.status).toBe(200);
-    expect((await admin.post('/api/cases/3/status').send({ status: 'POSITIVE' })).status).toBe(400);
-    expect((await admin.post('/api/cases/3/status').send({ status: 'NEGATIVE' })).status).toBe(200);
-    // Going back is an admin correction that needs a reason.
-    const mark = await agentFor('mark@nagacityvet.gov.ph');
-    expect((await mark.post('/api/cases/3/status').send({ status: 'AWAITING_RESULT' })).status).toBe(400);
-    const noReason = await admin.post('/api/cases/3/status').send({ status: 'AWAITING_RESULT' });
-    expect(noReason.body.fieldErrors.note).toBeDefined();
-    const ok = await admin
-      .post('/api/cases/3/status')
-      .send({ status: 'AWAITING_RESULT', note: 'Result was entered on the wrong case' });
+  it('the status follows the laboratory samples; there is no manual status change', async () => {
+    const t = new Date().toISOString().slice(0, 10);
+    const c = await admin
+      .post('/api/cases')
+      .send({ ownerId: 1, farmId: 1, species: 'Swine', disease: 'ASF', affected: 2, deaths: 0 });
+    const id = c.body.id;
+    expect((await admin.post(`/api/cases/${id}/status`).send({ status: 'POSITIVE' })).status).toBe(404);
+    const status = async () => (await admin.get(`/api/cases/${id}`)).body.case.status;
+    const a = await admin.post(`/api/cases/${id}/labs`).send({ sampleId: 'FLOW-1', collectedAt: t });
+    expect(await status()).toBe('SAMPLE_COLLECTED');
+    const lab = { sampleId: 'FLOW-1', collectedAt: t, sentAt: t };
+    await admin.patch(`/api/labs/${a.body.id}`).send(lab);
+    expect(await status()).toBe('SENT_TO_LAB');
+    // Inconclusive: back to suspected until a new sample is taken.
+    await admin.patch(`/api/labs/${a.body.id}`).send({ ...lab, result: 'INCONCLUSIVE', resultDate: t });
+    expect(await status()).toBe('SUSPECTED');
+    // While a sample waits for its result the case cannot be closed.
+    const b = await admin
+      .post(`/api/cases/${id}/labs`)
+      .send({ sampleId: 'FLOW-2', collectedAt: t, sentAt: t });
+    const waiting = await admin.post(`/api/cases/${id}/close`).send({ outcome: 'NOT_CONFIRMED', note: 'x' });
+    expect(waiting.body.error).toMatch(/waiting for a laboratory result/);
+    // A negative result makes it negative; a positive one always wins.
+    await admin
+      .patch(`/api/labs/${b.body.id}`)
+      .send({ sampleId: 'FLOW-2', collectedAt: t, sentAt: t, result: 'NEGATIVE', resultDate: t });
+    expect(await status()).toBe('NEGATIVE');
+    // The closing reason must fit the result.
+    const wrong = await admin.post(`/api/cases/${id}/close`).send({ outcome: 'DEPOPULATED', note: 'x' });
+    expect(wrong.body.fieldErrors.outcome).toBeDefined();
+    await admin
+      .post(`/api/cases/${id}/labs`)
+      .send({ sampleId: 'FLOW-3', collectedAt: t, sentAt: t, result: 'POSITIVE', resultDate: t });
+    expect(await status()).toBe('POSITIVE');
+    const notConfirmed = await admin
+      .post(`/api/cases/${id}/close`)
+      .send({ outcome: 'NOT_CONFIRMED', note: 'x' });
+    expect(notConfirmed.body.fieldErrors.outcome).toBeDefined();
+    const ok = await admin.post(`/api/cases/${id}/close`).send({ outcome: 'CONTAINED', note: 'Done' });
     expect(ok.status).toBe(200);
+  });
+
+  it('a case never tested can be closed as not confirmed', async () => {
+    const c = await admin
+      .post('/api/cases')
+      .send({ ownerId: 1, farmId: 1, species: 'Swine', disease: 'Swine flu', affected: 1, deaths: 0 });
+    const r = await admin
+      .post(`/api/cases/${c.body.id}/close`)
+      .send({ outcome: 'NOT_CONFIRMED', note: 'Animals recovered in two days; owner refused sampling' });
+    expect(r.status).toBe(200);
+  });
+
+  it('a site visit updates the deaths; a linked farm visit counts as the site visit', async () => {
+    const t = new Date().toISOString().slice(0, 10);
+    const c = await admin
+      .post('/api/cases')
+      .send({ ownerId: 1, farmId: 1, species: 'Swine', disease: 'ASF', affected: 2, deaths: 0 });
+    const id = c.body.id;
+    const due = async () =>
+      (await admin.get('/api/case-worklist')).body.visits.find((v: { caseId: number }) => v.caseId === id);
+    expect((await due()).kind).toBe('INITIAL');
+    await admin.post('/api/farm-visits').send({ farmId: 1, caseId: id, date: t, purpose: 'MONITORING' });
+    expect(await due()).toBeUndefined();
+    const inv = await admin
+      .post(`/api/cases/${id}/investigations`)
+      .send({ date: t, deadCount: 3, notes: 'Three dead' });
+    expect(inv.body.deathsUpdated).toEqual({ from: 0, to: 3 });
+    const { body } = await admin.get(`/api/cases/${id}`);
+    expect(body.case).toMatchObject({ deaths: 3, affected: 3, pendingPopulation: 3 });
+    await admin.post(`/api/cases/${id}/population-reconciled`);
+    expect(
+      (await admin.post(`/api/cases/${id}/close`).send({ outcome: 'NOT_CONFIRMED', note: 'x' })).status,
+    ).toBe(200);
   });
 
   it('lab dates must be in order', async () => {
@@ -575,20 +630,22 @@ describe('richer records, date rules and record keeping', () => {
     });
     expect(upd.status).toBe(200);
     const { body } = await admin.get('/api/cases/6');
-    expect(body.history[0].note).toMatch(/Lab record RADDL-T1 updated — .*sent — → /);
+    expect(body.history.map((h: { note: string }) => h.note).join('\n')).toMatch(
+      /Lab record RADDL-T1 updated — .*sent — → /,
+    );
     expect(body.labs.find((l: { id: number }) => l.id === add.body.id)).toMatchObject({
       testMethod: 'PCR',
       labReference: 'R5-2026-118',
       updatedBy: expect.any(String),
     });
-    // CASE-0001 is Positive; its positive result cannot be changed or voided while the status stands.
-    const posLab =
-      body &&
-      (await admin.get('/api/cases/1')).body.labs.find((l: { result: string }) => l.result === 'POSITIVE');
+    // CASE-0001 is Positive: correcting its result corrects the status too.
+    const posLab = (await admin.get('/api/cases/1')).body.labs.find(
+      (l: { result: string }) => l.result === 'POSITIVE',
+    );
     const change = await admin.patch(`/api/labs/${posLab.id}`).send({ ...posLab, result: 'NEGATIVE' });
-    expect(change.body.error).toMatch(/correct the case status first/);
-    const voidIt = await admin.post(`/api/labs/${posLab.id}/void`).send({ reason: 'Wrong case' });
-    expect(voidIt.body.error).toMatch(/correct the case status first/);
+    expect(change.body.caseStatus).toBe('NEGATIVE');
+    const back = await admin.patch(`/api/labs/${posLab.id}`).send({ ...posLab, result: 'POSITIVE' });
+    expect(back.body.caseStatus).toBe('POSITIVE');
   });
 
   it('planned responses may be future-dated, get completed, and must be done before closing', async () => {
@@ -604,7 +661,11 @@ describe('richer records, date rules and record keeping', () => {
     const close = await admin
       .post('/api/cases/1/close')
       .send({ outcome: 'CONTAINED', note: 'Quarantine done' });
-    expect(close.body.error).toMatch(/still planned or ongoing/);
+    expect(close.body.error).toMatch(/still planned, ongoing or in force/);
+    const noLift = await admin
+      .patch(`/api/responses/${planned.body.id}`)
+      .send({ type: 'QUARANTINE', status: 'COMPLETED', date: '2026-10-01', location: 'Farm 1' });
+    expect(noLift.body.fieldErrors.endDate[0]).toMatch(/lifted/);
     const done = await admin.patch(`/api/responses/${planned.body.id}`).send({
       type: 'QUARANTINE',
       status: 'COMPLETED',
@@ -628,7 +689,11 @@ describe('richer records, date rules and record keeping', () => {
     const labId = (await admin.get('/api/cases/1')).body.labs[0].id;
     expect((await admin.post(`/api/labs/${labId}/void`).send({ reason: 'x' })).body.error).toMatch(/closed/);
     expect(
-      (await admin.patch(`/api/responses/${planned.body.id}`).send({ type: 'QUARANTINE' })).body.error,
+      (
+        await admin
+          .patch(`/api/responses/${planned.body.id}`)
+          .send({ type: 'QUARANTINE', endDate: '2026-10-15' })
+      ).body.error,
     ).toMatch(/closed/);
     await admin.post('/api/cases/1/reopen');
     expect((await prisma.diseaseCase.findUnique({ where: { id: 1 } }))!.closureOutcome).toBeNull();
@@ -715,7 +780,7 @@ describe('logic audit: corrections, reminders and record integrity', () => {
     await admin.patch('/api/cases/2').send({ disease: 'Hog Cholera', affected: 12, deaths: 2 });
     const close = await admin.post('/api/cases/2/close').send({ outcome: 'NOT_CONFIRMED', note: 'Negative' });
     expect(close.status).toBe(400);
-    expect(close.body.error).toMatch(/population/);
+    expect(close.body.error).toMatch(/head count/);
   });
 
   it('voiding a dose brings back the reminder it had cleared; a back-dated dose is not reminded', async () => {

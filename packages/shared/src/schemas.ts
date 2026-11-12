@@ -2,7 +2,6 @@ import { z } from 'zod';
 import {
   ANIMAL_STATUSES,
   BARANGAYS,
-  CASE_STATUSES,
   FARM_TYPES,
   LAB_RESULTS,
   MAX_PHOTOS,
@@ -16,6 +15,7 @@ import {
   CASE_OUTCOMES,
   INVESTIGATION_VISIT_TYPES,
   RESPONSE_STATUSES,
+  RESPONSE_TYPES_WITH_END,
   VACCINATION_TARGETS,
   RECORD_SOURCES,
   SERVICE_TYPES,
@@ -468,7 +468,6 @@ export const caseCreateSchema = z
   });
 export type CaseCreateInput = z.infer<typeof caseCreateSchema>;
 
-export const caseStatusSchema = z.object({ status: z.enum(CASE_STATUSES), note: optText(500) });
 /** Details that can change while a case is open (species, farm and dates reported stay fixed). */
 export const caseUpdateSchema = z
   .object({
@@ -576,6 +575,11 @@ export const responseCreateSchema = z
   .refine((v) => v.type !== 'CULLING_DEPOPULATION' || v.status === 'PLANNED' || !!v.heads, {
     path: ['heads'],
     message: 'Enter how many animals were culled',
+  })
+  // A quarantine, movement restriction or checkpoint is only finished once it is lifted.
+  .refine((v) => v.status !== 'COMPLETED' || !RESPONSE_TYPES_WITH_END.includes(v.type) || !!v.endDate, {
+    path: ['endDate'],
+    message: 'Enter the date it was lifted',
   });
 
 /** Voiding keeps a wrong record (struck through) and excludes it from all figures. */

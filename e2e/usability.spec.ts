@@ -146,10 +146,13 @@ test('stray incident: violation and fine with receipt', async ({ page }) => {
 });
 
 test('ASF case lists the response steps and logs a missing one', async ({ page }) => {
-  await page.goto('/cases/3');
-  await page.getByRole('tab', { name: 'Response' }).click();
+  await page.goto('/cases/3?tab=response');
   await expect(page.getByText('ASF response steps')).toBeVisible();
-  const step = page.getByRole('listitem').filter({ hasText: 'Coordinate with barangay officials' });
+  const step = page
+    .locator('.card')
+    .filter({ hasText: 'ASF response steps' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Coordinate with barangay officials' });
   await step.getByRole('button', { name: 'Log' }).click();
   const d = dialog(page);
   await expect(d.getByLabel('Activity type')).toHaveValue('BARANGAY_COORDINATION');
@@ -172,8 +175,10 @@ test('farms have no pasture fields', async ({ page }) => {
 
 test('stray incident shows the payment part only when there is a fine', async ({ page }) => {
   await page.goto('/strays');
+  await page.waitForLoadState('networkidle');
   await page.getByRole('row').nth(1).click();
   const d = dialog(page);
+  await expect(d.getByLabel('Status')).toBeVisible();
   await d.getByLabel('Status').selectOption('REPORTED');
   await expect(d.getByLabel('Impound date')).toHaveCount(0);
   await expect(d.getByLabel('Release date')).toHaveCount(0);

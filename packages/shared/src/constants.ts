@@ -294,7 +294,6 @@ export const CASE_STATUSES = [
   'SUSPECTED',
   'SAMPLE_COLLECTED',
   'SENT_TO_LAB',
-  'AWAITING_RESULT',
   'POSITIVE',
   'NEGATIVE',
 ] as const;
@@ -304,7 +303,6 @@ export const CASE_STATUS_LABELS: Record<CaseStatus, string> = {
   SUSPECTED: 'Suspected Case Reported',
   SAMPLE_COLLECTED: 'Sample Collected',
   SENT_TO_LAB: 'Sent to Laboratory',
-  AWAITING_RESULT: 'Awaiting Result',
   POSITIVE: 'Positive',
   NEGATIVE: 'Negative',
 };
@@ -314,51 +312,33 @@ export const CASE_STAGE: Record<CaseStatus, number> = {
   SUSPECTED: 0,
   SAMPLE_COLLECTED: 1,
   SENT_TO_LAB: 2,
-  AWAITING_RESULT: 3,
-  POSITIVE: 4,
-  NEGATIVE: 4,
+  POSITIVE: 3,
+  NEGATIVE: 3,
 };
 
-export interface StatusCheck {
-  allowed: boolean;
-  /** Going backwards or switching Positive/Negative: admin only, with a written reason. */
-  correction: boolean;
-  reason?: string;
+/**
+ * A case's status is never typed in: it follows from its laboratory samples (voided ones left out).
+ * - any positive result → Positive
+ * - a sample sent and waiting for its result → Sent to Laboratory
+ * - a sample collected, not sent yet → Sample Collected
+ * - a negative result (nothing positive or waiting) → Negative
+ * - no sample yet, or only inconclusive results → Suspected (a new sample is needed)
+ */
+export function deriveCaseStatus(
+  labs: { result: string; sentAt?: string | Date | null; voided?: boolean }[],
+): CaseStatus {
+  const l = labs.filter((x) => !x.voided);
+  if (l.some((x) => x.result === 'POSITIVE')) return 'POSITIVE';
+  if (l.some((x) => x.result === 'PENDING' && x.sentAt)) return 'SENT_TO_LAB';
+  if (l.some((x) => x.result === 'PENDING')) return 'SAMPLE_COLLECTED';
+  if (l.some((x) => x.result === 'NEGATIVE')) return 'NEGATIVE';
+  return 'SUSPECTED';
 }
 
-/**
- * Workflow rule shared by the API and the status dialog:
- * - a case moves forward one stage at a time;
- * - it may skip ahead only when a laboratory record proves the step (sample collected / sent);
- * - Positive or Negative needs a laboratory record with that result;
- * - going backwards (or Positive ↔ Negative) is a correction for administrators.
- */
-export function checkCaseStatus(
-  current: CaseStatus,
-  target: CaseStatus,
-  labs: { result: string; sentAt?: string | null }[],
-): StatusCheck {
-  if (current === target)
-    return { allowed: false, correction: false, reason: 'Case already has this status' };
-  const from = CASE_STAGE[current];
-  const to = CASE_STAGE[target];
-  if (to < from || (from === 4 && to === 4)) {
-    return { allowed: true, correction: true, reason: 'Correction: administrators only, with a reason' };
-  }
-  if (to === 4) {
-    return labs.some((l) => l.result === target)
-      ? { allowed: true, correction: false }
-      : {
-          allowed: false,
-          correction: false,
-          reason: `Record a ${target.toLowerCase()} laboratory result first`,
-        };
-  }
-  if (to === from + 1) return { allowed: true, correction: false };
-  const proven = target === 'SAMPLE_COLLECTED' ? labs.length > 0 : labs.some((l) => !!l.sentAt);
-  return proven
-    ? { allowed: true, correction: false }
-    : { allowed: false, correction: false, reason: 'Move one stage at a time' };
+/** True when every sample tested so far came back inconclusive (a new sample has to be taken). */
+export function onlyInconclusive(labs: { result: string; voided?: boolean }[]) {
+  const l = labs.filter((x) => !x.voided);
+  return l.length > 0 && l.every((x) => x.result === 'INCONCLUSIVE');
 }
 
 /** Snake-case codes used in status history notes ("Advanced to sent_to_lab"). */
@@ -366,7 +346,6 @@ export const CASE_STATUS_CODES: Record<CaseStatus, string> = {
   SUSPECTED: 'suspected',
   SAMPLE_COLLECTED: 'sample_collected',
   SENT_TO_LAB: 'sent_to_lab',
-  AWAITING_RESULT: 'awaiting_result',
   POSITIVE: 'positive',
   NEGATIVE: 'negative',
 };
@@ -376,7 +355,7 @@ export type CaseMarkerKind = 'suspected' | 'lab' | 'positive' | 'negative';
 export function caseMarkerKind(status: CaseStatus): CaseMarkerKind {
   if (status === 'POSITIVE') return 'positive';
   if (status === 'NEGATIVE') return 'negative';
-  if (status === 'SENT_TO_LAB' || status === 'AWAITING_RESULT') return 'lab';
+  if (status === 'SENT_TO_LAB') return 'lab';
   return 'suspected';
 }
 export const CASE_MARKER_COLORS: Record<CaseMarkerKind, string> = {
@@ -446,6 +425,21 @@ export const RESPONSE_TYPES_WITH_LOCATION: ResponseType[] = [
   'MOVEMENT_RESTRICTION',
   'CULLING_DEPOPULATION',
 ];
+/**
+ * A response measure still needs attention: it is planned, still going on, or (quarantine,
+ * movement restriction, checkpoint) its lifting date has not come yet. A measure with a lifting
+ * date in the past counts as lifted.
+ */
+export function measureOpen(
+  r: { type: string; status: string; endDate?: string | null; voided?: boolean },
+  today: string,
+) {
+  if (r.voided) return false;
+  if (r.status === 'PLANNED') return true;
+  if (RESPONSE_TYPES_WITH_END.includes(r.type as ResponseType) && r.endDate) return r.endDate > today;
+  return r.status === 'ONGOING';
+}
+
 export const DISPOSAL_METHODS = [
   'Burial',
   'Burning / incineration',
@@ -482,6 +476,42 @@ export const CASE_OUTCOME_LABELS: Record<CaseOutcome, string> = {
   NOT_CONFIRMED: 'Disease not confirmed',
   OTHER: 'Other',
 };
+
+/** The closing reasons that fit a case's result (a negative or untested case cannot be "depopulated"). */
+export function caseOutcomesFor(status: CaseStatus): CaseOutcome[] {
+  return status === 'POSITIVE'
+    ? ['CONTAINED', 'DEPOPULATED', 'RESOLVED', 'OTHER']
+    : ['NOT_CONFIRMED', 'RESOLVED', 'OTHER'];
+}
+
+/**
+ * What still stops a case from being closed. Empty → it can be closed. A case can be closed
+ * without any laboratory test (false alarm, animals recovered), but not while a sample is still
+ * waiting for its result, a measure is still in force, or the head count is not yet updated.
+ */
+export function caseCloseBlockers(
+  x: {
+    labs: { result: string; voided?: boolean }[];
+    responses: { type: string; status: string; endDate?: string | null; voided?: boolean }[];
+    pendingPopulation: number;
+  },
+  today: string,
+): string[] {
+  const out: string[] = [];
+  const waiting = x.labs.filter((l) => !l.voided && l.result === 'PENDING').length;
+  if (waiting)
+    out.push(`${waiting} sample${waiting === 1 ? ' is' : 's are'} still waiting for a laboratory result.`);
+  const open = x.responses.filter((r) => measureOpen(r, today)).length;
+  if (open)
+    out.push(
+      `${open} response measure${open === 1 ? ' is' : 's are'} still planned, ongoing or in force. Mark ${open === 1 ? 'it' : 'them'} completed or enter the date lifted.`,
+    );
+  if (x.pendingPopulation > 0)
+    out.push(
+      `${x.pendingPopulation} animal(s) that died or were culled are not yet taken off the farm's head count.`,
+    );
+  return out;
+}
 
 /** A stray incident is open (reported) or closed. */
 export const STRAY_STATUSES = ['REPORTED', 'CLOSED'] as const;

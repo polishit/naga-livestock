@@ -1,19 +1,20 @@
 import { Router } from 'express';
 import {
   CASE_OUTCOME_LABELS,
-  CASE_STATUS_CODES,
   CASE_STATUS_LABELS,
   INVESTIGATION_VISIT_LABELS,
   RESPONSE_STATUS_LABELS,
   RESPONSE_TYPES_WITH_END,
   RESPONSE_TYPE_LABELS,
+  caseCloseBlockers,
   caseCloseSchema,
   caseCreateSchema,
   caseLocationSchema,
-  caseStatusSchema,
+  caseOutcomesFor,
   caseUpdateSchema,
-  checkCaseStatus,
+  deriveCaseStatus,
   fmtDate,
+  measureOpen,
   investigationCreateSchema,
   labCreateSchema,
   responseCreateSchema,
@@ -27,6 +28,7 @@ import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, today, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
+import { siteVisitsDue } from '../services/caseVisits';
 import { loadCases, radiusAnalysis } from '../services/metrics';
 import { serializeCase } from './serializers';
 import { refreshReminders } from './vaccinations';
@@ -87,6 +89,77 @@ function culledHeads(rs: { heads: number | null; status: string; voidedAt: Date 
 /** Deaths plus culled heads on a case that the farm's population has not yet been updated for. */
 function pendingPopulation(c: { deaths: number; populationReconciled: number }, culled: number) {
   return Math.max(0, c.deaths + culled - c.populationReconciled);
+}
+
+/**
+ * The case status follows its laboratory samples (it is never typed in). Called after every change to
+ * a sample; a change of status is written to the case history and the activity log.
+ */
+export async function syncCaseStatus(tx: Prisma.TransactionClient, caseId: number, by?: string | null) {
+  const c = await tx.diseaseCase.findUnique({
+    where: { id: caseId },
+    include: { labRecords: { where: { voidedAt: null } } },
+  });
+  if (!c) return null;
+  const next = deriveCaseStatus(c.labRecords.map((l) => ({ result: l.result, sentAt: l.sentAt })));
+  if (next === c.status) return null;
+  await tx.diseaseCase.update({ where: { id: caseId }, data: { status: next } });
+  await tx.caseStatusHistory.create({
+    data: {
+      caseId,
+      status: next,
+      note: `Status set from the laboratory samples: ${CASE_STATUS_LABELS[c.status]} → ${CASE_STATUS_LABELS[next]}`,
+      byName: by ?? null,
+    },
+  });
+  const summary =
+    next === 'POSITIVE'
+      ? `${c.code} confirmed POSITIVE — ${c.disease}`
+      : next === 'NEGATIVE'
+        ? `${c.code} confirmed negative — ${c.disease}`
+        : `${c.code} moved to ${CASE_STATUS_LABELS[next]}`;
+  await logActivity('case', caseId, 'status', summary, by, tx);
+  return next;
+}
+
+/**
+ * Dead animals found at a site visit update the case: the case keeps the highest number of deaths
+ * reported (and at least that many animals affected), so the head count update is never missed.
+ */
+export async function deathsFromVisit(
+  tx: Prisma.TransactionClient,
+  c: {
+    id: number;
+    status: CaseStatus;
+    farmId: number;
+    species: string;
+    affected: number;
+    deaths: number;
+    populationReconciled: number;
+  },
+  dead: number | null | undefined,
+  by?: string | null,
+) {
+  if (dead == null || dead <= c.deaths) return null;
+  const affected = Math.max(c.affected, dead);
+  if (affected > c.affected) {
+    const { head } = await speciesHead(c.farmId, c.species);
+    const limit = head + c.populationReconciled;
+    if (affected > limit)
+      throw badRequest('Validation failed', {
+        fieldErrors: {
+          deadCount: [`The farm has only ${limit} ${c.species.toLowerCase()} on record for this case.`],
+        },
+      });
+  }
+  await tx.diseaseCase.update({ where: { id: c.id }, data: { deaths: dead, affected } });
+  await historyNote(
+    tx,
+    c,
+    `Deaths updated from the site visit: ${c.deaths} → ${dead}${affected > c.affected ? ` (affected ${c.affected} → ${affected})` : ''}`,
+    by,
+  );
+  return { from: c.deaths, to: dead };
 }
 
 casesRouter.get(
@@ -328,61 +401,6 @@ casesRouter.post(
   }),
 );
 
-casesRouter.post(
-  '/:id/status',
-  ah(async (req, res) => {
-    const id = idParam(req);
-    const d = parse(caseStatusSchema, req.body);
-    const c = await prisma.diseaseCase.findUnique({
-      where: { id },
-      include: { labRecords: { where: { voidedAt: null } } },
-    });
-    if (!c) throw notFound('Case');
-    if (c.closedAt) throw closedError();
-    const check = checkCaseStatus(
-      c.status,
-      d.status,
-      c.labRecords.map((l) => ({ result: l.result, sentAt: ymd(l.sentAt) })),
-    );
-    if (!check.allowed)
-      throw badRequest('Validation failed', { fieldErrors: { status: [check.reason ?? 'Not allowed'] } });
-    if (check.correction) {
-      if (req.user?.role !== 'ADMIN')
-        throw badRequest('Validation failed', {
-          fieldErrors: {
-            status: ['Only an administrator can move a case backwards or change a final result'],
-          },
-        });
-      if (!d.note || d.note.length < 5)
-        throw badRequest('Validation failed', {
-          fieldErrors: { note: ['Write the reason for this correction'] },
-        });
-    }
-    const updated = await prisma.$transaction(async (tx) => {
-      const u = await tx.diseaseCase.update({ where: { id }, data: { status: d.status } });
-      await tx.caseStatusHistory.create({
-        data: {
-          caseId: id,
-          status: d.status,
-          note: check.correction
-            ? `Correction: ${d.note}`
-            : (d.note ?? `Advanced to ${CASE_STATUS_CODES[d.status]}`),
-          byName: req.user?.name,
-        },
-      });
-      const summary =
-        d.status === 'POSITIVE'
-          ? `${c.code} confirmed POSITIVE — ${c.disease}`
-          : d.status === 'NEGATIVE'
-            ? `${c.code} confirmed negative — ${c.disease}`
-            : `${c.code} moved to ${CASE_STATUS_LABELS[d.status]}`;
-      await logActivity('case', id, 'status', summary, req.user?.name, tx);
-      return u;
-    });
-    res.json(updated);
-  }),
-);
-
 casesRouter.patch(
   '/:id/location',
   ah(async (req, res) => {
@@ -545,9 +563,10 @@ casesRouter.post(
         req.user?.name,
         tx,
       );
-      return created;
+      const deaths = await deathsFromVisit(tx, c, d.deadCount, req.user?.name);
+      return { ...created, deathsUpdated: deaths };
     });
-    res.status(201).json({ ...i, caseDeaths: c.deaths });
+    res.status(201).json(i);
   }),
 );
 
@@ -578,7 +597,8 @@ casesRouter.post(
         req.user?.name,
         tx,
       );
-      return created;
+      const status = await syncCaseStatus(tx, id, req.user?.name);
+      return { ...created, caseStatus: status };
     });
     res.status(201).json(l);
   }),
@@ -622,26 +642,31 @@ casesRouter.post(
     const d = parse(caseCloseSchema, req.body);
     const c = await prisma.diseaseCase.findUnique({
       where: { id },
-      include: { responses: { where: { voidedAt: null } } },
+      include: { responses: { where: { voidedAt: null } }, labRecords: { where: { voidedAt: null } } },
     });
     if (!c) throw notFound('Case');
     if (c.closedAt) throw badRequest('This case is already closed');
-    if (c.status !== 'POSITIVE' && c.status !== 'NEGATIVE') {
-      throw badRequest('Only cases with a final result (Positive or Negative) can be closed');
-    }
-    const open = c.responses.filter((r) => r.status !== 'COMPLETED');
-    if (open.length) {
-      throw badRequest(
-        `${open.length} response activit${open.length === 1 ? 'y is' : 'ies are'} still planned or ongoing. Mark ${open.length === 1 ? 'it' : 'them'} completed first.`,
-      );
-    }
-    // A closed case is locked, so the farm's population must already reflect its deaths and culling.
-    const pending = pendingPopulation(c, culledHeads(c.responses));
-    if (pending > 0) {
-      throw badRequest(
-        `${pending} animal(s) that died or were culled are not yet reflected in the farm's population. Use "Update population" (or "Already counted") on the case first.`,
-      );
-    }
+    // A closed case is locked: no sample may still be waiting, no measure still in force, and the
+    // farm's head count must already reflect the deaths and culling. A case never tested can be closed.
+    const blockers = caseCloseBlockers(
+      {
+        labs: c.labRecords,
+        responses: c.responses.map((r) => ({ type: r.type, status: r.status, endDate: ymd(r.endDate) })),
+        pendingPopulation: pendingPopulation(c, culledHeads(c.responses)),
+      },
+      today(),
+    );
+    if (blockers.length) throw badRequest(blockers[0]);
+    if (!caseOutcomesFor(c.status).includes(d.outcome))
+      throw badRequest('Validation failed', {
+        fieldErrors: {
+          outcome: [
+            c.status === 'POSITIVE'
+              ? 'The result is positive: choose how the outbreak ended'
+              : 'The disease was not confirmed by a positive result: choose "Disease not confirmed", "Resolved" or "Other"',
+          ],
+        },
+      });
     const updated = await prisma.$transaction(async (tx) => {
       const u = await tx.diseaseCase.update({
         where: { id },
@@ -805,21 +830,6 @@ labsRouter.get(
   }),
 );
 
-/**
- * A final case status (Positive/Negative) rests on a matching laboratory result. Editing or voiding
- * that result would leave the status unsupported, so the status has to be corrected first.
- */
-async function guardFinalResult(caseId: number, status: CaseStatus, labId: number, newResult: string | null) {
-  if (status !== 'POSITIVE' && status !== 'NEGATIVE') return;
-  const others = await prisma.labRecord.count({
-    where: { caseId, voidedAt: null, result: status, NOT: { id: labId } },
-  });
-  if (!others && newResult !== status)
-    throw badRequest(
-      `This case is ${status.toLowerCase()} because of this laboratory result. An administrator must correct the case status first (Update Status → correction).`,
-    );
-}
-
 /** Update a laboratory record — typically when the result comes back. Changes are written to the case history. */
 labsRouter.patch(
   '/:id',
@@ -831,7 +841,6 @@ labsRouter.patch(
     if (!l || l.voidedAt) throw notFound('Laboratory record');
     if (l.case.closedAt) throw closedError();
     notBeforeCase(l.case, { collectedAt: d.collectedAt, sentAt: d.sentAt, resultDate: d.resultDate });
-    await guardFinalResult(l.caseId, l.case.status, id, d.result);
     await assertUniqueSample(d.sampleId, id);
     const next = labData(d);
     const changes: string[] = [];
@@ -878,7 +887,8 @@ labsRouter.patch(
           tx,
         );
       }
-      return updated;
+      const status = await syncCaseStatus(tx, l.caseId, req.user?.name);
+      return { ...updated, caseStatus: status };
     });
     res.json(u);
   }),
@@ -916,19 +926,14 @@ recordsRouter.get(
     });
     const cases = await prisma.diseaseCase.findMany({
       where: open,
-      include: {
-        farm: true,
-        investigations: { where: { voidedAt: null }, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
-      },
+      include: { farm: true },
       orderBy: { reportedAt: 'asc' },
     });
+    const due = await siteVisitsDue();
     const visits = cases
       .map((c) => {
-        const last = c.investigations[0];
-        // Not visited yet: the initial visit is due from the day the case was reported.
-        if (!last) return { ...caseInfo(c), kind: 'INITIAL', due: ymd(c.reportedAt)!, lastVisit: null };
-        if (!last.nextVisit) return null;
-        return { ...caseInfo(c), kind: 'FOLLOW_UP', due: ymd(last.nextVisit)!, lastVisit: ymd(last.date) };
+        const v = due.get(c.id);
+        return v ? { ...caseInfo(c), ...v } : null;
       })
       .filter((v) => v !== null)
       .map((v) => ({ ...v, overdue: v.due < today() }))
@@ -941,19 +946,17 @@ recordsRouter.get(
     const t = today();
     const measures = responses
       .map((r) => {
-        const withEnd = RESPONSE_TYPES_WITH_END.includes(r.type as ResponseType);
         const started = ymd(r.date)! <= t;
         const lifted = r.endDate != null && ymd(r.endDate)! <= t;
-        // Quarantine, movement restriction and checkpoints stay in force until their end date.
+        // Same rule as closing a case: planned, ongoing, or not yet lifted.
+        if (!measureOpen({ type: r.type, status: r.status, endDate: ymd(r.endDate) }, t)) return null;
+        // Quarantine, movement restriction and checkpoints are "in force" until they are lifted.
         const state =
           r.status === 'PLANNED'
             ? 'PLANNED'
-            : withEnd && started && !lifted
+            : RESPONSE_TYPES_WITH_END.includes(r.type as ResponseType)
               ? 'IN_FORCE'
-              : r.status === 'ONGOING'
-                ? 'ONGOING'
-                : null;
-        if (!state) return null;
+              : 'ONGOING';
         return {
           id: r.id,
           ...caseInfo(r.case),
@@ -1056,8 +1059,10 @@ for (const [path, label] of [
         const r = await prisma.labRecord.findUnique({ where: { id }, include: { case: true } });
         if (!r || r.voidedAt) throw notFound(label);
         if (r.case.closedAt) throw closedError();
-        await guardFinalResult(r.caseId, r.case.status, id, null);
-        await prisma.labRecord.update({ where: { id }, data });
+        await prisma.$transaction(async (tx) => {
+          await tx.labRecord.update({ where: { id }, data });
+          await syncCaseStatus(tx, r.caseId, req.user?.name);
+        });
         entityId = r.caseId;
         caseRef = r.case;
         what = `lab record ${r.sampleId}`;

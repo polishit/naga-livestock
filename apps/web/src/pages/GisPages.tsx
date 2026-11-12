@@ -8,6 +8,7 @@ import {
   Play,
   Plus,
   Radar,
+  X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -36,7 +37,7 @@ import { DataTable } from '@/components/DataTable';
 import { ExportButtons } from '@/components/ExportButtons';
 import { MapView } from '@/components/MapView';
 import { ErrorBox, FilterSelect, PageHeader, StatCard } from '@/components/page';
-import { CaseLegend, CaseStatusBadge, SpeciesChip } from '@/components/status';
+import { CaseLegend, CaseStatusBadge, MapLegend, SpeciesChip } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Checkbox, Input, Tabs } from '@/components/ui';
 import { CaseLocationDialog } from '@/dialogs/surveillance';
 import { FarmVisitLauncher } from '@/dialogs/services';
@@ -154,6 +155,22 @@ export function GisMapPage() {
 
   const ringCases = layers.radius ? (selCase?.mapped ? [selCase] : mappedCases.filter((c) => !c.closed)) : [];
 
+  // The side lists show only what is being filtered: a disease filter shows the disease reports,
+  // a farm search or "livestock raised" filter shows the farms. Barangay and livestock apply to both.
+  const farmFilter = !!q || !!raised;
+  const caseFilter = !!disease || caseState === 'all';
+  const showCaseList = layers.cases && (!farmFilter || caseFilter);
+  const showFarmList = layers.farms && (!caseFilter || farmFilter);
+  const anyFilter = farmFilter || caseFilter || !!barangay || !!species;
+  const clearFilters = () => {
+    setQ('');
+    setBarangay('');
+    setDisease('');
+    setSpecies('');
+    setRaised('');
+    setCaseState('open');
+  };
+
   return (
     <div>
       <PageHeader
@@ -212,6 +229,11 @@ export function GisMapPage() {
             ]}
             className="w-full sm:w-52"
           />
+          {anyFilter && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X /> Clear filters
+            </Button>
+          )}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 pt-3">
           <span className="text-[13px] font-semibold uppercase tracking-wide text-slate-500">Layers</span>
@@ -264,6 +286,46 @@ export function GisMapPage() {
       </Card>
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
         <div>
+          <CaseLegend includeSpecies>
+            {layers.strays && (
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: '#7c3aed' }} />
+                Stray incident
+              </span>
+            )}
+            {layers.radius && (
+              <span className="inline-flex items-center gap-1">
+                <span className="h-3 w-3 rounded-full border-2 border-red-500 bg-red-100" />
+                {formatRadius(
+                  radius,
+                )} radius
+              </span>
+            )}
+            {layers.population && (
+              <span className="inline-flex basis-full flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-medium">Livestock (head):</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-3 w-4 rounded-sm" style={{ background: ZERO_FILL }} /> 0
+                </span>
+                {popBreaks.map(([lo, hi], k) => (
+                  <span key={k} className="inline-flex items-center gap-1">
+                    <span
+                      className="h-3 w-4 rounded-sm"
+                      style={{
+                        background:
+                          GREENS()[
+                            popBreaks.length === 1
+                              ? 3
+                              : Math.round((k * 4) / Math.max(1, popBreaks.length - 1))
+                          ],
+                      }}
+                    />
+                    {lo === hi ? fmtNumber(lo) : `${fmtNumber(lo)}–${fmtNumber(hi)}`}
+                  </span>
+                ))}
+              </span>
+            )}
+          </CaseLegend>
           <MapView
             className="h-[440px] lg:h-[620px]"
             farms={
@@ -291,29 +353,6 @@ export function GisMapPage() {
             focusCircle={selCase?.mapped ? { lat: selCase.lat!, lng: selCase.lng!, radius } : undefined}
             fitKey={`${barangay}${species}${raised}${disease}|${selCase?.id ?? ''}|${layers.population}`}
           />
-          <CaseLegend includeSpecies />
-          {layers.population && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-slate-600">
-              <span className="font-medium">Livestock (head):</span>
-              <span className="inline-flex items-center gap-1">
-                <span className="h-3 w-4 rounded-sm" style={{ background: ZERO_FILL }} /> 0
-              </span>
-              {popBreaks.map(([lo, hi], k) => (
-                <span key={k} className="inline-flex items-center gap-1">
-                  <span
-                    className="h-3 w-4 rounded-sm"
-                    style={{
-                      background:
-                        GREENS()[
-                          popBreaks.length === 1 ? 3 : Math.round((k * 4) / Math.max(1, popBreaks.length - 1))
-                        ],
-                    }}
-                  />
-                  {lo === hi ? fmtNumber(lo) : `${fmtNumber(lo)}–${fmtNumber(hi)}`}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
         <div className="space-y-4">
           {selCase && (
@@ -323,10 +362,11 @@ export function GisMapPage() {
                 actions={
                   <button
                     type="button"
-                    className="text-[13px] text-slate-500 hover:underline"
+                    className="rounded p-1 text-slate-500 hover:bg-slate-100"
+                    aria-label="Close"
                     onClick={() => setSelected(null)}
                   >
-                    Close
+                    <X className="h-5 w-5" />
                   </button>
                 }
               />
@@ -390,10 +430,11 @@ export function GisMapPage() {
                 actions={
                   <button
                     type="button"
-                    className="text-[13px] text-slate-500 hover:underline"
+                    className="rounded p-1 text-slate-500 hover:bg-slate-100"
+                    aria-label="Close"
                     onClick={() => setSelected(null)}
                   >
-                    Close
+                    <X className="h-5 w-5" />
                   </button>
                 }
               />
@@ -437,61 +478,68 @@ export function GisMapPage() {
               </div>
             </Card>
           )}
-          <Card className="flex max-h-[300px] flex-col overflow-hidden">
-            <CardHeader title={`Disease Reports (${shownCases.length})`} />
-            <ul className="flex-1 overflow-y-auto">
-              {shownCases.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      c.mapped ? setSelected({ kind: 'case', id: c.id }) : navigate(`/cases/${c.id}`)
-                    }
-                    className={cn(
-                      'flex w-full items-start justify-between gap-2 border-b border-slate-100 px-4 py-2 text-left hover:bg-slate-50',
-                      selCase?.id === c.id && 'bg-brand-light',
-                    )}
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-[14.5px] text-slate-900">{c.disease}</span>
-                      <span className="block text-[12px] text-slate-500">
-                        {c.code} · {c.barangay}
-                        {!c.mapped && ' · no map location'}
+          {showCaseList && (
+            <Card className="flex max-h-[300px] flex-col overflow-hidden">
+              <CardHeader title={`Disease Reports (${shownCases.length})`} />
+              <ul className="flex-1 overflow-y-auto">
+                {shownCases.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        c.mapped ? setSelected({ kind: 'case', id: c.id }) : navigate(`/cases/${c.id}`)
+                      }
+                      className={cn(
+                        'flex w-full items-start justify-between gap-2 border-b border-slate-100 px-4 py-2 text-left hover:bg-slate-50',
+                        selCase?.id === c.id && 'bg-brand-light',
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-[14.5px] text-slate-900">{c.disease}</span>
+                        <span className="block text-[12px] text-slate-500">
+                          {c.code} · {c.barangay}
+                          {!c.mapped && ' · no map location'}
+                        </span>
                       </span>
-                    </span>
-                    <span className="shrink-0">
-                      <CaseStatusBadge status={c.status} />
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {!shownCases.length && (
-                <li className="p-4 text-sm text-slate-500">No disease reports for these filters.</li>
-              )}
-            </ul>
-          </Card>
-          <Card className="flex max-h-[320px] flex-col overflow-hidden">
-            <CardHeader title={`Farms (${shownFarms.length})`} />
-            <ul className="flex-1 overflow-y-auto">
-              {shownFarms.map((f) => (
-                <li key={f.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelected({ kind: 'farm', id: f.id })}
-                    className={cn(
-                      'w-full border-b border-slate-100 px-4 py-2 text-left hover:bg-slate-50',
-                      selFarm?.id === f.id && 'bg-brand-light',
-                    )}
-                  >
-                    <span className="block text-[14.5px] text-slate-900">{f.name}</span>
-                    <span className="block text-[12px] text-slate-500">
-                      {f.barangay} · {f.livestockRaised} · {f.total} head
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Card>
+                      <span className="shrink-0">
+                        <CaseStatusBadge status={c.status} />
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {!shownCases.length && (
+                  <li className="p-4 text-sm text-slate-500">No disease reports for these filters.</li>
+                )}
+              </ul>
+            </Card>
+          )}
+          {showFarmList && (
+            <Card className="flex max-h-[320px] flex-col overflow-hidden">
+              <CardHeader title={`Farms (${shownFarms.length})`} />
+              <ul className="flex-1 overflow-y-auto">
+                {shownFarms.map((f) => (
+                  <li key={f.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected({ kind: 'farm', id: f.id })}
+                      className={cn(
+                        'w-full border-b border-slate-100 px-4 py-2 text-left hover:bg-slate-50',
+                        selFarm?.id === f.id && 'bg-brand-light',
+                      )}
+                    >
+                      <span className="block text-[14.5px] text-slate-900">{f.name}</span>
+                      <span className="block text-[12px] text-slate-500">
+                        {f.barangay} · {f.livestockRaised} · {f.total} head
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {!shownFarms.length && (
+                  <li className="p-4 text-sm text-slate-500">No farms for these filters.</li>
+                )}
+              </ul>
+            </Card>
+          )}
         </div>
       </div>
       {visitFarm && (
@@ -557,6 +605,7 @@ function CurrentOutbreakMap() {
       {error && <ErrorBox error={error} />}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
         <div>
+          <CaseLegend />
           <MapView
             className="h-[420px] lg:h-[600px]"
             cases={mapped}
@@ -573,7 +622,6 @@ function CurrentOutbreakMap() {
             }
             fitKey={`${status}-${selected?.id ?? ''}`}
           />
-          <CaseLegend />
         </div>
         <div className="space-y-4">
           {selected && (
@@ -720,6 +768,12 @@ function OutbreakTimeline() {
       {error && <ErrorBox error={error} />}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
         <div>
+          <CaseLegend>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-3 w-3 rounded-full border-2 border-red-500 bg-red-100" />1 km around positive
+              cases
+            </span>
+          </CaseLegend>
           <MapView
             className="h-[420px] lg:h-[560px]"
             cases={mapped}
@@ -811,10 +865,8 @@ function OutbreakTimeline() {
               <span>{fmtMonth(months[months.length - 1])}</span>
             </div>
           </Card>
-          <CaseLegend />
           <p className="mt-1 text-[12px] text-slate-400">
-            Colours show each case&apos;s current status. A pulsing ring marks cases reported that month; red
-            circles are 1 km around positive cases.
+            Colours show each case&apos;s current status. A pulsing ring marks cases reported that month.
           </p>
         </div>
         <div className="space-y-4">
@@ -981,6 +1033,18 @@ export function BarangayMapPage() {
       {shapeError && <ErrorBox error={shapeError} />}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
         <div>
+          <MapLegend>
+            <span className="font-medium">{m.label}:</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-3 w-4 rounded-sm" style={{ background: ZERO_FILL }} /> 0
+            </span>
+            {breaks.map(([lo, hi], k) => (
+              <span key={k} className="inline-flex items-center gap-1">
+                <span className="h-3 w-4 rounded-sm" style={{ background: shade(k) }} />
+                {lo === hi ? fmtNumber(lo) : `${fmtNumber(lo)}–${fmtNumber(hi)}`}
+              </span>
+            ))}
+          </MapLegend>
           {shapes ? (
             <MapView
               className="h-[420px] lg:h-[600px]"
@@ -999,18 +1063,6 @@ export function BarangayMapPage() {
               Loading barangay boundaries…
             </Card>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-slate-600">
-            <span className="font-medium">{m.label}:</span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-3 w-4 rounded-sm" style={{ background: ZERO_FILL }} /> 0
-            </span>
-            {breaks.map(([lo, hi], k) => (
-              <span key={k} className="inline-flex items-center gap-1">
-                <span className="h-3 w-4 rounded-sm" style={{ background: shade(k) }} />
-                {lo === hi ? fmtNumber(lo) : `${fmtNumber(lo)}–${fmtNumber(hi)}`}
-              </span>
-            ))}
-          </div>
           <p className="mt-1 text-[11.5px] text-slate-400">
             Barangay boundaries: PSA / NAMRIA, via philippines-json-maps (MIT licence). Tap a barangay for its
             figures.
@@ -1245,17 +1297,7 @@ export function RadiusPage() {
           )}
           <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.1fr]">
             <div>
-              <MapView
-                className="h-[380px] xl:h-[560px]"
-                farms={data.farms
-                  .filter((f) => f.role !== 'Ground-zero farm')
-                  .map((f) => ({ ...f, inRadius: true, ring: MONITOR_RING[f.monitoring] }))}
-                groundZero={data.center}
-                circles={data.center ? [{ ...data.center, radius: data.radius }] : []}
-                focusCircle={data.center ? { ...data.center, radius: data.radius } : undefined}
-                fitKey={`${caseId}-${radius}`}
-              />
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-slate-600">
+              <MapLegend>
                 {(Object.keys(MONITOR_RING) as (keyof typeof MONITOR_RING)[]).map((k) => (
                   <span key={k} className="inline-flex items-center gap-1.5">
                     <span
@@ -1268,7 +1310,17 @@ export function RadiusPage() {
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-3 w-3 rounded-full bg-red-600" /> Ground zero
                 </span>
-              </div>
+              </MapLegend>
+              <MapView
+                className="h-[380px] xl:h-[560px]"
+                farms={data.farms
+                  .filter((f) => f.role !== 'Ground-zero farm')
+                  .map((f) => ({ ...f, inRadius: true, ring: MONITOR_RING[f.monitoring] }))}
+                groundZero={data.center}
+                circles={data.center ? [{ ...data.center, radius: data.radius }] : []}
+                focusCircle={data.center ? { ...data.center, radius: data.radius } : undefined}
+                fitKey={`${caseId}-${radius}`}
+              />
             </div>
             <Card>
               <CardHeader title={`Farms within ${formatRadius(data.radius)}`} />

@@ -1,4 +1,5 @@
 import { MapPinOff } from 'lucide-react';
+import type { ReactNode } from 'react';
 import {
   CASE_MARKER_COLORS,
   CASE_STATUS_LABELS,
@@ -8,6 +9,7 @@ import {
   type CaseStatus,
   type Species,
 } from '@livestock/shared';
+import { cn } from '@/lib/utils';
 import { Badge, type Tone } from './ui';
 
 export function CaseStatusBadge({ status }: { status: CaseStatus }) {
@@ -15,7 +17,6 @@ export function CaseStatusBadge({ status }: { status: CaseStatus }) {
     SUSPECTED: 'orange',
     SAMPLE_COLLECTED: 'orange',
     SENT_TO_LAB: 'amber',
-    AWAITING_RESULT: 'amber',
     POSITIVE: 'red',
     NEGATIVE: 'slate',
   };
@@ -81,7 +82,31 @@ export function SpeciesChip({ species, count }: { species: string; count?: numbe
   );
 }
 
-export function CaseLegend({ includeSpecies = false }: { includeSpecies?: boolean }) {
+/** The key to the map colours, shown in a box at the top of the map. */
+export function MapLegend({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      role="group"
+      aria-label="Map legend"
+      className={cn(
+        'mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-[12.5px] text-slate-600',
+        className,
+      )}
+    >
+      <span className="text-[11.5px] font-semibold uppercase tracking-wide text-slate-500">Legend</span>
+      {children}
+    </div>
+  );
+}
+
+export function CaseLegend({
+  includeSpecies = false,
+  children,
+}: {
+  includeSpecies?: boolean;
+  /** More keys shown in the same box (e.g. the population shading). */
+  children?: ReactNode;
+}) {
   const kinds: [string, keyof typeof CASE_MARKER_COLORS, boolean][] = [
     ['Suspected', 'suspected', true],
     ['In laboratory', 'lab', false],
@@ -89,7 +114,8 @@ export function CaseLegend({ includeSpecies = false }: { includeSpecies?: boolea
     ['Negative', 'negative', false],
   ];
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-slate-600">
+    <MapLegend>
+      {includeSpecies && <span className="font-medium">Farms:</span>}
       {includeSpecies &&
         Object.entries(SPECIES_COLORS).map(([s, c]) => (
           <span key={s} className="inline-flex items-center gap-1">
@@ -97,6 +123,7 @@ export function CaseLegend({ includeSpecies = false }: { includeSpecies?: boolea
             {s}
           </span>
         ))}
+      <span className={cn('font-medium', includeSpecies && 'ml-1')}>Disease reports:</span>
       {kinds.map(([label, k, hollow]) => (
         <span key={k} className="inline-flex items-center gap-1">
           <span
@@ -110,7 +137,8 @@ export function CaseLegend({ includeSpecies = false }: { includeSpecies?: boolea
           {label}
         </span>
       ))}
-    </div>
+      {children}
+    </MapLegend>
   );
 }
 

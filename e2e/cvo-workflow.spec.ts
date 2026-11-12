@@ -45,9 +45,17 @@ test('one map with filters and layers leads to the farms to monitor', async ({ p
   await page.goto('/gis-map');
   await expect(page.getByRole('heading', { name: 'Livestock & Disease Map' })).toBeVisible();
   await page.getByLabel('Livestock population (by barangay)').check();
+  // The colour key sits above the map.
+  await expect(page.getByRole('group', { name: 'Map legend' })).toContainText('Livestock (head)');
+  await expect(page.getByRole('heading', { name: /^Farms \(/ })).toBeVisible();
+  // Filtering by disease shows only the disease reports on the right.
   await page.getByLabel('Disease', { exact: true }).selectOption('African Swine Fever (ASF)');
+  await expect(page.getByRole('heading', { name: /^Farms \(/ })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /^Disease Reports \(/ })).toBeVisible();
   await page.getByRole('button', { name: /African Swine Fever \(ASF\).*CASE-0001/ }).click();
   await expect(page.getByText(/farm\(s\) within 1\.00 km/)).toBeVisible();
+  // The box closes with an X.
+  await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Farms to monitor' }).click();
   await expect(page).toHaveURL(/\/radius\?case=1/);
   await expect(page.getByRole('heading', { name: 'Farms to Monitor' })).toBeVisible();

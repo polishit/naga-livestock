@@ -180,6 +180,7 @@ export default function DashboardPage() {
                 }
               />
               <div className="p-4">
+                <CaseLegend includeSpecies />
                 <MapView
                   className="h-[300px] sm:h-[380px]"
                   farms={data.map.farms}
@@ -189,7 +190,6 @@ export default function DashboardPage() {
                     .map((c) => ({ lat: c.lat, lng: c.lng, radius: 1000 }))}
                   fitKey={`${barangay}${species}${caseStatus}`}
                 />
-                <CaseLegend includeSpecies />
               </div>
             </Card>
             <Card>

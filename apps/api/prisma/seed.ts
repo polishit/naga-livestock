@@ -278,7 +278,7 @@ type CaseSeed = {
   affected: number;
   deaths: number;
   reported: number; // days ago
-  status: 'SUSPECTED' | 'SAMPLE_COLLECTED' | 'SENT_TO_LAB' | 'AWAITING_RESULT' | 'POSITIVE' | 'NEGATIVE';
+  status: 'SUSPECTED' | 'SAMPLE_COLLECTED' | 'SENT_TO_LAB' | 'POSITIVE' | 'NEGATIVE';
   symptoms: string;
   by: Who; // assigned inspector
   reportedBy?: string;
@@ -425,7 +425,7 @@ const CASES: CaseSeed[] = [
     affected: 5,
     deaths: 1,
     reported: 35,
-    status: 'AWAITING_RESULT',
+    status: 'SENT_TO_LAB',
     symptoms: 'Drooling, blisters on the mouth and feet, limping, not eating.',
     by: 'JOY',
     visits: [
@@ -1285,12 +1285,11 @@ async function main() {
   }
 
   /* disease cases with their history, site visits, lab records and response measures */
-  const STEPS = ['SUSPECTED', 'SAMPLE_COLLECTED', 'SENT_TO_LAB', 'AWAITING_RESULT'] as const;
+  const STEPS = ['SUSPECTED', 'SAMPLE_COLLECTED', 'SENT_TO_LAB'] as const;
   const STEP_DAY: Record<string, number> = {
     SUSPECTED: 0,
     SAMPLE_COLLECTED: 1,
     SENT_TO_LAB: 2,
-    AWAITING_RESULT: 3,
     POSITIVE: 8,
     NEGATIVE: 7,
   };
@@ -1298,7 +1297,6 @@ async function main() {
     SUSPECTED: 'Case reported',
     SAMPLE_COLLECTED: 'Samples collected during the site visit',
     SENT_TO_LAB: 'Samples sent to RADDL',
-    AWAITING_RESULT: 'Received by the laboratory',
     POSITIVE: 'Laboratory confirmed: positive',
     NEGATIVE: 'Laboratory result: negative',
   };

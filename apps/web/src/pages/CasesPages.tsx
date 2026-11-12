@@ -1,6 +1,4 @@
 import {
-  AlertTriangle,
-  ArrowRight,
   Ban,
   Check,
   Link2,
@@ -14,12 +12,10 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
   CASE_OUTCOME_LABELS,
-  CASE_STAGE,
   CASE_STATUSES,
   ASF_RESPONSE_STEPS,
   CASE_STATUS_LABELS,
@@ -28,7 +24,9 @@ import {
   addMonths,
   fmtMonth,
   isoMonth,
-  checkCaseStatus,
+  caseCloseBlockers,
+  measureOpen,
+  onlyInconclusive,
   isAsfDisease,
   MAX_PHOTOS,
   MAX_PHOTO_MB,
@@ -71,14 +69,12 @@ import {
   CaseCloseDialog,
   CaseEditDialog,
   CaseLocationDialog,
-  CaseStatusDialog,
   InvestigationDialog,
   LabDialog,
   ResponseDialog,
   VoidDialog,
   type InvestigationEditRecord,
   type LabEditRecord,
-  type LabLite,
   type ResponseEditRecord,
 } from '@/dialogs/surveillance';
 import type { CaseRow, RadiusResult } from './types';
@@ -285,7 +281,7 @@ function SurveillanceTrends({ cases }: { cases: CaseRow[] }) {
         <StatCard label="Open reports" value={open.length} tone="orange" />
         <StatCard
           label="Awaiting lab result"
-          value={open.filter((c) => c.status === 'SENT_TO_LAB' || c.status === 'AWAITING_RESULT').length}
+          value={open.filter((c) => c.status === 'SENT_TO_LAB').length}
           tone="blue"
         />
         <StatCard
@@ -640,10 +636,7 @@ export function CaseNewPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Sample information" error={err(e, 'sampleInfo')}>
-              <Input {...form.register('sampleInfo')} />
-            </Field>
-            <Field label="Remarks" error={err(e, 'remarks')}>
+            <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
               <Input {...form.register('remarks')} />
             </Field>
             <Field
@@ -753,219 +746,105 @@ interface CaseDetail {
   context: { radius: number; farms: number; livestock: number; owners: number } | null;
 }
 
-const STEPS: CaseStatus[] = ['SUSPECTED', 'SAMPLE_COLLECTED', 'SENT_TO_LAB', 'AWAITING_RESULT'];
+/* ---------------- The case page: one checklist ---------------- */
 
-export function CaseStepper({ status }: { status: CaseStatus }) {
-  const final = status === 'POSITIVE' || status === 'NEGATIVE';
-  const idx = final ? 4 : STEPS.indexOf(status);
-  const labels = [
-    ...STEPS.map((s) => CASE_STATUS_LABELS[s]),
-    final ? CASE_STATUS_LABELS[status] : 'Positive / Negative',
-  ];
+type StepState = 'done' | 'current' | 'todo' | 'skipped';
+
+const STEP_BADGE: Record<StepState, { label: string; tone: Tone }> = {
+  done: { label: 'Done', tone: 'green' },
+  current: { label: 'Do this now', tone: 'blue' },
+  todo: { label: 'Not yet', tone: 'slate' },
+  skipped: { label: 'Not needed', tone: 'slate' },
+};
+
+/** One numbered step of the case checklist. */
+function CaseStep({
+  id,
+  n,
+  title,
+  state,
+  summary,
+  last,
+  children,
+}: {
+  id: string;
+  n: number;
+  title: string;
+  state: StepState;
+  summary: React.ReactNode;
+  last?: boolean;
+  children?: React.ReactNode;
+}) {
   return (
-    <Card className="overflow-x-auto px-4 py-5">
-      <ol className="flex min-w-[640px] items-start">
-        {labels.map((label, i) => {
-          const done = i < idx || (final && i === 4);
-          const current = i === idx && !final;
-          const last = i === labels.length - 1;
-          const red = last && status === 'POSITIVE';
-          return (
-            <li key={i} className={cn('flex items-start', !last && 'flex-1')}>
-              <div className="flex w-28 flex-col items-center text-center">
-                <span
-                  className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-full border-2 text-[12px] font-medium',
-                    done &&
-                      (red
-                        ? 'border-red-600 bg-red-600 text-white'
-                        : last && status === 'NEGATIVE'
-                          ? 'border-slate-500 bg-slate-500 text-white'
-                          : 'border-brand-dark bg-brand-dark text-white'),
-                    current && 'border-brand-dark bg-white text-brand-dark',
-                    !done && !current && 'border-slate-300 bg-white text-slate-400',
-                  )}
-                >
-                  {done ? <Check className="h-4 w-4" /> : i + 1}
-                </span>
-                <span
-                  className={cn(
-                    'mt-1.5 text-[12px] leading-tight',
-                    done || current ? 'text-slate-800' : 'text-slate-400',
-                  )}
-                >
-                  {label}
-                </span>
-              </div>
-              {!last && (
-                <span className={cn('mt-4 h-0.5 flex-1', i < idx ? 'bg-brand-dark' : 'bg-slate-200')} />
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </Card>
-  );
-}
-
-/* ---------------- What to do next on a case ---------------- */
-
-interface NextStepActions {
-  visit: () => void;
-  addLab: () => void;
-  editLab: (l: LabEditRecord) => void;
-  status: () => void;
-  respond: (type?: ResponseType) => void;
-  showResponses: () => void;
-  population: () => void;
-  close: () => void;
-  location: () => void;
-}
-
-/** The single next thing to do on an open case, worked out from its records. */
-export function caseNextStep(d: CaseDetail, pending: number, a: NextStepActions) {
-  const c = d.case;
-  const visits = d.investigations.filter((v) => !v.voided);
-  const labs = d.labs.filter((l) => !l.voided);
-  const waiting = labs.filter((l) => l.result === 'PENDING');
-  const notSent = waiting.find((l) => !l.sentAt);
-  const sent = waiting.find((l) => l.sentAt);
-  const decided = labs.find((l) => l.result === 'POSITIVE' || l.result === 'NEGATIVE');
-  const final = c.status === 'POSITIVE' || c.status === 'NEGATIVE';
-  const responses = d.responses.filter((r) => !r.voided);
-  const today = isoDate();
-  // Planned or ongoing, or a quarantine / restriction / checkpoint not yet lifted.
-  const running = responses.filter(
-    (r) =>
-      r.status === 'PLANNED' ||
-      r.status === 'ONGOING' ||
-      (RESPONSE_TYPES_WITH_END.includes(r.type as ResponseType) && (!r.endDate || r.endDate > today)),
-  );
-  const asfMissing = isAsfDisease(c.disease)
-    ? ASF_RESPONSE_STEPS.findIndex((st) => !responses.some((r) => r.type === st.type))
-    : -1;
-  type Step = { title: string; detail: string; action?: { label: string; run: () => void } };
-  let step: Step;
-  if (!visits.length)
-    step = {
-      title: 'Record the first site visit',
-      detail: 'Go to the farm, examine the animals, then record what you found (sick, dead, biosecurity).',
-      action: { label: 'Record visit', run: a.visit },
-    };
-  else if (!labs.length && !final)
-    step = {
-      title: 'Collect samples and add a lab record',
-      detail: 'Add the sample ID and type. Enter the date sent once it goes to the laboratory.',
-      action: { label: 'Add lab record', run: a.addLab },
-    };
-  else if (notSent && !final)
-    step = {
-      title: `Send sample ${notSent.sampleId} to the laboratory`,
-      detail: 'When it is sent, open the lab record and enter the date sent and the laboratory.',
-      action: { label: 'Enter date sent', run: () => a.editLab(notSent) },
-    };
-  else if (sent && !final)
-    step = {
-      title: `Waiting for the result of ${sent.sampleId}`,
-      detail: `Sent ${fmtDate(sent.sentAt)}${sent.laboratory ? ` to ${sent.laboratory}` : ''}. Enter the result as soon as it arrives.`,
-      action: { label: 'Enter result', run: () => a.editLab(sent) },
-    };
-  else if (!final)
-    step = decided
-      ? {
-          title: `Update the status to ${CASE_STATUS_LABELS[decided.result as CaseStatus]}`,
-          detail: 'The laboratory result is in. Set the case status to match it.',
-          action: { label: 'Update status', run: a.status },
-        }
-      : {
-          title: 'Move the case to its next stage',
-          detail: 'Update the status as the samples move through the laboratory.',
-          action: { label: 'Update status', run: a.status },
-        };
-  else if (c.status === 'POSITIVE' && asfMissing >= 0)
-    step = {
-      title: `ASF step ${asfMissing + 1} of ${ASF_RESPONSE_STEPS.length}: ${ASF_RESPONSE_STEPS[asfMissing].label}`,
-      detail: 'Confirmed ASF. Log each response step as it is done (the list is on the Response tab).',
-      action: { label: 'Log this step', run: () => a.respond(ASF_RESPONSE_STEPS[asfMissing].type) },
-    };
-  else if (c.status === 'POSITIVE' && !responses.length)
-    step = {
-      title: 'Start the response',
-      detail:
-        'Confirmed positive: log the quarantine or movement restriction, then disinfection or culling as needed.',
-      action: { label: 'Log quarantine', run: () => a.respond('QUARANTINE') },
-    };
-  else if (pending > 0)
-    step = {
-      title: 'Update the farm’s head count',
-      detail: `${pending} animal(s) died or were culled and are still counted in the farm’s population.`,
-      action: { label: 'Update population', run: a.population },
-    };
-  else if (running.length)
-    step = {
-      title: 'Keep the response measures up to date',
-      detail: `${running.length} measure(s) still planned or in force. When the outbreak is contained, mark them done or enter the date they were lifted, then close the case.`,
-      action: { label: 'Review measures', run: a.showResponses },
-    };
-  else
-    step = {
-      title: 'Close the case',
-      detail:
-        c.status === 'NEGATIVE'
-          ? 'The laboratory result is negative. Close the case with the outcome "Not confirmed".'
-          : 'Every step is recorded. Close the case once the outbreak is contained.',
-      action: { label: 'Close case', run: a.close },
-    };
-  return { ...step, needsLocation: !c.mapped };
-}
-
-function NextStepBanner({ step, canEdit }: { step: ReturnType<typeof caseNextStep>; canEdit: boolean }) {
-  return (
-    <div
-      role="status"
-      aria-label="Next step"
-      className="mb-4 flex flex-col gap-3 rounded-lg border border-brand/40 bg-brand-light/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="min-w-0">
-        <div className="text-[12px] font-semibold uppercase tracking-wide text-brand-dark">Next step</div>
-        <div className="text-[15.5px] font-semibold text-slate-900">{step.title}</div>
-        <div className="text-[13.5px] text-slate-600">{step.detail}</div>
-        {step.needsLocation && (
-          <div className="mt-1 text-[13px] text-amber-700">
-            Also: add the case location so it appears on the maps and radius checks.
-          </div>
-        )}
+    <li id={id} aria-label={`Step ${n}: ${title}`} className="relative flex gap-3 sm:gap-4">
+      <div className="flex flex-col items-center">
+        <span
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-[14px] font-semibold',
+            state === 'done' && 'border-brand-dark bg-brand-dark text-white',
+            state === 'current' && 'border-brand-dark bg-white text-brand-dark ring-4 ring-brand/20',
+            (state === 'todo' || state === 'skipped') && 'border-slate-300 bg-white text-slate-400',
+          )}
+        >
+          {state === 'done' ? <Check className="h-4 w-4" /> : n}
+        </span>
+        {!last && <span className="w-0.5 flex-1 bg-slate-200" />}
       </div>
-      {canEdit && step.action && (
-        <Button className="shrink-0" onClick={step.action.run}>
-          {step.action.label} <ArrowRight />
-        </Button>
-      )}
-    </div>
+      <div
+        className={cn(
+          'mb-4 min-w-0 flex-1 rounded-lg border bg-white px-4 py-3',
+          state === 'current' ? 'border-brand/60 shadow-sm' : 'border-slate-200',
+          (state === 'todo' || state === 'skipped') && 'bg-slate-50/60',
+        )}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <h3
+            className={cn(
+              'text-[16px] font-semibold',
+              state === 'todo' || state === 'skipped' ? 'text-slate-500' : 'text-slate-900',
+            )}
+          >
+            {title}
+          </h3>
+          <Badge tone={STEP_BADGE[state].tone}>{STEP_BADGE[state].label}</Badge>
+        </div>
+        <div className="mt-0.5 text-[14px] text-slate-600">{summary}</div>
+        {children && <div className="mt-3">{children}</div>}
+      </div>
+    </li>
   );
 }
 
-const CASE_TABS = ['overview', 'investigation', 'laboratory', 'response', 'map', 'history'] as const;
+/** Small row of buttons under a step. */
+function StepActions({ children }: { children: React.ReactNode }) {
+  return <div className="mt-3 flex flex-wrap gap-2">{children}</div>;
+}
+
+const CASE_TABS = ['steps', 'details', 'map', 'history'] as const;
 type CaseTab = (typeof CASE_TABS)[number];
+/** Links from the work lists and older pages still open the right step. */
+const OLD_TAB_STEP: Record<string, string> = {
+  investigation: 'step-visit',
+  laboratory: 'step-samples',
+  response: 'step-response',
+};
 
 export function CaseDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { canEdit: canWrite, isAdmin } = useAuth();
   const [params] = useSearchParams();
-  // Work lists link straight to a tab, e.g. /cases/12?tab=laboratory.
-  const [tab, setTab] = useState<CaseTab>(() => {
-    const t = params.get('tab');
-    return CASE_TABS.includes(t as CaseTab) ? (t as CaseTab) : 'overview';
-  });
+  const tabParam = params.get('tab') ?? '';
+  const [tab, setTab] = useState<CaseTab>(() =>
+    CASE_TABS.includes(tabParam as CaseTab) ? (tabParam as CaseTab) : 'steps',
+  );
   const [dlg, setDlg] = useState<
-    null | 'status' | 'location' | 'inv' | 'lab' | 'resp' | 'close' | 'edit' | 'pop' | 'void'
+    null | 'location' | 'inv' | 'lab' | 'resp' | 'close' | 'edit' | 'pop' | 'void'
   >(null);
   const [labEdit, setLabEdit] = useState<LabEditRecord | null>(null);
   const [invEdit, setInvEdit] = useState<InvestigationEditRecord | null>(null);
   const [respEdit, setRespEdit] = useState<ResponseEditRecord | null>(null);
   const [respType, setRespType] = useState<ResponseType | undefined>();
-  const [suggest, setSuggest] = useState<{ status: CaseStatus; lab: LabLite } | null>(null);
   const [voidTarget, setVoidTarget] = useState<{ url: string; what: string } | null>(null);
   const [popExtra, setPopExtra] = useState(0);
   const { data, isLoading, error } = useApi<CaseDetail>(`/api/cases/${id}`);
@@ -980,6 +859,11 @@ export function CaseDetailPage() {
     if (doParam === 'visit') setDlg('inv');
     if (doParam === 'location') setDlg('location');
   }, [data, didDo, doParam, canWrite]);
+  // ?tab=laboratory (and the other old tab names) scroll to that step.
+  useEffect(() => {
+    const target = OLD_TAB_STEP[tabParam];
+    if (data && target) document.getElementById(target)?.scrollIntoView({ block: 'start' });
+  }, [data, tabParam]);
   const { data: lookups } = useLookups();
   const { data: farmDetail } = useApi<{ groups: GroupRow[] }>(
     dlg === 'pop' && data ? `/api/farms/${data.case.farmId}` : null,
@@ -988,7 +872,7 @@ export function CaseDetailPage() {
     success: 'Case reopened.',
   });
   const reconcile = useSave<Record<string, never>>('POST', `/api/cases/${id}/population-reconciled`, {
-    success: 'Marked as reflected in the population.',
+    success: 'Head count marked as up to date.',
     offline: false,
   });
   if (error) return <ErrorBox error={error} />;
@@ -997,49 +881,73 @@ export function CaseDetailPage() {
   const farm = lookups?.farms.find((f) => f.id === c.farmId);
   // A closed case is read-only.
   const canEdit = canWrite && !c.closed;
-  const final = c.status === 'POSITIVE' || c.status === 'NEGATIVE';
   const pending = c.pendingPopulation + popExtra;
   // Follow-up records cannot be dated before the case began.
   const caseStart = c.symptomsDate ?? c.reportedAt;
   const speciesHead = speciesOnFarm(lookups, c.farmId).find((s) => s.species === c.species)?.head;
-  const askMoreDeaths = (dead: number) =>
-    toast(`This visit found ${dead} dead, but the case records ${c.deaths}.`, {
-      duration: 15000,
-      action: { label: 'Update case details', onClick: () => setDlg('edit') },
-    });
+  const today = isoDate();
 
-  // Suggested new counts for the affected species: take the deaths/culled heads off its groups,
-  // never below the group's tagged animals. Staff review the numbers before saving.
-  const popPrefill: Record<number, { count: number; reason: string }> = {};
-  let remaining = pending;
-  for (const g of [...(farmDetail?.groups ?? [])]
-    .filter((x) => x.species === c.species)
-    .sort((a, b) => b.count - a.count)) {
-    const take = Math.min(remaining, Math.max(0, g.count - g.tagged));
-    if (!take) continue;
-    popPrefill[g.id] = { count: g.count - take, reason: `${c.code}: −${take} (deaths/culling)` };
-    remaining -= take;
-  }
+  // What has been done so far, worked out from the records.
+  const invs = data.investigations.filter((v) => !v.voided);
+  // A Farm Visit to this farm linked to the case counts as a site visit too.
+  const farmVisits = (caseVisits ?? []).filter((v) => v.farmId === c.farmId);
+  const visitCount = invs.length + farmVisits.length;
+  const lastVisit = [...invs.map((v) => v.date), ...farmVisits.map((v) => v.date)].sort().pop();
+  const followUp = invs.find((v) => v.nextVisit && (!lastVisit || v.nextVisit > lastVisit))?.nextVisit;
+  const labs = data.labs.filter((l) => !l.voided);
+  const waiting = labs.filter((l) => l.result === 'PENDING');
+  const notSent = waiting.find((l) => !l.sentAt);
+  const sent = waiting.find((l) => l.sentAt);
+  const decisive = labs.find((l) => l.result === c.status);
+  const final = c.status === 'POSITIVE' || c.status === 'NEGATIVE';
+  const inconclusive = onlyInconclusive(labs);
+  const responses = data.responses.filter((r) => !r.voided);
+  const openMeasures = responses.filter((r) => measureOpen(r, today));
+  const isAsf = isAsfDisease(c.disease);
+  const positive = c.status === 'POSITIVE';
+  const asfMissing =
+    isAsf && positive ? ASF_RESPONSE_STEPS.filter((st) => !responses.some((r) => r.type === st.type)) : [];
+  const removed = c.deaths + c.culled;
+  const blockers = caseCloseBlockers({ labs, responses, pendingPopulation: pending }, today);
 
-  /** After a lab record is saved, offer the status that matches it. */
-  const afterLabSaved = (v: { result: string; sentAt?: string }) => {
-    const lab = { result: v.result, sentAt: v.sentAt ?? null };
-    const target: CaseStatus | null =
-      v.result === 'POSITIVE' || v.result === 'NEGATIVE'
-        ? (v.result as CaseStatus)
-        : v.sentAt && CASE_STAGE[c.status] < 2
-          ? 'SENT_TO_LAB'
-          : CASE_STAGE[c.status] < 1
-            ? 'SAMPLE_COLLECTED'
-            : null;
-    const labsAfter = [...data.labs.filter((l) => !l.voided && l.id !== labEdit?.id), lab] as LabLite[];
-    if (target && target !== c.status) {
-      const check = checkCaseStatus(c.status, target, labsAfter);
-      if (check.allowed && !check.correction) {
-        setSuggest({ status: target, lab });
-        setDlg('status');
-      }
-    }
+  const done = {
+    visit: visitCount > 0,
+    samples: final,
+    response: positive
+      ? responses.length > 0 && !openMeasures.length && !asfMissing.length
+      : !openMeasures.length,
+    head: pending === 0,
+    close: c.closed,
+  };
+  const order = ['visit', 'samples', 'response', 'head', 'close'] as const;
+  // Response is "not needed" unless the result is positive (or measures were logged anyway).
+  const responseSkipped = !positive && !responses.length;
+  const current = c.closed ? null : order.find((k) => !done[k] && !(k === 'response' && responseSkipped));
+  const stateOf = (k: (typeof order)[number]): StepState =>
+    done[k] && !(k === 'response' && responseSkipped)
+      ? 'done'
+      : k === 'response' && responseSkipped
+        ? 'skipped'
+        : current === k
+          ? 'current'
+          : 'todo';
+
+  const openVisit = (v: InvestigationEditRecord | null = null) => {
+    setInvEdit(v);
+    setDlg('inv');
+  };
+  const openLab = (l: LabEditRecord | null = null) => {
+    setLabEdit(l);
+    setDlg('lab');
+  };
+  const openResponse = (type?: ResponseType, r: ResponseEditRecord | null = null) => {
+    setRespEdit(r);
+    setRespType(type);
+    setDlg('resp');
+  };
+  const voidIt = (url: string, what: string) => {
+    setVoidTarget({ url, what });
+    setDlg('void');
   };
 
   return (
@@ -1060,24 +968,6 @@ export function CaseDetailPage() {
                 <MapIcon /> View on Map
               </Button>
             )}
-            {canEdit && (
-              <>
-                <Button variant="outline" onClick={() => setDlg('edit')}>
-                  <Pencil /> Edit details
-                </Button>
-                <Button variant="outline" onClick={() => setDlg('location')}>
-                  <MapPin /> {c.mapped ? 'Edit location' : 'Add location'}
-                </Button>
-                <Button variant={final ? 'outline' : 'default'} onClick={() => setDlg('status')}>
-                  Update Status
-                </Button>
-                {final && (
-                  <Button onClick={() => setDlg('close')}>
-                    <Lock /> Close case
-                  </Button>
-                )}
-              </>
-            )}
             {c.closed && isAdmin && (
               <Button variant="outline" loading={reopen.isPending} onClick={() => reopen.mutate({})}>
                 <RotateCcw /> {c.voided ? 'Undo void' : 'Reopen case'}
@@ -1085,16 +975,25 @@ export function CaseDetailPage() {
             )}
             <MoreMenu
               items={[
+                canEdit && { label: 'Edit case details', icon: Pencil, onSelect: () => setDlg('edit') },
+                canEdit && {
+                  label: c.mapped ? 'Edit location' : 'Add location',
+                  icon: MapPin,
+                  onSelect: () => setDlg('location'),
+                },
+                canEdit && {
+                  label: 'Report incident on another farm',
+                  icon: Link2,
+                  hint: 'The disease spread to another farm',
+                  onSelect: () => navigate(`/cases/new?from=${c.id}`),
+                },
                 isAdmin &&
                   !c.voided && {
                     label: 'Void case (reported in error)',
                     icon: Ban,
                     danger: true,
                     hint: 'A duplicate or wrong report; kept, but no longer counted',
-                    onSelect: () => {
-                      setVoidTarget({ url: `/api/cases/${c.id}/void`, what: `case ${c.code}` });
-                      setDlg('void');
-                    },
+                    onSelect: () => voidIt(`/api/cases/${c.id}/void`, `case ${c.code}`),
                   },
               ]}
             />
@@ -1136,291 +1035,492 @@ export function CaseDetailPage() {
             {c.closureNote && <div className="mt-0.5 text-slate-600">{c.closureNote}</div>}
             {isAdmin && (
               <div className="mt-0.5 text-[13px] text-slate-500">
-                To correct a record, reopen the case; the reopening and every change are kept in History.
+                To correct a record, reopen the case; the reopening and every change are kept in the Timeline.
               </div>
             )}
           </div>
         </div>
       )}
-      {canEdit && pending > 0 && (
-        <div className="mb-4 flex flex-col gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14.5px] text-slate-700 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <span>
-              <b className="font-medium">{pending}</b> animal(s) died or were culled in this case
-              {c.culled ? ` (${c.deaths} death(s), ${c.culled} culled)` : ''}, but {c.farmName}'s population
-              has not been updated yet.
-            </span>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <Button size="sm" onClick={() => setDlg('pop')}>
-              Update population
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              loading={reconcile.isPending}
-              onClick={() => reconcile.mutate({})}
-            >
-              Already counted
-            </Button>
-          </div>
-        </div>
-      )}
-      {!c.closed && (
-        <NextStepBanner
-          canEdit={canEdit}
-          step={caseNextStep(data, pending, {
-            visit: () => {
-              setTab('investigation');
-              setInvEdit(null);
-              setDlg('inv');
-            },
-            addLab: () => {
-              setTab('laboratory');
-              setLabEdit(null);
-              setDlg('lab');
-            },
-            editLab: (l) => {
-              setTab('laboratory');
-              setLabEdit(l);
-              setDlg('lab');
-            },
-            status: () => setDlg('status'),
-            respond: (type) => {
-              setTab('response');
-              setRespEdit(null);
-              setRespType(type);
-              setDlg('resp');
-            },
-            showResponses: () => setTab('response'),
-            population: () => setDlg('pop'),
-            close: () => setDlg('close'),
-            location: () => setDlg('location'),
-          })}
-        />
-      )}
-      <CaseStepper status={c.status} />
       <Tabs
-        className="mt-5"
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'investigation', label: 'Investigation' },
-          { id: 'laboratory', label: 'Laboratory' },
-          { id: 'response', label: 'Response' },
+          { id: 'steps', label: 'Steps' },
+          { id: 'details', label: 'Details' },
           { id: 'map', label: 'Map' },
           { id: 'history', label: 'Timeline' },
         ]}
       />
       <div className="mt-4">
-        {tab === 'overview' && (
-          <Card>
-            <CardHeader title="Case details" />
-            <div className="grid grid-cols-1 gap-4 px-4 py-4 md:grid-cols-[1fr_auto]">
-              <KV
-                rows={[
-                  [
-                    'Owner',
-                    <Link className="link" to={`/owners/${c.ownerId}`}>
-                      {c.ownerName}
-                    </Link>,
-                  ],
-                  [
-                    'Farm',
-                    <Link className="link" to={`/farms/${c.farmId}`}>
-                      {c.farmName}
-                    </Link>,
-                  ],
-                  ['Barangay / Zone', `${c.barangay}${c.zone ? ` · ${c.zone}` : ''}`],
-                  ['Species', c.species],
-                  ['Affected / deaths', `${c.affected} / ${c.deaths}`],
-                  ['Symptoms observed', c.symptomsDate ? fmtDate(c.symptomsDate) : null],
-                  ['Reported', fmtDate(c.reportedAt)],
-                  ['Reported by', c.reportedBy],
-                  ['Assigned to', c.assignedToName],
-                  [
-                    'Location',
-                    c.mapped ? (
-                      `${c.lat!.toFixed(5)}, ${c.lng!.toFixed(5)} (${c.locationSource ?? 'Pinned'})`
-                    ) : (
-                      <GeotagBadge />
-                    ),
-                  ],
-                  ['Symptoms', c.symptoms],
-                  ['Sample info', c.sampleInfo],
-                  ['Remarks', c.remarks],
-                ]}
-              />
-              <PhotoGallery keys={c.photoKeys} className="content-start md:max-w-[264px]" />
-            </div>
-          </Card>
-        )}
-        {tab === 'overview' && (
-          <Card className="mt-4">
-            <CardHeader
-              title="Linked incidents"
-              actions={
-                canEdit && (
-                  <Button variant="outline" size="xs" onClick={() => navigate(`/cases/new?from=${c.id}`)}>
-                    <Plus /> Report incident on another farm
-                  </Button>
-                )
+        {tab === 'steps' && (
+          <ol aria-label="Case steps" className="max-w-4xl">
+            <CaseStep
+              id="step-report"
+              n={1}
+              title="Report"
+              state="done"
+              summary={
+                <>
+                  {c.species} at {c.farmName} ({c.ownerName}) · {c.affected} affected · {c.deaths} dead ·
+                  reported {fmtDate(c.reportedAt)}
+                  {c.assignedToName ? ` · assigned to ${c.assignedToName}` : ''}
+                </>
               }
-            />
-            <div className="px-4 py-3 text-[14.5px]">
-              {c.relatedCaseId && (
-                <p className="mb-2 text-slate-700">
-                  Reported as a linked incident of{' '}
-                  <Link className="link" to={`/cases/${c.relatedCaseId}`}>
-                    {c.relatedCaseCode}
-                  </Link>
-                  .
-                </p>
+            >
+              {!c.mapped && !c.closed && (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-800">
+                  <MapPin className="h-4 w-4" /> No map location yet, so this case is not on the maps or in
+                  Farms to Monitor.
+                  {canEdit && (
+                    <Button size="xs" variant="outline" onClick={() => setDlg('location')}>
+                      Add location
+                    </Button>
+                  )}
+                </div>
               )}
-              {data.linkedCases.length ? (
-                <ul className="divide-y divide-slate-100">
-                  {data.linkedCases.map((l) => (
-                    <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                      <div>
-                        <Link className="link font-medium" to={`/cases/${l.id}`}>
-                          {l.code}
-                        </Link>{' '}
-                        · {l.farmName} · {l.barangay}
-                        <div className="text-[12.5px] text-slate-500">
-                          {l.disease} · reported {fmtDate(l.reportedAt)}
-                        </div>
+              {canEdit && (
+                <Button size="xs" variant="ghost" onClick={() => setDlg('edit')}>
+                  <Pencil /> Edit details
+                </Button>
+              )}
+            </CaseStep>
+
+            <CaseStep
+              id="step-visit"
+              n={2}
+              title="Site visit"
+              state={stateOf('visit')}
+              summary={
+                visitCount
+                  ? `${visitCount} visit${visitCount === 1 ? '' : 's'} · last on ${fmtDate(lastVisit)}${followUp ? ` · follow-up due ${fmtDate(followUp)}` : ''}`
+                  : 'Go to the farm, examine the animals, then record what you found (sick, dead, biosecurity).'
+              }
+            >
+              {(invs.length > 0 || farmVisits.length > 0) && (
+                <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                  {data.investigations.map((v) => (
+                    <li
+                      key={`i${v.id}`}
+                      className="flex flex-wrap items-start justify-between gap-2 px-3 py-2"
+                    >
+                      <div className="min-w-0 text-[14px]">
+                        <VoidAware r={v}>
+                          <span className="font-medium text-slate-900">
+                            {fmtDate(v.date)} · {v.visitLabel}
+                          </span>
+                          <span className="text-slate-500">
+                            {[
+                              v.investigator,
+                              v.animalsExamined != null && `${v.animalsExamined} examined`,
+                              v.sickCount != null && `${v.sickCount} sick`,
+                              v.deadCount != null && `${v.deadCount} dead`,
+                            ]
+                              .filter(Boolean)
+                              .map((x) => ` · ${x}`)
+                              .join('')}
+                          </span>
+                          <div className="text-slate-600">{v.notes}</div>
+                        </VoidAware>
                       </div>
-                      <div className="flex gap-1.5">
-                        <CaseStatusBadge status={l.status} />
-                        {l.closed && <ClosedBadge />}
-                      </div>
+                      {!v.voided && (canEdit || (isAdmin && !c.closed)) && (
+                        <span className="flex gap-1">
+                          {canEdit && (
+                            <Button size="xs" variant="ghost" onClick={() => openVisit(v)}>
+                              Edit
+                            </Button>
+                          )}
+                          {isAdmin && !c.closed && (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() =>
+                                voidIt(`/api/investigations/${v.id}/void`, `site visit of ${fmtDate(v.date)}`)
+                              }
+                            >
+                              Void
+                            </Button>
+                          )}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                  {farmVisits.map((v) => (
+                    <li key={`f${v.id}`} className="px-3 py-2 text-[14px]">
+                      <span className="font-medium text-slate-900">
+                        {fmtDate(v.date)} · Farm visit ({v.purposeLabel})
+                      </span>{' '}
+                      <Badge tone={v.findings === 'SICK_ANIMALS' ? 'red' : 'green'}>{v.findingsLabel}</Badge>
+                      {v.visitedBy && <span className="text-slate-500"> · {v.visitedBy}</span>}
                     </li>
                   ))}
                 </ul>
-              ) : (
-                !c.relatedCaseId && (
-                  <p className="text-slate-500">
-                    No other farms linked to this case. If the disease spread to another farm, use “Report
-                    incident on another farm” (or the Report incident button in Radius Analysis).
-                  </p>
-                )
               )}
-            </div>
-          </Card>
-        )}
-        {tab === 'overview' && (
-          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <LabTracker
-              labs={data.labs}
-              onAdd={
-                canEdit
-                  ? () => {
-                      setLabEdit(null);
-                      setDlg('lab');
-                    }
-                  : undefined
+              {canEdit && (
+                <StepActions>
+                  <Button
+                    size="sm"
+                    variant={current === 'visit' ? 'default' : 'outline'}
+                    onClick={() => openVisit()}
+                  >
+                    <Plus /> {visitCount ? 'Record follow-up visit' : 'Record site visit'}
+                  </Button>
+                </StepActions>
+              )}
+            </CaseStep>
+
+            <CaseStep
+              id="step-samples"
+              n={3}
+              title="Samples & laboratory result"
+              state={stateOf('samples')}
+              summary={
+                final ? (
+                  <>
+                    Result: <b className="font-medium">{CASE_STATUS_LABELS[c.status]}</b>
+                    {decisive
+                      ? ` (sample ${decisive.sampleId}, ${fmtDate(decisive.resultDate)})`
+                      : ''}. The case status was set from this result.
+                  </>
+                ) : sent ? (
+                  `Waiting for the result of ${sent.sampleId} (sent ${fmtDate(sent.sentAt)}${sent.laboratory ? ` to ${sent.laboratory}` : ''}). Enter it as soon as it arrives.`
+                ) : notSent ? (
+                  `Sample ${notSent.sampleId} is collected. Enter the date it was sent to the laboratory.`
+                ) : inconclusive ? (
+                  'The result was inconclusive. Collect a new sample and send it for testing.'
+                ) : (
+                  'Collect samples and add them here. The case status updates by itself as each sample is sent and its result comes back.'
+                )
               }
-            />
-            <div className="space-y-4">
-              <ResponseStatusCard d={data} onOpen={() => setTab('response')} />
+            >
+              {data.labs.length > 0 && (
+                <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                  {data.labs.map((l) => (
+                    <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                      <div className="min-w-0 text-[14px]">
+                        <VoidAware r={l}>
+                          <span className="font-medium text-slate-900">{l.sampleId}</span>
+                          <span className="text-slate-500">
+                            {[l.sampleType, l.testMethod, l.laboratory]
+                              .filter(Boolean)
+                              .map((x) => ` · ${x}`)
+                              .join('')}
+                          </span>
+                          <div className="text-[13px] text-slate-500">
+                            Collected {fmtDate(l.collectedAt)} · Sent{' '}
+                            {l.sentAt ? fmtDate(l.sentAt) : 'not yet'}
+                            {l.resultDate ? ` · Result ${fmtDate(l.resultDate)}` : ''}
+                          </div>
+                        </VoidAware>
+                      </div>
+                      <span className="flex items-center gap-1.5">
+                        <LabResultBadge result={l.result} />
+                        {!l.voided && canEdit && (
+                          <Button
+                            size="xs"
+                            variant={l.result === 'PENDING' ? 'default' : 'ghost'}
+                            onClick={() => openLab(l)}
+                          >
+                            {l.result !== 'PENDING' ? 'Edit' : l.sentAt ? 'Enter result' : 'Enter date sent'}
+                          </Button>
+                        )}
+                        {!l.voided && isAdmin && !c.closed && (
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => voidIt(`/api/labs/${l.id}/void`, `sample ${l.sampleId}`)}
+                          >
+                            Void
+                          </Button>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canEdit && (
+                <StepActions>
+                  <Button
+                    size="sm"
+                    variant={current === 'samples' && !waiting.length ? 'default' : 'outline'}
+                    onClick={() => openLab()}
+                  >
+                    <Plus /> {labs.length ? 'Add another sample' : 'Add sample'}
+                  </Button>
+                </StepActions>
+              )}
+              {!labs.length && !c.closed && (
+                <p className="mt-2 text-[13px] text-slate-500">
+                  No test will be done (false alarm, animals recovered)? Skip to step 6 and close the case as
+                  “Disease not confirmed”.
+                </p>
+              )}
+            </CaseStep>
+
+            <CaseStep
+              id="step-response"
+              n={4}
+              title="Response"
+              state={stateOf('response')}
+              summary={
+                responseSkipped
+                  ? isAsf
+                    ? 'Required once the result is positive. For suspected ASF you may already start the steps below.'
+                    : 'Needed only when the result is positive (quarantine, disinfection, culling…).'
+                  : openMeasures.length
+                    ? `${openMeasures.length} measure(s) still planned, ongoing or in force. When they are done, mark them completed or enter the date lifted.`
+                    : asfMissing.length
+                      ? `Confirmed ASF: log each response step as it is done (${ASF_RESPONSE_STEPS.length - asfMissing.length} of ${ASF_RESPONSE_STEPS.length} logged).`
+                      : positive && !responses.length
+                        ? 'Confirmed positive: log the quarantine or movement restriction, then disinfection or culling as needed.'
+                        : `${responses.length} measure(s) logged, all completed or lifted.`
+              }
+            >
+              {isAsf && <AsfSteps detail={data} onLog={canEdit ? (t) => openResponse(t) : undefined} />}
+              {data.responses.length > 0 && (
+                <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
+                  {data.responses.map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                      <div className="min-w-0 text-[14px]">
+                        <VoidAware r={r}>
+                          <span className="font-medium text-slate-900">{r.typeLabel}</span>
+                          <span className="text-slate-500">
+                            {' '}
+                            · {fmtDate(r.date)}
+                            {r.endDate ? ` – ${fmtDate(r.endDate)}` : ''}
+                            {r.heads ? ` · ${r.heads} culled` : ''}
+                            {r.location ? ` · ${r.location}` : ''}
+                          </span>
+                        </VoidAware>
+                      </div>
+                      {!r.voided && (
+                        <span className="flex items-center gap-1.5">
+                          <Badge
+                            tone={
+                              measureOpen(r, today) ? (r.status === 'PLANNED' ? 'blue' : 'amber') : 'green'
+                            }
+                          >
+                            {measureOpen(r, today)
+                              ? r.status === 'PLANNED'
+                                ? 'Planned'
+                                : 'In force'
+                              : r.endDate && r.endDate <= today
+                                ? 'Lifted'
+                                : 'Completed'}
+                          </Badge>
+                          {canEdit && (
+                            <Button
+                              size="xs"
+                              variant={measureOpen(r, today) ? 'default' : 'ghost'}
+                              onClick={() => openResponse(undefined, r)}
+                            >
+                              {measureOpen(r, today) ? 'Update' : 'Edit'}
+                            </Button>
+                          )}
+                          {isAdmin && !c.closed && (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => voidIt(`/api/responses/${r.id}/void`, `${r.typeLabel} record`)}
+                            >
+                              Void
+                            </Button>
+                          )}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canEdit && (
+                <StepActions>
+                  <Button
+                    size="sm"
+                    variant={current === 'response' && !openMeasures.length ? 'default' : 'outline'}
+                    onClick={() =>
+                      openResponse(
+                        asfMissing[0]?.type ?? (positive && !responses.length ? 'QUARANTINE' : undefined),
+                      )
+                    }
+                  >
+                    <Plus />{' '}
+                    {asfMissing[0]
+                      ? `Log: ${asfMissing[0].label}`
+                      : positive && !responses.length
+                        ? 'Log quarantine'
+                        : responseSkipped
+                          ? 'Log a measure anyway'
+                          : 'Log another measure'}
+                  </Button>
+                  {c.mapped && (
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/radius?case=${c.id}`)}>
+                      <Radar /> Farms to monitor
+                    </Button>
+                  )}
+                </StepActions>
+              )}
+            </CaseStep>
+
+            <CaseStep
+              id="step-head"
+              n={5}
+              title="Update the head count"
+              state={stateOf('head')}
+              summary={
+                pending > 0
+                  ? `${pending} animal(s) died or were culled${c.culled ? ` (${c.deaths} dead, ${c.culled} culled)` : ''} and are still counted in ${c.farmName}'s head count.`
+                  : removed
+                    ? `The farm's head count already reflects the ${removed} animal(s) that died or were culled.`
+                    : 'No deaths or culling so far — nothing to take off the head count.'
+              }
+            >
+              {canEdit && pending > 0 && (
+                <StepActions>
+                  <Button
+                    size="sm"
+                    variant={current === 'head' ? 'default' : 'outline'}
+                    onClick={() => setDlg('pop')}
+                  >
+                    Update head count
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={reconcile.isPending}
+                    onClick={() => reconcile.mutate({})}
+                  >
+                    Already counted
+                  </Button>
+                </StepActions>
+              )}
+            </CaseStep>
+
+            <CaseStep
+              id="step-close"
+              n={6}
+              title="Close the case"
+              state={stateOf('close')}
+              last
+              summary={
+                c.closed
+                  ? `Closed ${fmtDate(c.closedAt!.slice(0, 10))}${c.closureOutcome ? ` — ${CASE_OUTCOME_LABELS[c.closureOutcome as CaseOutcome] ?? c.closureOutcome}` : ''}.`
+                  : blockers.length
+                    ? 'Finish these first:'
+                    : positive
+                      ? 'Everything is recorded. Close the case once the outbreak is contained.'
+                      : c.status === 'NEGATIVE'
+                        ? 'The result is negative. Close the case as “Disease not confirmed”.'
+                        : 'No sample is waiting. If no test will be done, you can close the case now.'
+              }
+            >
+              {!c.closed && blockers.length > 0 && (
+                <ul className="list-disc space-y-0.5 pl-5 text-[14px] text-slate-700">
+                  {blockers.map((b: string) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ul>
+              )}
+              {canEdit && (
+                <StepActions>
+                  <Button
+                    size="sm"
+                    variant={current === 'close' ? 'default' : 'outline'}
+                    disabled={blockers.length > 0}
+                    onClick={() => setDlg('close')}
+                  >
+                    <Lock /> Close case
+                  </Button>
+                </StepActions>
+              )}
+            </CaseStep>
+          </ol>
+        )}
+        {tab === 'details' && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader title="Case details" />
+              <div className="grid grid-cols-1 gap-4 px-4 py-4 md:grid-cols-[1fr_auto]">
+                <KV
+                  rows={[
+                    [
+                      'Owner',
+                      <Link className="link" to={`/owners/${c.ownerId}`}>
+                        {c.ownerName}
+                      </Link>,
+                    ],
+                    [
+                      'Farm',
+                      <Link className="link" to={`/farms/${c.farmId}`}>
+                        {c.farmName}
+                      </Link>,
+                    ],
+                    ['Barangay / Zone', `${c.barangay}${c.zone ? ` · ${c.zone}` : ''}`],
+                    ['Species', c.species],
+                    ['Affected / deaths', `${c.affected} / ${c.deaths}`],
+                    ['Symptoms observed', c.symptomsDate ? fmtDate(c.symptomsDate) : null],
+                    ['Reported', fmtDate(c.reportedAt)],
+                    ['Reported by', c.reportedBy],
+                    ['Assigned to', c.assignedToName],
+                    [
+                      'Location',
+                      c.mapped ? (
+                        `${c.lat!.toFixed(5)}, ${c.lng!.toFixed(5)} (${c.locationSource ?? 'Pinned'})`
+                      ) : (
+                        <GeotagBadge />
+                      ),
+                    ],
+                    ['Symptoms', c.symptoms],
+                    ['Remarks', c.remarks],
+                  ]}
+                />
+                <PhotoGallery keys={c.photoKeys} className="content-start md:max-w-[264px]" />
+              </div>
+            </Card>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader title="Linked incidents" />
+                <div className="px-4 py-3 text-[14.5px]">
+                  {c.relatedCaseId && (
+                    <p className="mb-2 text-slate-700">
+                      Reported as a linked incident of{' '}
+                      <Link className="link" to={`/cases/${c.relatedCaseId}`}>
+                        {c.relatedCaseCode}
+                      </Link>
+                      .
+                    </p>
+                  )}
+                  {data.linkedCases.length ? (
+                    <ul className="divide-y divide-slate-100">
+                      {data.linkedCases.map((l) => (
+                        <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                          <div>
+                            <Link className="link font-medium" to={`/cases/${l.id}`}>
+                              {l.code}
+                            </Link>{' '}
+                            · {l.farmName} · {l.barangay}
+                            <div className="text-[12.5px] text-slate-500">
+                              {l.disease} · reported {fmtDate(l.reportedAt)}
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <CaseStatusBadge status={l.status} />
+                            {l.closed && <ClosedBadge />}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    !c.relatedCaseId && (
+                      <p className="text-slate-500">
+                        No other farms linked. If the disease spread to another farm, use More → “Report
+                        incident on another farm”.
+                      </p>
+                    )
+                  )}
+                </div>
+              </Card>
               <MonitoringCard c={c} />
             </div>
           </div>
-        )}
-        {tab === 'investigation' && (
-          <InvestigationTable
-            rows={data.investigations}
-            closed={c.closed}
-            onAdd={
-              canEdit
-                ? () => {
-                    setInvEdit(null);
-                    setDlg('inv');
-                  }
-                : undefined
-            }
-            onEdit={
-              canEdit
-                ? (r) => {
-                    setInvEdit(r);
-                    setDlg('inv');
-                  }
-                : undefined
-            }
-            onVoid={
-              isAdmin && !c.closed
-                ? (r) => {
-                    setVoidTarget({
-                      url: `/api/investigations/${r.id}/void`,
-                      what: `investigation of ${fmtDate(r.date)}`,
-                    });
-                    setDlg('void');
-                  }
-                : undefined
-            }
-          />
-        )}
-        {tab === 'laboratory' && (
-          <LabTable
-            labs={data.labs}
-            closed={c.closed}
-            onAdd={
-              canEdit
-                ? () => {
-                    setLabEdit(null);
-                    setDlg('lab');
-                  }
-                : undefined
-            }
-            onEdit={
-              canEdit
-                ? (l) => {
-                    setLabEdit(l);
-                    setDlg('lab');
-                  }
-                : undefined
-            }
-            onVoid={
-              isAdmin && !c.closed
-                ? (l) => {
-                    setVoidTarget({ url: `/api/labs/${l.id}/void`, what: `lab record ${l.sampleId}` });
-                    setDlg('void');
-                  }
-                : undefined
-            }
-          />
-        )}
-        {tab === 'response' && (
-          <ResponsePanel
-            detail={data}
-            onLog={
-              canEdit
-                ? (type) => {
-                    setRespEdit(null);
-                    setRespType(type);
-                    setDlg('resp');
-                  }
-                : undefined
-            }
-            onEdit={
-              canEdit
-                ? (r) => {
-                    setRespEdit(r);
-                    setDlg('resp');
-                  }
-                : undefined
-            }
-            onVoid={
-              isAdmin && !c.closed
-                ? (r) => {
-                    setVoidTarget({ url: `/api/responses/${r.id}/void`, what: `${r.typeLabel} record` });
-                    setDlg('void');
-                  }
-                : undefined
-            }
-          />
         )}
         {tab === 'map' &&
           (c.mapped ? (
@@ -1465,18 +1565,6 @@ export function CaseDetailPage() {
           </div>
         )}
       </div>
-      <CaseStatusDialog
-        open={dlg === 'status'}
-        onOpenChange={(o) => {
-          setDlg(o ? 'status' : null);
-          if (!o) setSuggest(null);
-        }}
-        caseId={c.id}
-        code={c.code}
-        status={c.status}
-        labs={[...data.labs, ...(suggest ? [suggest.lab] : [])]}
-        suggest={suggest?.status}
-      />
       <CaseEditDialog open={dlg === 'edit'} onOpenChange={(o) => setDlg(o ? 'edit' : null)} c={c} />
       {farmDetail && dlg === 'pop' && (
         <PopulationUpdateDialog
@@ -1487,7 +1575,7 @@ export function CaseDetailPage() {
           }}
           farm={{ id: c.farmId, name: c.farmName ?? '' }}
           groups={farmDetail.groups}
-          prefill={popPrefill}
+          prefill={popPrefill(farmDetail.groups, c.species, c.code, pending)}
           note={`Suggested counts take ${pending} ${c.species.toLowerCase()} off for ${c.code}. Check the numbers before saving.`}
           onSaved={() => {
             setPopExtra(0);
@@ -1525,8 +1613,6 @@ export function CaseDetailPage() {
         code={c.code}
         investigation={invEdit}
         minDate={caseStart}
-        caseDeaths={c.deaths}
-        onMoreDeaths={askMoreDeaths}
       />
       <LabDialog
         open={dlg === 'lab'}
@@ -1535,7 +1621,6 @@ export function CaseDetailPage() {
         code={c.code}
         lab={labEdit}
         minDate={caseStart}
-        onSaved={afterLabSaved}
       />
       <ResponseDialog
         open={dlg === 'resp'}
@@ -1547,7 +1632,7 @@ export function CaseDetailPage() {
         minDate={caseStart}
         maxHeads={speciesHead}
         onSaved={(v) => {
-          // Culling removes animals: offer the population update straight away.
+          // Culling removes animals: offer the head count update straight away.
           if (v.type === 'CULLING_DEPOPULATION' && v.status !== 'PLANNED' && v.added > 0) {
             setPopExtra(v.added);
             setDlg('pop');
@@ -1559,20 +1644,31 @@ export function CaseDetailPage() {
         onOpenChange={(o) => setDlg(o ? 'close' : null)}
         caseId={c.id}
         code={c.code}
-        pending={pending}
+        status={c.status}
+        tested={labs.some((l) => l.result !== 'PENDING')}
+        blockers={blockers}
       />
     </div>
   );
 }
 
-/* ---------------- Incident timeline, lab tracking and monitoring ---------------- */
+/**
+ * Suggested new counts for the affected species: take the deaths/culled heads off its groups,
+ * never below the group's tagged animals. Staff review the numbers before saving.
+ */
+function popPrefill(groups: GroupRow[], species: string, code: string, pending: number) {
+  const out: Record<number, { count: number; reason: string }> = {};
+  let remaining = pending;
+  for (const g of [...groups].filter((x) => x.species === species).sort((a, b) => b.count - a.count)) {
+    const take = Math.min(remaining, Math.max(0, g.count - g.tagged));
+    if (!take) continue;
+    out[g.id] = { count: g.count - take, reason: `${code}: −${take} (deaths/culling)` };
+    remaining -= take;
+  }
+  return out;
+}
 
-const LAB_TONE: Record<string, 'green' | 'red' | 'amber' | 'slate'> = {
-  POSITIVE: 'red',
-  NEGATIVE: 'green',
-  INCONCLUSIVE: 'amber',
-  PENDING: 'slate',
-};
+/* ---------------- Incident timeline, lab tracking and monitoring ---------------- */
 
 /** Every event on a case in date order: report, visits, samples, results, responses, closure. */
 function IncidentTimeline({ d, visits }: { d: CaseDetail; visits: VisitRecord[] }) {
@@ -1698,80 +1794,6 @@ function IncidentTimeline({ d, visits }: { d: CaseDetail; visits: VisitRecord[] 
   return <ActivityTimeline items={ev} empty="No events yet." />;
 }
 
-/** Each sample as three steps: collected → sent for testing → result. */
-function LabTracker({ labs, onAdd }: { labs: (LabEditRecord & VoidInfo)[]; onAdd?: () => void }) {
-  const live = labs.filter((l) => !l.voided);
-  return (
-    <Card>
-      <CardHeader
-        title="Sample, Testing and Result"
-        actions={
-          onAdd && (
-            <Button size="xs" variant="outline" onClick={onAdd}>
-              <Plus /> Add sample
-            </Button>
-          )
-        }
-      />
-      {live.length ? (
-        <ul className="divide-y divide-slate-100">
-          {live.map((l) => {
-            const steps = [
-              { label: 'Collected', done: !!l.collectedAt || !!l.sentAt, date: l.collectedAt },
-              { label: 'Sent for testing', done: !!l.sentAt, date: l.sentAt, sub: l.laboratory },
-              {
-                label:
-                  l.result === 'PENDING'
-                    ? 'Result'
-                    : `Result: ${l.result.charAt(0)}${l.result.slice(1).toLowerCase()}`,
-                done: l.result !== 'PENDING',
-                date: l.resultDate,
-                tone: LAB_TONE[l.result],
-              },
-            ];
-            return (
-              <li key={l.id} className="px-4 py-3">
-                <div className="text-[14px] font-medium text-slate-900">
-                  {l.sampleId}
-                  <span className="font-normal text-slate-500">
-                    {[l.sampleType, l.testMethod].filter(Boolean).length
-                      ? ` · ${[l.sampleType, l.testMethod].filter(Boolean).join(' · ')}`
-                      : ''}
-                  </span>
-                </div>
-                <ol className="mt-2 grid grid-cols-3 gap-2">
-                  {steps.map((s, i) => (
-                    <li
-                      key={i}
-                      className={cn(
-                        'rounded-md border px-2 py-1.5 text-[12.5px]',
-                        s.done
-                          ? s.tone === 'red'
-                            ? 'border-red-200 bg-red-50 text-red-800'
-                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                          : 'border-slate-200 bg-white text-slate-400',
-                      )}
-                    >
-                      <div className="flex items-center gap-1 font-medium">
-                        {s.done ? <Check className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5" />}{' '}
-                        {s.label}
-                      </div>
-                      <div>{s.date ? fmtDate(s.date) : s.done ? '' : 'Waiting'}</div>
-                      {s.sub && <div className="truncate">{s.sub}</div>}
-                    </li>
-                  ))}
-                </ol>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="px-4 py-4 text-[14px] text-slate-500">No samples recorded yet.</p>
-      )}
-    </Card>
-  );
-}
-
 /** Farms near the case and whether each was visited since the report. */
 function MonitoringCard({ c }: { c: CaseRow }) {
   const navigate = useNavigate();
@@ -1814,43 +1836,6 @@ function MonitoringCard({ c }: { c: CaseRow }) {
   );
 }
 
-/** Quarantine, disinfection, culling and other measures with their current status. */
-function ResponseStatusCard({ d, onOpen }: { d: CaseDetail; onOpen: () => void }) {
-  const live = d.responses.filter((r) => !r.voided);
-  return (
-    <Card>
-      <CardHeader
-        title="Response Status"
-        actions={
-          <Button size="xs" variant="outline" onClick={onOpen}>
-            View all
-          </Button>
-        }
-      />
-      {live.length ? (
-        <ul className="divide-y divide-slate-100">
-          {live.map((r) => (
-            <li key={r.id} className="flex items-center justify-between gap-2 px-4 py-2">
-              <span>
-                <span className="text-[14px] text-slate-900">{r.typeLabel}</span>
-                <span className="block text-[12px] text-slate-500">
-                  {fmtDate(r.date)}
-                  {r.endDate ? ` – ${fmtDate(r.endDate)}` : ''}
-                </span>
-              </span>
-              <Badge tone={r.status === 'COMPLETED' ? 'green' : r.status === 'ONGOING' ? 'amber' : 'slate'}>
-                {r.statusLabel}
-              </Badge>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="px-4 py-4 text-[14px] text-slate-500">No response measures logged yet.</p>
-      )}
-    </Card>
-  );
-}
-
 /** Shows a voided record struck through with who voided it and why. */
 function VoidAware({ r, children }: { r: VoidInfo; children: React.ReactNode }) {
   if (!r.voided) return <>{children}</>;
@@ -1861,363 +1846,6 @@ function VoidAware({ r, children }: { r: VoidInfo; children: React.ReactNode }) 
         {r.voidReason}
         {r.voidedBy ? ` — ${r.voidedBy}` : ''}
       </div>
-    </div>
-  );
-}
-
-/** Shown on a closed case's record tabs. */
-function ClosedNote() {
-  return (
-    <p className="border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-500">
-      <Lock className="mr-1 inline h-3.5 w-3.5" /> This case is closed: these records are kept for the audit
-      trail and reports, but cannot be changed unless an administrator reopens the case.
-    </p>
-  );
-}
-
-const show = (v: number | null | undefined) => (v == null ? '—' : v);
-
-export function InvestigationTable({
-  rows,
-  closed,
-  onAdd,
-  onEdit,
-  onVoid,
-}: {
-  rows: (InvestigationRow & VoidInfo)[];
-  closed?: boolean;
-  onAdd?: () => void;
-  /** Fix a typo in a visit record. */
-  onEdit?: (r: InvestigationRow & VoidInfo) => void;
-  onVoid?: (r: InvestigationRow & VoidInfo) => void;
-}) {
-  return (
-    <Card>
-      <CardHeader
-        title="Investigation records"
-        actions={
-          onAdd && (
-            <Button variant="outline" size="xs" onClick={onAdd}>
-              <Plus /> Add investigation
-            </Button>
-          )
-        }
-      />
-      <DataTable
-        rows={rows}
-        rowKey={(r) => r.id}
-        pageSize={0}
-        hideFooter
-        minWidth={820}
-        columns={[
-          {
-            key: 'date',
-            header: 'Visit',
-            cell: (r) => (
-              <div className="whitespace-nowrap">
-                <div>{fmtDate(r.date)}</div>
-                <div className="text-[12.5px] text-slate-500">{r.visitLabel}</div>
-              </div>
-            ),
-          },
-          { key: 'investigator', header: 'Investigator' },
-          {
-            key: 'animalsExamined',
-            header: 'Examined / sick / dead',
-            sort: false,
-            cell: (r) => `${show(r.animalsExamined)} / ${show(r.sickCount)} / ${show(r.deadCount)}`,
-          },
-          {
-            key: 'notes',
-            header: 'Findings',
-            className: 'whitespace-pre-wrap',
-            cell: (r) => (
-              <VoidAware r={r}>
-                <div>{r.notes}</div>
-                <div className="mt-1 space-y-0.5 text-[13px] text-slate-500">
-                  {r.clinicalSigns && <div>Signs: {r.clinicalSigns}</div>}
-                  {r.biosecurity && <div>Biosecurity: {r.biosecurity}</div>}
-                  {r.actionsTaken && <div>Actions: {r.actionsTaken}</div>}
-                  <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {r.samplesCollected && <Badge tone="blue">Samples collected</Badge>}
-                    {r.nextVisit && <Badge tone="amber">Next visit {fmtDate(r.nextVisit)}</Badge>}
-                  </div>
-                </div>
-              </VoidAware>
-            ),
-          },
-          ...(onVoid || (onEdit && !closed)
-            ? [
-                {
-                  key: 'actions',
-                  header: '',
-                  sort: false as const,
-                  cell: (r: InvestigationRow & VoidInfo) =>
-                    !r.voided && (
-                      <span className="inline-flex gap-1">
-                        {onEdit && !closed && (
-                          <Button size="xs" variant="ghost" onClick={() => onEdit(r)}>
-                            Edit
-                          </Button>
-                        )}
-                        {onVoid && (
-                          <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
-                            Void
-                          </Button>
-                        )}
-                      </span>
-                    ),
-                },
-              ]
-            : []),
-        ]}
-        empty="No investigations recorded yet."
-      />
-      {closed && <ClosedNote />}
-    </Card>
-  );
-}
-
-export function LabTable({
-  labs,
-  closed,
-  onAdd,
-  onEdit,
-  onVoid,
-}: {
-  labs: CaseDetail['labs'];
-  closed?: boolean;
-  onAdd?: () => void;
-  onEdit?: (l: CaseDetail['labs'][number]) => void;
-  onVoid?: (l: CaseDetail['labs'][number]) => void;
-}) {
-  return (
-    <Card>
-      <CardHeader
-        title="Laboratory records"
-        actions={
-          onAdd && (
-            <Button variant="outline" size="xs" onClick={onAdd}>
-              <Plus /> Add lab record
-            </Button>
-          )
-        }
-      />
-      <DataTable
-        rows={labs}
-        rowKey={(r) => r.id}
-        pageSize={0}
-        hideFooter
-        minWidth={900}
-        columns={[
-          {
-            key: 'sampleId',
-            header: 'Sample',
-            cell: (r) => (
-              <VoidAware r={r}>
-                <div>{r.sampleId}</div>
-                <div className="text-[12.5px] text-slate-500">
-                  {[r.sampleType, r.sampleCount ? `${r.sampleCount} sample(s)` : null]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </div>
-              </VoidAware>
-            ),
-          },
-          { key: 'testMethod', header: 'Test', cell: (r) => r.testMethod ?? '—' },
-          { key: 'collectedAt', header: 'Collected', cell: (r) => fmtDate(r.collectedAt) },
-          {
-            key: 'laboratory',
-            header: 'Laboratory',
-            cell: (r) => (
-              <div>
-                <div>{r.laboratory ?? '—'}</div>
-                {r.labReference && <div className="text-[12.5px] text-slate-500">Ref. {r.labReference}</div>}
-              </div>
-            ),
-          },
-          { key: 'sentAt', header: 'Sent', cell: (r) => fmtDate(r.sentAt) },
-          {
-            key: 'result',
-            header: 'Result',
-            cell: (r) => (
-              <div>
-                <LabResultBadge result={r.result} />
-                {r.resultDate && (
-                  <div className="mt-0.5 text-[12.5px] text-slate-500">{fmtDate(r.resultDate)}</div>
-                )}
-              </div>
-            ),
-          },
-          ...(onEdit || onVoid
-            ? [
-                {
-                  key: 'actions',
-                  header: '',
-                  sort: false as const,
-                  cell: (r: CaseDetail['labs'][number]) =>
-                    !r.voided && (
-                      <div className="flex gap-1">
-                        {onEdit && (
-                          <Button size="xs" variant="outline" onClick={() => onEdit(r)}>
-                            {r.result === 'PENDING' ? 'Enter result' : 'Edit'}
-                          </Button>
-                        )}
-                        {onVoid && (
-                          <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
-                            Void
-                          </Button>
-                        )}
-                      </div>
-                    ),
-                },
-              ]
-            : []),
-        ]}
-        empty="No laboratory records yet."
-      />
-      {closed && <ClosedNote />}
-    </Card>
-  );
-}
-
-export function ResponsePanel({
-  detail,
-  onLog,
-  onEdit,
-  onVoid,
-}: {
-  detail: CaseDetail;
-  /** Log a new activity (optionally of a given type). */
-  onLog?: (type?: ResponseType) => void;
-  onEdit?: (r: CaseDetail['responses'][number]) => void;
-  onVoid?: (r: CaseDetail['responses'][number]) => void;
-}) {
-  const c = detail.case;
-  const navigate = useNavigate();
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <Card>
-          <CardHeader title="Ground zero" />
-          <div className="p-4">
-            {c.mapped ? (
-              <MapView
-                className="h-[220px]"
-                groundZero={{ lat: c.lat!, lng: c.lng! }}
-                circles={[{ lat: c.lat!, lng: c.lng!, radius: detail.context?.radius ?? 1000 }]}
-                focusCircle={{ lat: c.lat!, lng: c.lng!, radius: detail.context?.radius ?? 1000 }}
-                showZoom={false}
-              />
-            ) : (
-              <div className="flex h-[220px] items-center justify-center rounded-lg border border-dashed text-sm text-slate-500">
-                Awaiting geotagging
-              </div>
-            )}
-          </div>
-        </Card>
-        <Card>
-          <CardHeader title="Response context" />
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 px-4 py-4">
-            <div>
-              <div className="text-[13px] text-slate-500">Owner</div>
-              <div className="text-[15px] text-slate-900">{c.ownerName}</div>
-            </div>
-            <div>
-              <div className="text-[13px] text-slate-500">Affected / deaths</div>
-              <div className="text-[15px] text-slate-900">
-                {c.affected} / {c.deaths}
-              </div>
-            </div>
-            <div>
-              <div className="text-[13px] text-slate-500">
-                Farms within {((detail.context?.radius ?? 1000) / 1000).toFixed(2)} km
-              </div>
-              <div className="text-[15px] font-semibold text-slate-900">{detail.context?.farms ?? '—'}</div>
-            </div>
-            <div>
-              <div className="text-[13px] text-slate-500">Livestock within radius</div>
-              <div className="text-[15px] font-semibold text-slate-900">
-                {detail.context?.livestock ?? '—'}
-              </div>
-            </div>
-            <div className="col-span-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!c.mapped}
-                onClick={() => navigate(`/radius?case=${c.id}`)}
-              >
-                Open radius analysis
-              </Button>
-              <p className="mt-3 text-[13px] text-slate-400">
-                Documentation only — not automated recommendations.
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
-      {isAsfDisease(c.disease) && <AsfSteps detail={detail} onLog={onLog} />}
-      <Card>
-        <CardHeader
-          title="Response activity log"
-          actions={
-            onLog && (
-              <Button variant="outline" size="xs" onClick={() => onLog()}>
-                <Plus /> Log activity
-              </Button>
-            )
-          }
-        />
-        {detail.responses.length ? (
-          <Timeline
-            items={detail.responses.map((r) => ({
-              key: r.id,
-              meta: `${fmtDate(r.date)}${r.endDate ? ` – ${fmtDate(r.endDate)}` : ''}`,
-              title: r.voided ? (
-                <VoidAware r={r}>{r.typeLabel}</VoidAware>
-              ) : (
-                <span className="inline-flex flex-wrap items-center gap-2">
-                  {r.typeLabel}
-                  <Badge
-                    tone={r.status === 'COMPLETED' ? 'green' : r.status === 'ONGOING' ? 'amber' : 'blue'}
-                  >
-                    {r.statusLabel}
-                  </Badge>
-                  {r.heads ? <Badge tone="red">{r.heads} culled</Badge> : null}
-                  {onEdit && (
-                    <Button size="xs" variant="outline" onClick={() => onEdit(r)}>
-                      {r.status === 'COMPLETED' ? 'Edit' : 'Update'}
-                    </Button>
-                  )}
-                  {onVoid && (
-                    <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
-                      Void
-                    </Button>
-                  )}
-                </span>
-              ),
-              tag: r.personnel,
-              body:
-                r.location || r.disposalMethod || r.remarks ? (
-                  <div>
-                    {(r.location || r.disposalMethod) && (
-                      <div className="text-[13.5px] text-slate-500">
-                        {[r.location, r.disposalMethod ? `Disposal: ${r.disposalMethod}` : null]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </div>
-                    )}
-                    {r.remarks && <div>{r.remarks}</div>}
-                  </div>
-                ) : null,
-            }))}
-          />
-        ) : (
-          <p className="p-4 text-sm text-slate-500">No response activities logged yet.</p>
-        )}
-        {c.closed && <ClosedNote />}
-      </Card>
     </div>
   );
 }

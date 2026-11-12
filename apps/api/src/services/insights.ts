@@ -22,6 +22,7 @@ import { today, ymd } from '../lib/dates';
 import { liveReminder } from '../routes/vaccinations';
 import { loadFarms, monthlyTrend, summarizeFarm, type Filters } from './metrics';
 import { getSettings } from './settings';
+import { siteVisitsDue } from './caseVisits';
 
 const day = (s: string) => new Date(`${s}T00:00:00Z`);
 const endOfDay = (s: string) => new Date(`${s}T23:59:59.999Z`);
@@ -547,10 +548,7 @@ export async function taskList(): Promise<Task[]> {
       include: { case: true },
       orderBy: { id: 'asc' },
     }),
-    prisma.investigation.findMany({
-      where: { voidedAt: null, case: { closedAt: null } },
-      orderBy: [{ date: 'desc' }, { id: 'desc' }],
-    }),
+    siteVisitsDue(),
     prisma.responseActivity.findMany({
       where: {
         voidedAt: null,
@@ -570,15 +568,13 @@ export async function taskList(): Promise<Task[]> {
     }),
     loadFarms(),
   ]);
-  const latest = new Map<number, (typeof visits)[number]>();
-  for (const v of visits) if (!latest.has(v.caseId)) latest.set(v.caseId, v);
   const tasks: Task[] = [];
 
   for (const c of cases) {
-    const last = latest.get(c.id);
+    const v = visits.get(c.id);
     const where = `${c.disease} · ${c.farm.name}, ${c.barangay}`;
-    if (!last) {
-      const d = ymd(c.reportedAt)!;
+    if (v?.kind === 'INITIAL') {
+      const d = v.due;
       tasks.push({
         group: 'Field visits',
         title: `${c.code}: first site visit`,
@@ -588,8 +584,8 @@ export async function taskList(): Promise<Task[]> {
         due: d,
         overdue: d < t,
       });
-    } else if (last.nextVisit && ymd(last.nextVisit)! <= soon) {
-      const d = ymd(last.nextVisit)!;
+    } else if (v?.kind === 'FOLLOW_UP' && v.due <= soon) {
+      const d = v.due;
       tasks.push({
         group: 'Field visits',
         title: `${c.code}: follow-up visit`,

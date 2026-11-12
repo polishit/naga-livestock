@@ -30,11 +30,11 @@ enum AnimalStatus {
   SLAUGHTERED
 }
 
+/// Set automatically from the case's laboratory samples (see deriveCaseStatus in packages/shared).
 enum CaseStatus {
   SUSPECTED
   SAMPLE_COLLECTED
   SENT_TO_LAB
-  AWAITING_RESULT
   POSITIVE
   NEGATIVE
 }

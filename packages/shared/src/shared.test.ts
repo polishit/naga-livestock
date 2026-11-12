@@ -84,7 +84,7 @@ describe('schemas', () => {
     expect(r.success).toBe(false);
   });
   it('maps case statuses to marker kinds', () => {
-    expect(caseMarkerKind('AWAITING_RESULT')).toBe('lab');
+    expect(caseMarkerKind('SENT_TO_LAB')).toBe('lab');
     expect(caseMarkerKind('SAMPLE_COLLECTED')).toBe('suspected');
   });
 });

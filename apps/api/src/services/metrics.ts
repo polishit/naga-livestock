@@ -371,7 +371,7 @@ export async function overview(f: Filters & { months?: number }) {
       livestock: totals.total,
       verifiedPct: withGroups.length ? Math.round((verifiedCount / withGroups.length) * 100) : 0,
       suspected: openCases.filter((c) => c.status === 'SUSPECTED' || c.status === 'SAMPLE_COLLECTED').length,
-      inLab: openCases.filter((c) => c.status === 'SENT_TO_LAB' || c.status === 'AWAITING_RESULT').length,
+      inLab: openCases.filter((c) => c.status === 'SENT_TO_LAB').length,
       positive: openCases.filter((c) => c.status === 'POSITIVE').length,
       coveragePct: coverage.overallPct,
       awaitingGeotag: openCases.filter((c) => c.lat == null || c.lng == null).length,

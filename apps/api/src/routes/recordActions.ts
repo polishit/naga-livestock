@@ -20,6 +20,7 @@ import { logActivity } from '../lib/activity';
 import { assertNotFuture, dateOnly, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse } from '../lib/http';
 import { refreshReminders } from './vaccinations';
+import { deathsFromVisit } from './cases';
 
 export const recordActionsRouter = Router();
 
@@ -326,7 +327,8 @@ recordActionsRouter.patch(
         req.user?.name,
         tx,
       );
-      return updated;
+      const deaths = await deathsFromVisit(tx, c, d.deadCount, req.user?.name);
+      return { ...updated, deathsUpdated: deaths };
     });
     res.json(u);
   }),

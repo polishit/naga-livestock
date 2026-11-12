@@ -188,12 +188,12 @@ const HELP: Record<string, Help> = {
     steps: [
       'Select "Report Incident" when a raiser reports sick or dead animals.',
       'Filter by disease, barangay or state; the graphs follow the filters.',
-      'Select a report to open it. The "Next step" box tells you what to do now.',
+      'Select a report to open it. Its Steps tab shows what to do next.',
     ],
     terms: [
       [
-        'Suspected → Sample collected → Sent to lab → Awaiting result → Positive / Negative',
-        'The stages of a report.',
+        'Suspected → Sample collected → Sent to lab → Positive / Negative',
+        'The status of a report. It updates by itself from the samples; nobody types it in.',
       ],
       ['Closed', 'Finished; read-only.'],
     ],
@@ -209,18 +209,19 @@ const HELP: Record<string, Help> = {
   },
   '/cases/:id': {
     title: 'Disease report',
-    purpose: 'One incident from report to closing: samples, tests, results, response and monitoring.',
+    purpose: 'One incident from report to closing, as six steps.',
     steps: [
-      'Follow the "Next step" box at the top: it shows the one thing to do now.',
-      'Overview: the sample → testing → result steps, the response status and the farms to monitor nearby.',
-      'Timeline tab: every event in date order (visits, samples, results, responses, monitoring visits).',
-      'Close the report when the outbreak is contained. A closed report is read-only.',
+      'Steps tab: work from top to bottom. The step marked "Do this now" is the next thing to do.',
+      '1 Report → 2 Site visit → 3 Samples & result → 4 Response (if positive) → 5 Update the head count → 6 Close.',
+      'The status changes by itself when you add a sample, enter the date sent, or enter the result.',
+      'No test needed (false alarm, animals recovered)? Close it at step 6 as "Disease not confirmed".',
+      'Details tab: owner, farm, photos and linked incidents. Timeline tab: every event in date order.',
     ],
     terms: [
       ['In force', 'A quarantine, movement restriction or checkpoint that has started and not been lifted.'],
       [
-        'Population not updated',
-        'Dead or culled animals still counted on the farm. Select "Update population".',
+        'Head count not updated',
+        'Dead or culled animals still counted on the farm. Select "Update head count" in step 5.',
       ],
     ],
   },
@@ -237,7 +238,7 @@ const HELP: Record<string, Help> = {
     purpose: 'Quarantines and checkpoints in force, and measures ongoing or planned.',
     steps: [
       'Check the "Needs update" rows first: a planned measure whose date passed, or one that should have ended.',
-      'Select a row to open the case’s Response tab and update or lift the measure.',
+      'Select a row to open the case at step 4 (Response) and update or lift the measure.',
     ],
   },
   '/analytics': {

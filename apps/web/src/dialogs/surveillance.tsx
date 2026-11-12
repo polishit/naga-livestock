@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import {
-  CASE_OUTCOMES,
   CASE_OUTCOME_LABELS,
-  CASE_STATUSES,
   CASE_STATUS_LABELS,
   DISPOSAL_METHODS,
   INVESTIGATION_VISIT_LABELS,
@@ -20,9 +19,8 @@ import {
   ROLES,
   ROLE_LABELS,
   caseCloseSchema,
-  caseStatusSchema,
+  caseOutcomesFor,
   caseUpdateSchema,
-  checkCaseStatus,
   investigationCreateSchema,
   isoDate,
   labCreateSchema,
@@ -50,103 +48,6 @@ export interface LabLite {
   result: string;
   sentAt?: string | null;
   voided?: boolean;
-}
-
-/**
- * Status options follow the workflow: next stage only, Positive/Negative only with a matching lab
- * result, and corrections (going back) for administrators with a reason.
- */
-export function CaseStatusDialog({
-  open,
-  onOpenChange,
-  caseId,
-  code,
-  status,
-  labs,
-  suggest,
-}: DialogProps & {
-  caseId: number;
-  code: string;
-  status: CaseStatus;
-  labs: LabLite[];
-  suggest?: CaseStatus;
-}) {
-  const { isAdmin } = useAuth();
-  const live = labs.filter((l) => !l.voided);
-  const options = CASE_STATUSES.filter((s) => s !== status)
-    .map((s) => ({ s, ...checkCaseStatus(status, s, live) }))
-    .filter((o) => o.allowed && (!o.correction || isAdmin));
-  const firstNormal = options.find((o) => !o.correction)?.s;
-  const initial = suggest && options.some((o) => o.s === suggest) ? suggest : (firstNormal ?? '');
-  const finalBlocked =
-    status !== 'POSITIVE' &&
-    status !== 'NEGATIVE' &&
-    !options.some((o) => o.s === 'POSITIVE' || o.s === 'NEGATIVE');
-  const form = useZodForm(caseStatusSchema, {});
-  useResetOnOpen(open, form, { status: initial, note: '' } as any);
-  const save = useSave<any>('POST', `/api/cases/${caseId}/status`, {
-    success: 'Case status updated.',
-    label: (b) => `${code} → ${CASE_STATUS_LABELS[b.status as CaseStatus]}`,
-    form,
-    onDone: () => onOpenChange(false),
-  });
-  const e = form.formState.errors;
-  const selected = form.watch('status');
-  const isCorrection = options.find((o) => o.s === selected)?.correction;
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={`Update status — ${code}`}
-      footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button form="status-form" type="submit" loading={save.isPending} disabled={!options.length}>
-            Confirm
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="status-form"
-        noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
-        className="space-y-4"
-      >
-        {options.length ? (
-          <Field label="New status" error={err(e, 'status')}>
-            <Select {...form.register('status')}>
-              {options.map((o) => (
-                <option key={o.s} value={o.s}>
-                  {CASE_STATUS_LABELS[o.s]}
-                  {o.correction ? ' (correction)' : ''}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : (
-          <p className="rounded-md bg-slate-50 px-3 py-2.5 text-[14.5px] text-slate-600">
-            No status change is available for this case.
-          </p>
-        )}
-        {finalBlocked && (
-          <p className="text-[13px] text-slate-500">
-            To mark this case Positive or Negative, add a laboratory record with that result first (Laboratory
-            tab).
-          </p>
-        )}
-        <Field label={isCorrection ? 'Reason for correction *' : 'Note'} error={err(e, 'note')}>
-          <Textarea rows={3} {...form.register('note')} />
-        </Field>
-        <p className="text-[12.5px] text-slate-400">
-          A case moves forward one stage at a time; laboratory results decide Positive or Negative. Going back
-          is a correction that only an administrator can make.
-        </p>
-      </form>
-    </Dialog>
-  );
 }
 
 export interface CaseEditRecord {
@@ -257,10 +158,7 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
         <Field label="Observed symptoms" error={err(e, 'symptoms')} className="sm:col-span-2">
           <Textarea rows={3} {...form.register('symptoms')} />
         </Field>
-        <Field label="Sample information" error={err(e, 'sampleInfo')}>
-          <Input {...form.register('sampleInfo')} />
-        </Field>
-        <Field label="Remarks" error={err(e, 'remarks')}>
+        <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
           <Input {...form.register('remarks')} />
         </Field>
         <p className="text-[12.5px] text-slate-400 sm:col-span-2">
@@ -333,13 +231,19 @@ export function CaseCloseDialog({
   onOpenChange,
   caseId,
   code,
-  pending = 0,
+  status,
+  tested,
+  blockers = [],
 }: DialogProps & {
   caseId: number;
   code: string;
-  /** Deaths/culled heads not yet reflected in the farm population (must be 0 to close). */
-  pending?: number;
+  status: CaseStatus;
+  /** Whether any laboratory result came back (decides the wording of the reasons). */
+  tested: boolean;
+  /** What still stops the case from closing (from caseCloseBlockers). */
+  blockers?: string[];
 }) {
+  const outcomes = caseOutcomesFor(status);
   const form = useZodForm(caseCloseSchema, {});
   useResetOnOpen(open, form, { outcome: '', note: '' } as any);
   const save = useSave<any>('POST', `/api/cases/${caseId}/close`, {
@@ -360,7 +264,7 @@ export function CaseCloseDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button form="close-form" type="submit" loading={save.isPending} disabled={pending > 0}>
+          <Button form="close-form" type="submit" loading={save.isPending} disabled={blockers.length > 0}>
             Close case
           </Button>
         </>
@@ -372,17 +276,28 @@ export function CaseCloseDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="space-y-4"
       >
-        {pending > 0 && (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14px] text-slate-700">
-            {pending} animal(s) that died or were culled are not yet reflected in the farm's population. Use
-            “Update population” (or “Already counted”) on the case first — a closed case can no longer change
-            it.
-          </p>
+        {blockers.length > 0 && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14px] text-slate-700">
+            <div className="font-medium">Finish these first:</div>
+            <ul className="mt-1 list-disc pl-5">
+              {blockers.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+          </div>
         )}
+        <p className="rounded-md bg-slate-50 px-3 py-2 text-[14px] text-slate-600">
+          Result: <b className="font-medium text-slate-800">{CASE_STATUS_LABELS[status]}</b>
+          {status === 'POSITIVE'
+            ? ' — choose how the outbreak ended.'
+            : tested
+              ? ' — the disease was not confirmed.'
+              : ' — no laboratory test was done (for example a false alarm, or the animals recovered).'}
+        </p>
         <Field label="Outcome *" error={err(e, 'outcome')}>
           <Select {...form.register('outcome')} aria-invalid={!!e.outcome}>
             <option value="">Select...</option>
-            {CASE_OUTCOMES.map((o) => (
+            {outcomes.map((o) => (
               <option key={o} value={o}>
                 {CASE_OUTCOME_LABELS[o]}
               </option>
@@ -397,9 +312,9 @@ export function CaseCloseDialog({
           />
         </Field>
         <p className="text-[12.5px] text-slate-400">
-          All response activities must be completed first. A closed case keeps its investigations, laboratory
-          records, responses and history (they still appear in reports), but nothing can be added or changed.
-          An administrator can reopen it to make a correction; the reopening is recorded in the history.
+          A closed case keeps its visits, samples, responses and history (they still appear in reports), but
+          nothing can be added or changed. An administrator can reopen it to make a correction; the reopening
+          is recorded in the history.
         </p>
       </form>
     </Dialog>
@@ -493,8 +408,6 @@ export function InvestigationDialog({
   code,
   investigation: inv,
   minDate,
-  caseDeaths,
-  onMoreDeaths,
 }: DialogProps & {
   caseId: number;
   code: string;
@@ -502,10 +415,6 @@ export function InvestigationDialog({
   investigation?: InvestigationEditRecord | null;
   /** First day of the case (symptoms or report date); a visit cannot be earlier. */
   minDate?: string;
-  /** Deaths currently recorded on the case. */
-  caseDeaths?: number;
-  /** Called when this visit found more dead animals than the case records. */
-  onMoreDeaths?: (dead: number) => void;
 }) {
   const { user } = useAuth();
   const form = useZodForm(investigationCreateSchema, {});
@@ -527,13 +436,17 @@ export function InvestigationDialog({
     inv ? 'PATCH' : 'POST',
     inv ? `/api/investigations/${inv.id}` : `/api/cases/${caseId}/investigations`,
     {
-      success: inv ? 'Investigation updated.' : 'Investigation recorded.',
-      label: () => `Investigation for ${code}`,
+      success: '',
+      label: () => `Site visit for ${code}`,
       form,
-      onDone: () => {
-        const dead = Number(form.getValues('deadCount') ?? 0);
+      onDone: (res: any) => {
         onOpenChange(false);
-        if (caseDeaths != null && dead > caseDeaths) onMoreDeaths?.(dead);
+        if (res.queued) return;
+        // Dead animals found at the visit update the case's deaths (the server keeps the highest number).
+        const d = res.deathsUpdated as { from: number; to: number } | null;
+        toast.success(
+          `${inv ? 'Site visit updated.' : 'Site visit recorded.'}${d ? ` Case deaths updated: ${d.from} → ${d.to}.` : ''}`,
+        );
       },
     },
   );
@@ -544,7 +457,7 @@ export function InvestigationDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={inv ? 'Edit investigation' : 'Add investigation'}
+      title={inv ? `Edit site visit — ${code}` : `Record site visit — ${code}`}
       size="lg"
       footer={
         <>
@@ -592,7 +505,7 @@ export function InvestigationDialog({
         <Field
           label="Dead at the visit"
           error={err(e, 'deadCount')}
-          hint={caseDeaths != null ? `Case records ${caseDeaths} death(s)` : undefined}
+          hint="The case's deaths are raised to this number if it is higher"
         >
           <Input type="number" min={0} {...form.register('deadCount')} />
         </Field>
@@ -621,7 +534,7 @@ export function InvestigationDialog({
         </Field>
         <div className="sm:col-span-3">
           <Checkbox
-            label="Samples were collected during this visit (add them in the Laboratory tab)"
+            label="Samples were collected during this visit (add them in step 3, Samples)"
             checked={!!form.watch('samplesCollected')}
             onChange={(v) => form.setValue('samplesCollected', v as any)}
           />
@@ -686,11 +599,16 @@ export function LabDialog({
     lab ? 'PATCH' : 'POST',
     lab ? `/api/labs/${lab.id}` : `/api/cases/${caseId}/labs`,
     {
-      success: lab ? 'Laboratory record updated.' : 'Laboratory record added.',
-      label: (b) => `Lab record ${b.sampleId} (${code})`,
+      success: '',
+      label: (b) => `Sample ${b.sampleId} (${code})`,
       form,
-      onDone: () => {
+      onDone: (res: any) => {
         onOpenChange(false);
+        // The case status follows the samples: say when it changed.
+        const status = res.queued ? null : (res.caseStatus as CaseStatus | null);
+        toast.success(
+          `${lab ? 'Sample updated.' : 'Sample added.'}${status ? ` The case is now: ${CASE_STATUS_LABELS[status]}.` : ''}`,
+        );
         onSaved?.({ result: form.getValues('result'), sentAt: form.getValues('sentAt') || undefined });
       },
     },
@@ -704,7 +622,7 @@ export function LabDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={lab ? `Update lab record ${lab.sampleId}` : 'Add lab record'}
+      title={lab ? `Update sample ${lab.sampleId}` : `Add sample — ${code}`}
       size="lg"
       footer={
         <>
@@ -844,7 +762,10 @@ export function ResponseDialog({
   const form = useZodForm(responseCreateSchema, {});
   useResetOnOpen(open, form, {
     type: response?.type ?? presetType ?? 'OWNER_NOTIFICATION',
-    status: response?.status ?? 'COMPLETED',
+    // A quarantine, restriction or checkpoint starts out in force; most other activities are done on the day.
+    status:
+      response?.status ??
+      (presetType && RESPONSE_TYPES_WITH_END.includes(presetType) ? 'ONGOING' : 'COMPLETED'),
     date: response?.date ?? isoDate(),
     endDate: response?.endDate ?? '',
     location: response?.location ?? '',
@@ -880,6 +801,11 @@ export function ResponseDialog({
   const culling = type === 'CULLING_DEPOPULATION';
   const withEnd = RESPONSE_TYPES_WITH_END.includes(type);
   const withPlace = RESPONSE_TYPES_WITH_LOCATION.includes(type);
+  // New activity: a quarantine, restriction or checkpoint starts as "Ongoing" (in force).
+  useEffect(() => {
+    if (!open || response || !type || form.getFieldState('status').isDirty) return;
+    form.setValue('status', withEnd ? 'ONGOING' : 'COMPLETED');
+  }, [open, response, type, withEnd, form]);
   return (
     <Dialog
       open={open}
@@ -934,9 +860,19 @@ export function ResponseDialog({
         </Field>
         {withEnd ? (
           <Field
-            label={type === 'QUARANTINE' ? 'Quarantine until' : 'Until (lifted / ends)'}
+            label={
+              status === 'COMPLETED'
+                ? 'Date lifted *'
+                : type === 'QUARANTINE'
+                  ? 'Quarantine until'
+                  : 'Until (lifted / ends)'
+            }
             error={err(e, 'endDate')}
-            hint="You'll be reminded when it is due to end."
+            hint={
+              status === 'COMPLETED'
+                ? 'It stays in force until this date.'
+                : "It stays in force until this date; you'll be reminded when it is due to end."
+            }
           >
             <Input type="date" min={date || minDate || MIN_DATE} {...form.register('endDate')} />
           </Field>

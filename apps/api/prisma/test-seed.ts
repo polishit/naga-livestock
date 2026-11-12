@@ -1319,7 +1319,7 @@ async function main() {
       affected: 8,
       deaths: 2,
       reported: '2026-09-08',
-      status: 'AWAITING_RESULT',
+      status: 'SENT_TO_LAB',
       symptoms: 'Two pigs died suddenly; others feverish with reddish skin.',
       by: 'MARK',
       related: 1,
@@ -1463,7 +1463,7 @@ async function main() {
       affected: 5,
       deaths: 1,
       reported: '2026-09-24',
-      status: 'AWAITING_RESULT',
+      status: 'SENT_TO_LAB',
       symptoms: 'Drooling, blisters on the mouth and feet, limping, not eating.',
       by: 'JOY',
       visits: [
@@ -1654,7 +1654,7 @@ async function main() {
       status: 'POSITIVE',
       symptoms: 'High fever, swollen throat, drooling, difficult breathing.',
       by: 'JOY',
-      steps: { SAMPLE_COLLECTED: 0, SENT_TO_LAB: 1, AWAITING_RESULT: 2, POSITIVE: 7 },
+      steps: { SAMPLE_COLLECTED: 0, SENT_TO_LAB: 1, POSITIVE: 7 },
       visits: [
         {
           on: 0,
@@ -1737,12 +1737,11 @@ async function main() {
       voided: { on: 1, reason: 'Duplicate of CASE-0011, reported twice by the barangay' },
     },
   ];
-  const ORDER = ['SUSPECTED', 'SAMPLE_COLLECTED', 'SENT_TO_LAB', 'AWAITING_RESULT', 'POSITIVE'] as const;
+  const ORDER = ['SUSPECTED', 'SAMPLE_COLLECTED', 'SENT_TO_LAB', 'POSITIVE'] as const;
   const STEP_DAYS: Record<string, number> = {
     SUSPECTED: 0,
     SAMPLE_COLLECTED: 1,
     SENT_TO_LAB: 2,
-    AWAITING_RESULT: 3,
     POSITIVE: 8,
     NEGATIVE: 8,
   };
@@ -1750,7 +1749,6 @@ async function main() {
     SUSPECTED: 'Case reported',
     SAMPLE_COLLECTED: 'Samples collected during the site visit',
     SENT_TO_LAB: 'Samples sent to RADDL',
-    AWAITING_RESULT: 'Received by the laboratory',
     POSITIVE: 'Laboratory confirmed: positive',
     NEGATIVE: 'Laboratory result: negative',
   };

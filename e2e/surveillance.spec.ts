@@ -38,61 +38,69 @@ test('report a disease incident and move it through the surveillance stages', as
   await page.getByRole('button', { name: 'Submit report' }).click();
   await expectToast(page, 'Disease incident reported.');
   await expect(page.getByRole('heading', { name: 'CASE-0014 · Avian Influenza (Bird Flu)' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Details' }).click();
   await expect(page.getByText('(Farm Coordinates)')).toBeVisible();
-  // The case says what to do first.
-  const next = page.getByLabel('Next step');
-  await expect(next).toContainText('Record the first site visit');
+  await page.getByRole('tab', { name: 'Steps' }).click();
+  // The case is one checklist; the step to do now is marked.
+  const step = (n: number, name: string) => page.getByRole('listitem', { name: `Step ${n}: ${name}` });
+  await expect(step(2, 'Site visit')).toContainText('Do this now');
+  // Nobody types the status in.
+  await expect(page.getByRole('button', { name: 'Update Status' })).toHaveCount(0);
 
-  // Status workflow
-  await page.getByRole('button', { name: 'Update Status' }).click();
-  await expect(dialog(page).getByLabel('New status')).toHaveValue('SAMPLE_COLLECTED');
-  await dialog(page).getByLabel('Note').fill('Swabs taken');
-  await dialog(page).getByRole('button', { name: 'Confirm' }).click();
-  await expectToast(page, 'Case status updated.');
-  await expect(page.getByText('Sample Collected').first()).toBeVisible();
-
-  // Investigation
-  await page.getByRole('tab', { name: 'Investigation' }).click();
-  await page.getByRole('button', { name: 'Add investigation' }).click();
+  // 2. Site visit: dead animals found raise the case's deaths.
+  await step(2, 'Site visit').getByRole('button', { name: 'Record site visit' }).click();
   await expect(dialog(page).getByRole('button', { name: 'Save' })).toBeDisabled();
-  await dialog(page).getByLabel('Findings / summary').fill('Visited again; 4 deaths confirmed.');
+  await dialog(page).getByLabel('Findings / summary').fill('Visited; 6 dead counted.');
+  await dialog(page).getByLabel('Dead at the visit').fill('6');
   await dialog(page).getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Investigation recorded.');
-  await expect(page.getByRole('cell', { name: 'Visited again; 4 deaths confirmed.' })).toBeVisible();
-  // After the visit, the next step moves on to the laboratory.
-  await expect(next).toContainText('Collect samples and add a lab record');
+  await expectToast(page, 'Site visit recorded. Case deaths updated: 4 → 6.');
+  await expect(step(2, 'Site visit')).toContainText('Visited; 6 dead counted.');
+  await expect(step(3, 'Samples & laboratory result')).toContainText('Do this now');
 
-  // Laboratory (required-field validation first), started from the next-step button
-  await next.getByRole('button', { name: 'Add lab record' }).click();
+  // 3. Samples: the status follows each sample (required-field validation first).
+  const samples = step(3, 'Samples & laboratory result');
+  await samples.getByRole('button', { name: 'Add sample' }).click();
   await dialog(page).getByRole('button', { name: 'Save' }).click();
   await expect(dialog(page).getByText('Required')).toBeVisible();
   await dialog(page).getByLabel('Sample ID number').fill('RADDL-CASE-0014');
   await dialog(page).getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Laboratory record added.');
-  await expect(page.getByRole('cell', { name: 'RADDL-CASE-0014' })).toBeVisible();
+  await expectToast(page, 'Sample added. The case is now: Sample Collected.');
+  await samples.getByRole('button', { name: 'Enter date sent' }).click();
+  await dialog(page).getByLabel('Date sent').fill(new Date().toISOString().slice(0, 10));
+  await dialog(page).getByRole('button', { name: 'Save' }).click();
+  await expectToast(page, 'Sample updated. The case is now: Sent to Laboratory.');
+  await expect(samples).toContainText('Waiting for the result of RADDL-CASE-0014');
+  await samples.getByRole('button', { name: 'Enter result' }).click();
+  await dialog(page).getByLabel('Result', { exact: true }).selectOption('POSITIVE');
+  await dialog(page).getByLabel('Result date').fill(new Date().toISOString().slice(0, 10));
+  await dialog(page).getByRole('button', { name: 'Save' }).click();
+  await expectToast(page, 'Sample updated. The case is now: Positive.');
+  await expect(samples).toContainText('Done');
 
-  // Response
-  await page.getByRole('tab', { name: 'Response' }).click();
-  await expect(page.getByText('Farms within 1.00 km')).toBeVisible();
-  await page.getByRole('button', { name: 'Log activity' }).click();
-  await dialog(page).getByLabel('Activity type').selectOption('QUARANTINE');
+  // 4. Response: positive, so the quarantine is suggested.
+  const response = step(4, 'Response');
+  await expect(response).toContainText('Do this now');
+  await response.getByRole('button', { name: 'Log quarantine' }).click();
+  await expect(dialog(page).getByLabel('Activity type')).toHaveValue('QUARANTINE');
   await dialog(page).getByLabel('Personnel involved').fill('City Vet Team B');
   await dialog(page).getByLabel('Remarks').fill('Farm placed under quarantine.');
   await dialog(page).getByRole('button', { name: 'Save' }).click();
   await expectToast(page, 'Response activity logged.');
-  await expect(page.getByText('Farm placed under quarantine.')).toBeVisible();
+  await expect(response).toContainText('In force');
 
-  // Overview: sample → testing → result steps and the response status.
-  await page.getByRole('tab', { name: 'Overview' }).click();
-  await expect(page.getByRole('heading', { name: 'Sample, Testing and Result' })).toBeVisible();
-  await expect(page.getByText('RADDL-CASE-0014').first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Response Status' })).toBeVisible();
+  // 6. Closing waits for the quarantine to be lifted and the head count to be updated.
+  const close = step(6, 'Close the case');
+  await expect(close).toContainText('still planned, ongoing or in force');
+  await expect(close).toContainText("not yet taken off the farm's head count");
+  await expect(close.getByRole('button', { name: 'Close case' })).toBeDisabled();
 
-  // Timeline: every event in date order.
+  // Timeline: every event in date order, including the automatic status changes.
   await page.getByRole('tab', { name: 'Timeline' }).click();
   await expect(page.getByRole('heading', { name: 'Incident Timeline' })).toBeVisible();
   await expect(page.getByText('Incident reported', { exact: true })).toBeVisible();
-  await expect(page.getByText('Swabs taken').first()).toBeVisible();
+  await expect(
+    page.getByText(/Status set from the laboratory samples: Sent to Laboratory → Positive/).first(),
+  ).toBeVisible();
   await expect(page.getByText('Case reported', { exact: true })).toBeVisible();
 });
 
@@ -172,12 +180,13 @@ test('incident board view and the investigation / response work lists', async ({
   await expect(page.getByText(/Lab samples awaiting results/i)).toBeVisible();
   await expect(page.getByText(/Field visits due/i)).toBeVisible();
   await shot(page, 'investigation-worklist');
-  // A visit row opens the case on its Investigation tab.
+  // A visit row opens the case at its Site visit step.
   const visits = page.locator('.card').filter({ hasText: 'Field visits due' });
   await expect(visits.getByRole('row').nth(1)).toBeVisible();
   await visits.getByRole('row').nth(1).click();
   await expect(page).toHaveURL(/\/cases\/\d+\?tab=investigation/);
-  await expect(page.getByRole('tab', { name: 'Investigation' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('listitem', { name: 'Step 2: Site visit' })).toBeInViewport();
 
   await page.goto('/response');
   await expect(page.getByText('Measures on open cases')).toBeVisible();
@@ -220,28 +229,33 @@ test('report a linked incident from radius analysis, then close and reopen the c
   await page.getByLabel('Animals affected').fill('3');
   await page.getByRole('button', { name: 'Submit report' }).click();
   await expectToast(page, 'Disease incident reported.');
+  await page.getByRole('tab', { name: 'Details' }).click();
   await expect(page.getByText('Reported as a linked incident of')).toBeVisible();
   await page.getByRole('link', { name: 'CASE-0001' }).click();
+  await page.getByRole('tab', { name: 'Details' }).click();
   await expect(page.getByText('Linked incidents')).toBeVisible();
   await expect(page.getByRole('link', { name: /^CASE-001[45]$/ })).toBeVisible();
 
-  // CASE-0001 is Positive, so it can be closed.
+  // CASE-0001 is Positive with every step done, so it can be closed.
+  await page.getByRole('tab', { name: 'Steps' }).click();
   await page.getByRole('button', { name: 'Close case' }).first().click();
   await dialog(page).getByRole('button', { name: 'Close case' }).click();
   await expect(dialog(page).getByText('Select the outcome')).toBeVisible();
   await expect(dialog(page).getByText('Write the closing remarks / outcome')).toBeVisible();
+  // Only the reasons that fit a positive result are offered.
+  await expect(
+    dialog(page).getByLabel('Outcome').locator('option', { hasText: 'Disease not confirmed' }),
+  ).toHaveCount(0);
   await dialog(page).getByLabel('Outcome').selectOption('CONTAINED');
   await dialog(page).getByLabel('Closing remarks').fill('Quarantine lifted; no new deaths for 30 days.');
   await dialog(page).getByRole('button', { name: 'Close case' }).click();
   await expectToast(page, 'CASE-0001 closed.');
   await expect(page.getByText('This case is read-only.')).toBeVisible();
-  await expect(page.getByText('Contained — no further spread')).toBeVisible();
+  await expect(page.getByText('Contained — no further spread').first()).toBeVisible();
   // Records stay visible but locked.
-  await page.getByRole('tab', { name: 'Laboratory' }).click();
-  await expect(page.getByText(/This case is closed: these records are kept/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Enter result' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Add lab record' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Update Status' })).toHaveCount(0);
+  await expect(page.getByRole('listitem', { name: 'Step 6: Close the case' })).toContainText('Contained');
+  await expect(page.getByRole('button', { name: /Add another sample|Add sample/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Record follow-up visit' })).toHaveCount(0);
 
   // It leaves the open list and appears under Closed.
   await page.goto('/cases');
@@ -259,34 +273,55 @@ test('report a linked incident from radius analysis, then close and reopen the c
   await expect(page.getByRole('button', { name: 'Close case' }).first()).toBeVisible();
 });
 
-test('entering a lab result offers the matching status; more deaths prompt a population update', async ({
+test('a negative result sets the status by itself; a never-tested case closes as not confirmed; more deaths prompt a head count update', async ({
   page,
 }) => {
-  // CASE-0003 is awaiting its result.
-  await page.goto('/cases/3');
-  await page.getByRole('tab', { name: 'Laboratory' }).click();
-  await page.getByRole('table').getByRole('button', { name: 'Enter result' }).click();
+  // CASE-0003 is at the laboratory.
+  await page.goto('/cases/3?tab=laboratory');
+  const samples = page.getByRole('listitem', { name: 'Step 3: Samples & laboratory result' });
+  await samples.getByRole('button', { name: 'Enter result' }).click();
   await dialog(page).getByLabel('Result', { exact: true }).selectOption('NEGATIVE');
   await dialog(page).getByRole('button', { name: 'Save' }).click();
   await expect(dialog(page).getByText('Enter the date the result was released')).toBeVisible();
   await dialog(page).getByLabel('Result date').fill('2026-09-15');
   await dialog(page).getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Laboratory record updated.');
-  await expect(dialog(page).getByLabel('New status')).toHaveValue('NEGATIVE');
-  await dialog(page).getByRole('button', { name: 'Confirm' }).click();
-  await expectToast(page, 'Case status updated.');
+  await expectToast(page, 'Sample updated. The case is now: Negative.');
+  await expect(page.getByText('Negative').first()).toBeVisible();
 
-  // CASE-0008: two more deaths → reminder → pre-filled population update.
+  // CASE-0006 was never tested: it can be closed, but only as not confirmed / recovered / other.
+  await page.goto('/cases/6');
+  const close = page.getByRole('listitem', { name: 'Step 6: Close the case' });
+  await expect(close).toContainText('you can close the case now');
+  await close.getByRole('button', { name: 'Close case' }).click();
+  const options = dialog(page).getByLabel('Outcome').locator('option');
+  await expect(options).toHaveText([
+    'Select...',
+    'Disease not confirmed',
+    'Resolved — animals recovered',
+    'Other',
+  ]);
+  await dialog(page).getByLabel('Outcome').selectOption('NOT_CONFIRMED');
+  await dialog(page)
+    .getByLabel('Closing remarks')
+    .fill('Animals recovered after two days; owner declined sampling.');
+  await dialog(page).getByRole('button', { name: 'Close case' }).click();
+  await expectToast(page, 'CASE-0006 closed.');
+  await page.getByRole('button', { name: 'Reopen case' }).click();
+  await expectToast(page, 'Case reopened.');
+
+  // CASE-0008: two more deaths → step 5 → pre-filled head count update.
   await page.goto('/cases/8');
-  await page.getByRole('button', { name: 'Edit details' }).click();
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: /Edit case details/ }).click();
   await dialog(page).getByLabel('Deaths').fill('3');
   await dialog(page).getByRole('button', { name: 'Save changes' }).click();
   await expectToast(page, 'CASE-0008 updated.');
-  await expect(page.getByText(/animal\(s\) died or were culled/)).toBeVisible();
-  await page.getByRole('button', { name: 'Update population' }).click();
+  const head = page.getByRole('listitem', { name: 'Step 5: Update the head count' });
+  await expect(head).toContainText(/animal\(s\) died or were culled/);
+  await head.getByRole('button', { name: 'Update head count' }).click();
   await expect(dialog(page).getByText('Suggested counts take 2 swine off for CASE-0008')).toBeVisible();
   await dialog(page).getByRole('button', { name: 'Save head count' }).click();
-  await expect(page.getByText(/animal\(s\) died or were culled/)).toHaveCount(0);
+  await expect(head).toContainText('already reflects');
   await page.getByRole('tab', { name: 'Timeline' }).click();
   await expect(page.getByText(/deaths: 1 → 3/).first()).toBeVisible();
 });
