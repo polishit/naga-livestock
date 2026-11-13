@@ -6,7 +6,9 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import {
   BARANGAYS,
-  CASE_STATUS_LABELS,
+  CASE_CLASS_LABELS,
+  caseClass,
+  titleCase,
   MAX_PHOTO_MB,
   OFFICE_NAME,
   REPORT_TYPES,
@@ -333,61 +335,165 @@ metricsRouter.get(
 
 /* ---------------- search, notifications, lookups ---------------- */
 
+/**
+ * Search everything: owners, farms, tagged animals, disease cases, strays, laboratory samples and
+ * submissions. The top bar asks for a few of each; the Search page asks for more, and can narrow
+ * by type, barangay and species.
+ */
 metricsRouter.get(
   '/search',
   ah(async (req, res) => {
-    const q = qstr(req.query.q);
-    if (!q || q.length < 2) return res.json([]);
-    const like = { contains: q };
-    const [owners, farms, animals, cases] = await Promise.all([
-      prisma.owner.findMany({
-        where: {
-          status: { not: 'ARCHIVED' },
-          OR: [{ fullName: like }, { code: like }, { contact: like }, { rsbsa: like }],
-        },
-        orderBy: { fullName: 'asc' },
-        take: 5,
-      }),
-      prisma.farm.findMany({
-        where: {
-          archived: false,
-          OR: [{ name: like }, { code: like }, { barangay: like }, { owner: { fullName: like } }],
-        },
-        include: { owner: { select: { fullName: true } } },
-        orderBy: { name: 'asc' },
-        take: 5,
-      }),
-      prisma.animal.findMany({ where: { OR: [{ code: like }, { earTag: like }] }, take: 5 }),
-      prisma.diseaseCase.findMany({
-        where: { voidedAt: null, OR: [{ code: like }, { disease: like }, { barangay: like }] },
-        orderBy: { reportedAt: 'desc' },
-        take: 5,
-      }),
+    const q = (qstr(req.query.q) ?? '').trim();
+    const type = qstr(req.query.type);
+    const barangay = qstr(req.query.barangay);
+    const species = qstr(req.query.species);
+    const take = Math.min(100, Math.max(1, Number(req.query.limit) || 5));
+    // With a barangay or species chosen, an empty search lists everything that matches them.
+    if (q.length < 2 && !barangay && !species) return res.json([]);
+    const like = q.length >= 2 ? { contains: q } : undefined;
+    const want = (t: string) => !type || type === t;
+    const or = <T>(xs: T[]) => (like ? { OR: xs } : {});
+    const [owners, farms, animals, cases, strays, samples, submissions] = await Promise.all([
+      want('owner') && !species
+        ? prisma.owner.findMany({
+            where: {
+              status: { not: 'ARCHIVED' },
+              ...(barangay ? { barangay } : {}),
+              ...or([{ fullName: like }, { code: like }, { contact: like }, { rsbsa: like }]),
+            },
+            orderBy: { fullName: 'asc' },
+            take,
+          })
+        : [],
+      want('farm')
+        ? prisma.farm.findMany({
+            where: {
+              archived: false,
+              ...(barangay ? { barangay } : {}),
+              ...(species ? { groups: { some: { species, archived: false } } } : {}),
+              ...or([{ name: like }, { code: like }, { barangay: like }, { owner: { fullName: like } }]),
+            },
+            include: { owner: { select: { fullName: true } } },
+            orderBy: { name: 'asc' },
+            take,
+          })
+        : [],
+      want('animal')
+        ? prisma.animal.findMany({
+            where: {
+              ...(species ? { species } : {}),
+              ...(barangay ? { group: { farm: { barangay } } } : {}),
+              ...or([
+                { code: like },
+                { earTag: like },
+                { colcNo: like },
+                { group: { farm: { owner: { fullName: like } } } },
+              ]),
+            },
+            include: { group: { include: { farm: { include: { owner: true } } } } },
+            take,
+          })
+        : [],
+      want('case')
+        ? prisma.diseaseCase.findMany({
+            where: {
+              voidedAt: null,
+              ...(barangay ? { barangay } : {}),
+              ...(species ? { species } : {}),
+              ...or([{ code: like }, { disease: like }, { barangay: like }, { owner: { fullName: like } }]),
+            },
+            include: { farm: true, _count: { select: { investigations: { where: { voidedAt: null } } } } },
+            orderBy: { reportedAt: 'desc' },
+            take,
+          })
+        : [],
+      want('stray')
+        ? prisma.strayIncident.findMany({
+            where: {
+              ...(barangay ? { barangay } : {}),
+              ...(species ? { species } : {}),
+              ...or([{ code: like }, { earTag: like }, { owner: { fullName: like } }, { location: like }]),
+            },
+            include: { owner: true },
+            orderBy: { discoveredAt: 'desc' },
+            take,
+          })
+        : [],
+      want('sample')
+        ? prisma.labRecord.findMany({
+            where: {
+              voidedAt: null,
+              ...(barangay ? { farm: { barangay } } : {}),
+              ...(species ? { species } : {}),
+              ...or([{ sampleId: like }, { labReference: like }, { farm: { owner: { fullName: like } } }]),
+            },
+            include: { farm: { include: { owner: true } }, case: true, submission: true },
+            orderBy: { id: 'desc' },
+            take,
+          })
+        : [],
+      want('submission') && !barangay && !species && like
+        ? prisma.labSubmission.findMany({
+            where: {
+              OR: [{ code: like }, { accessionNo: like }, { requestId: like }, { examination: like }],
+            },
+            orderBy: { id: 'desc' },
+            take,
+          })
+        : [],
     ]);
     res.json([
       ...owners.map((o) => ({
         type: 'Owner',
         label: o.fullName,
-        sub: `${o.code} · ${o.barangay}`,
+        sub: `${o.code} · ${o.barangay}${o.rsbsa ? ` · RSBSA ${o.rsbsa}` : ''}`,
+        barangay: o.barangay,
         href: `/owners/${o.id}`,
       })),
       ...farms.map((f) => ({
         type: 'Farm',
         label: f.name,
         sub: `${f.code} · ${f.barangay} · ${f.owner.fullName}`,
+        barangay: f.barangay,
         href: `/farms/${f.id}`,
       })),
       ...animals.map((a) => ({
         type: 'Animal',
-        label: a.code,
-        sub: `${a.earTag ?? 'No tag'} · ${a.species}`,
+        label: a.earTag ? `${a.earTag} · ${a.code}` : a.code,
+        sub: `${a.species} · ${a.group.farm.owner.fullName} · ${a.group.farm.barangay}${a.status !== 'ACTIVE' ? ` · ${a.status.toLowerCase()}` : ''}`,
+        barangay: a.group.farm.barangay,
+        species: a.species,
         href: `/animals/${a.id}`,
       })),
       ...cases.map((c) => ({
         type: 'Case',
         label: `${c.code} · ${c.disease}`,
-        sub: `${c.barangay} · ${CASE_STATUS_LABELS[c.status]}`,
+        sub: `${c.farm.name} · ${c.barangay} · ${CASE_CLASS_LABELS[caseClass({ status: c.status, closed: c.closedAt != null, visited: c._count.investigations > 0 })]}`,
+        barangay: c.barangay,
+        species: c.species,
         href: `/cases/${c.id}`,
+      })),
+      ...strays.map((x) => ({
+        type: 'Stray',
+        label: `${x.code} · ${x.species}`,
+        sub: `${x.barangay} · ${x.owner?.fullName ?? 'Unknown owner'} · ${x.status === 'CLOSED' ? 'Closed' : 'Reported'}`,
+        barangay: x.barangay,
+        species: x.species,
+        href: `/strays?open=${x.id}`,
+      })),
+      ...samples.map((l) => ({
+        type: 'Sample',
+        label: `${l.sampleId} · ${titleCase(l.result)}`,
+        sub: `${l.farm?.owner.fullName ?? '—'} · ${l.farm?.barangay ?? '—'} · ${l.case ? l.case.code : (l.submission?.code ?? '')}`,
+        barangay: l.farm?.barangay,
+        species: l.species,
+        href: l.case ? `/cases/${l.caseId}?tab=laboratory` : `/lab-submissions/${l.submissionId}`,
+      })),
+      ...submissions.map((b) => ({
+        type: 'Lab batch',
+        label: `${b.code} · ${b.examination}`,
+        sub: `${b.accessionNo ? `Accession ${b.accessionNo} · ` : ''}${fmtDate(ymd(b.submittedAt))}`,
+        href: `/lab-submissions/${b.id}`,
       })),
     ]);
   }),

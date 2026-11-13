@@ -2,6 +2,17 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   CASE_OUTCOME_LABELS,
+  ANIMAL_CONDITIONS,
+  ANIMAL_CONDITION_LABELS,
+  DEFAULT_LABORATORY,
+  DEFAULT_LAB_TEST,
+  RESULT_RECEIVED_LABELS,
+  RESULT_RECEIVED_VIA,
+  SAMPLE_ORGANS,
+  SPECIMEN_TYPES,
+  specimenFor,
+  CLINICAL_SIGNS,
+  CLINICAL_SIGN_LABELS,
   CASE_STATUS_LABELS,
   DISPOSAL_METHODS,
   INVESTIGATION_VISIT_LABELS,
@@ -50,10 +61,37 @@ export interface LabLite {
   voided?: boolean;
 }
 
+/** The clinical signs asked about when a disease is reported (tick all that were seen). */
+export function ClinicalSignsPicker({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Clinical signs"
+      className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2"
+    >
+      {CLINICAL_SIGNS.map((c) => (
+        <Checkbox
+          key={c}
+          label={CLINICAL_SIGN_LABELS[c]}
+          checked={value.includes(c)}
+          onChange={(on) => onChange(on ? [...value, c] : value.filter((x) => x !== c))}
+        />
+      ))}
+    </div>
+  );
+}
+
 export interface CaseEditRecord {
   id: number;
   code: string;
   disease: string;
+  clinicalSigns?: string[];
   zone: string | null;
   affected: number;
   deaths: number;
@@ -80,6 +118,7 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
     deaths: String(c.deaths),
     symptomsDate: c.symptomsDate ?? '',
     symptoms: c.symptoms ?? '',
+    clinicalSigns: c.clinicalSigns ?? [],
     reportedBy: c.reportedBy ?? '',
     assignedToId: c.assignedToId ? String(c.assignedToId) : '',
     sampleInfo: c.sampleInfo ?? '',
@@ -155,13 +194,19 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
         <Field label="Reported by" error={err(e, 'reportedBy')}>
           <Input {...form.register('reportedBy')} />
         </Field>
-        <Field label="Observed symptoms" error={err(e, 'symptoms')} className="sm:col-span-2">
+        <Field label="Clinical signs seen" className="sm:col-span-2">
+          <ClinicalSignsPicker
+            value={form.watch('clinicalSigns') ?? []}
+            onChange={(v) => form.setValue('clinicalSigns', v as any, { shouldDirty: true })}
+          />
+        </Field>
+        <Field label="Other signs / history" error={err(e, 'symptoms')} className="sm:col-span-2">
           <Textarea rows={3} {...form.register('symptoms')} />
         </Field>
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
           <Input {...form.register('remarks')} />
         </Field>
-        <p className="text-[12.5px] text-slate-400 sm:col-span-2">
+        <p className="text-[13px] text-slate-400 sm:col-span-2">
           Every change is written to the case History. Species, farm and report date cannot be changed —
           report a new incident instead.
         </p>
@@ -217,7 +262,7 @@ export function VoidDialog({
         <Field label="Reason *" error={err(e, 'reason')}>
           <Textarea rows={3} placeholder="e.g. Entered on the wrong farm" {...form.register('reason')} />
         </Field>
-        <p className="text-[12.5px] text-slate-500">
+        <p className="text-[13px] text-slate-500">
           The record is kept (struck through) for the audit trail, but no longer counts in any figure,
           reminder or report.
         </p>
@@ -277,7 +322,7 @@ export function CaseCloseDialog({
         className="space-y-4"
       >
         {blockers.length > 0 && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14px] text-slate-700">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14px] text-slate-700">
             <div className="font-medium">Finish these first:</div>
             <ul className="mt-1 list-disc pl-5">
               {blockers.map((b) => (
@@ -286,7 +331,7 @@ export function CaseCloseDialog({
             </ul>
           </div>
         )}
-        <p className="rounded-md bg-slate-50 px-3 py-2 text-[14px] text-slate-600">
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-[14px] text-slate-600">
           Result: <b className="font-medium text-slate-800">{CASE_STATUS_LABELS[status]}</b>
           {status === 'POSITIVE'
             ? ' — choose how the outbreak ended.'
@@ -311,7 +356,7 @@ export function CaseCloseDialog({
             {...form.register('note')}
           />
         </Field>
-        <p className="text-[12.5px] text-slate-400">
+        <p className="text-[13px] text-slate-400">
           A closed case keeps its visits, samples, responses and history (they still appear in reports), but
           nothing can be added or changed. An administrator can reopen it to make a correction; the reopening
           is recorded in the history.
@@ -560,6 +605,13 @@ export interface LabEditRecord {
   remarks?: string | null;
   updatedAt?: string | null;
   updatedBy?: string | null;
+  animalAge?: string | null;
+  animalSex?: string | null;
+  condition?: string | null;
+  hoursSinceDeath?: number | null;
+  organs?: string | null;
+  receivedVia?: string | null;
+  submissionCode?: string | null;
 }
 
 export function LabDialog({
@@ -583,11 +635,17 @@ export function LabDialog({
   const form = useZodForm(labCreateSchema, {});
   useResetOnOpen(open, form, {
     sampleId: lab?.sampleId ?? '',
-    sampleType: lab ? (lab.sampleType ?? '') : 'Whole blood',
+    sampleType: lab ? (lab.sampleType ?? '') : 'Blood',
     sampleCount: lab?.sampleCount != null ? String(lab.sampleCount) : '1',
-    testMethod: lab?.testMethod ?? '',
+    condition: lab ? (lab.condition ?? '') : 'LIVE',
+    hoursSinceDeath: lab?.hoursSinceDeath != null ? String(lab.hoursSinceDeath) : '',
+    organs: lab?.organs ?? '',
+    animalAge: lab?.animalAge ?? '',
+    animalSex: lab?.animalSex ?? '',
+    receivedVia: lab?.receivedVia ?? 'EMAIL',
+    testMethod: lab ? (lab.testMethod ?? '') : DEFAULT_LAB_TEST,
     collectedAt: lab ? (lab.collectedAt ?? '') : isoDate(),
-    laboratory: lab ? (lab.laboratory ?? '') : 'RADDL Region V, Pili',
+    laboratory: lab ? (lab.laboratory ?? '') : DEFAULT_LABORATORY,
     labReference: lab?.labReference ?? '',
     submittedBy: lab ? (lab.submittedBy ?? '') : (user?.name ?? ''),
     sentAt: lab?.sentAt ?? '',
@@ -617,6 +675,8 @@ export function LabDialog({
   const collected = form.watch('collectedAt');
   const sent = form.watch('sentAt');
   const result = form.watch('result');
+  const condition = form.watch('condition');
+  const specimen = form.watch('sampleType');
   const start = minDate ?? MIN_DATE;
   return (
     <Dialog
@@ -641,28 +701,69 @@ export function LabDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
-        <p className="text-[12.5px] font-medium uppercase tracking-wide text-slate-500 sm:col-span-3">
-          Sample
-        </p>
+        <p className="text-[13px] font-medium uppercase tracking-wide text-slate-500 sm:col-span-3">Sample</p>
         <Field label="Sample ID number *" error={err(e, 'sampleId')}>
           <Input {...form.register('sampleId')} aria-invalid={!!e.sampleId} placeholder={`RADDL-${code}`} />
         </Field>
-        <Field label="Sample type" error={err(e, 'sampleType')}>
+        <Field
+          label="Animal"
+          error={err(e, 'condition')}
+          hint="A live animal gives blood; a dead one gives organs."
+        >
+          <Select
+            {...form.register('condition', {
+              onChange: (ev) => {
+                form.setValue('sampleType', specimenFor(ev.target.value) as any);
+                if (ev.target.value === 'DEAD' && !form.getValues('organs'))
+                  form.setValue('organs', 'Spleen, Lymph node, Liver' as any);
+              },
+            })}
+          >
+            <option value="">Not recorded</option>
+            {ANIMAL_CONDITIONS.map((c) => (
+              <option key={c} value={c}>
+                {ANIMAL_CONDITION_LABELS[c]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Specimen" error={err(e, 'sampleType')}>
           <Input {...form.register('sampleType')} list="sample-types" />
         </Field>
         <datalist id="sample-types">
-          {[
-            'Whole blood',
-            'Serum',
-            'Tissue (spleen, lymph node)',
-            'Nasal swab',
-            'Oral swab',
-            'Feces',
-            'Carcass',
-          ].map((t) => (
+          {SPECIMEN_TYPES.map((t) => (
             <option key={t} value={t} />
           ))}
         </datalist>
+        {specimen === 'Tissue / Organs' && (
+          <Field label="Organs taken *" error={err(e, 'organs')} className="sm:col-span-2">
+            <Input
+              {...form.register('organs')}
+              list="sample-organs"
+              placeholder="Spleen, Lymph node, Liver"
+            />
+            <datalist id="sample-organs">
+              {SAMPLE_ORGANS.map((o) => (
+                <option key={o} value={o} />
+              ))}
+            </datalist>
+          </Field>
+        )}
+        {condition === 'DEAD' && (
+          <Field label="Hours since death" error={err(e, 'hoursSinceDeath')}>
+            <Input type="number" min={0} {...form.register('hoursSinceDeath')} />
+          </Field>
+        )}
+        <Field label="Age of the animal" error={err(e, 'animalAge')}>
+          <Input {...form.register('animalAge')} placeholder="e.g. 3 m" />
+        </Field>
+        <Field label="Sex" error={err(e, 'animalSex')}>
+          <Select {...form.register('animalSex')}>
+            <option value="">—</option>
+            <option value="M">Male</option>
+            <option value="F">Female</option>
+          </Select>
+        </Field>
         <Field label="Number of samples" error={err(e, 'sampleCount')}>
           <Input type="number" min={1} {...form.register('sampleCount')} />
         </Field>
@@ -672,7 +773,7 @@ export function LabDialog({
         <Field label="Collected / submitted by" error={err(e, 'submittedBy')} className="sm:col-span-2">
           <Input {...form.register('submittedBy')} />
         </Field>
-        <p className="text-[12.5px] font-medium uppercase tracking-wide text-slate-500 sm:col-span-3">
+        <p className="text-[13px] font-medium uppercase tracking-wide text-slate-500 sm:col-span-3">
           Laboratory
         </p>
         <Field label="Laboratory" error={err(e, 'laboratory')}>
@@ -685,7 +786,11 @@ export function LabDialog({
           <Input {...form.register('labReference')} placeholder="From the lab's receipt" />
         </Field>
         <Field label="Test requested" error={err(e, 'testMethod')}>
-          <Input {...form.register('testMethod')} list="lab-tests" placeholder="e.g. PCR" />
+          <Input
+            {...form.register('testMethod')}
+            list="lab-tests"
+            placeholder="e.g. PCR – African Swine Fever (ASF)"
+          />
         </Field>
         <datalist id="lab-tests">
           {LAB_TEST_METHODS.map((t) => (
@@ -709,11 +814,22 @@ export function LabDialog({
             {...form.register('resultDate')}
           />
         </Field>
+        {result !== 'PENDING' && (
+          <Field label="Result received by" error={err(e, 'receivedVia')}>
+            <Select {...form.register('receivedVia')}>
+              {RESULT_RECEIVED_VIA.map((v) => (
+                <option key={v} value={v}>
+                  {RESULT_RECEIVED_LABELS[v]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Remarks / result details" error={err(e, 'remarks')} className="sm:col-span-3">
           <Textarea rows={2} {...form.register('remarks')} />
         </Field>
         {lab?.updatedAt && (
-          <p className="text-[12.5px] text-slate-400 sm:col-span-3">
+          <p className="text-[13px] text-slate-400 sm:col-span-3">
             Last changed {fmtDateTime(lab.updatedAt)}
             {lab.updatedBy ? ` by ${lab.updatedBy}` : ''}. Every change is written to the case History.
           </p>
@@ -913,7 +1029,24 @@ export function ResponseDialog({
             <Input {...form.register('location')} placeholder="e.g. Brgy. Pacol boundary, national road" />
           </Field>
         )}
-        <Field label="Personnel involved" error={err(e, 'personnel')} className="sm:col-span-2">
+        <Field
+          label={
+            type === 'DA_COORDINATION'
+              ? 'DA representative (name)'
+              : type === 'FARMER_EDUCATION'
+                ? 'Given by'
+                : 'Personnel involved'
+          }
+          error={err(e, 'personnel')}
+          className="sm:col-span-2"
+          hint={
+            type === 'DA_COORDINATION'
+              ? 'Who came from the DA to witness and document (letter date in the remarks).'
+              : type === 'FARMER_EDUCATION'
+                ? 'Topics in the remarks, e.g. cleaning, biosecurity, no swill feeding.'
+                : undefined
+          }
+        >
           <Input {...form.register('personnel')} />
         </Field>
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">

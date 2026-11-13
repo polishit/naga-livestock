@@ -574,6 +574,7 @@ async function wipe() {
   await prisma.caseStatusHistory.deleteMany();
   await prisma.investigation.deleteMany();
   await prisma.labRecord.deleteMany();
+  await prisma.labSubmission.deleteMany();
   await prisma.responseActivity.deleteMany();
   await prisma.diseaseCase.deleteMany();
   await prisma.farmVisit.deleteMany();
@@ -595,6 +596,7 @@ async function wipe() {
     'CaseStatusHistory',
     'Investigation',
     'LabRecord',
+    'LabSubmission',
     'ResponseActivity',
     'DiseaseCase',
     'Vaccination',
@@ -2031,6 +2033,7 @@ async function main() {
         heads: 40,
         amountCovered: 400000,
         startDate: D('2026-05-15'),
+        applicationDate: D('2026-05-15'),
         endDate: D('2027-05-14'),
         status: 'CLAIMED',
         remarks: 'ASF claim for 10 pigs (CASE-0001): filed 2026-09-12, paid 2026-10-20.',
@@ -2042,6 +2045,7 @@ async function main() {
         heads: 7,
         amountCovered: 280000,
         startDate: D('2026-06-01'),
+        applicationDate: D('2026-06-01'),
         endDate: D('2027-05-31'),
         status: 'ACTIVE',
       },
@@ -2052,6 +2056,7 @@ async function main() {
         heads: 14,
         amountCovered: 560000,
         startDate: D('2026-06-10'),
+        applicationDate: D('2026-06-10'),
         endDate: D('2027-06-09'),
         status: 'ACTIVE',
       },
@@ -2062,6 +2067,7 @@ async function main() {
         heads: 20,
         amountCovered: 180000,
         startDate: D('2025-07-01'),
+        applicationDate: D('2025-07-01'),
         endDate: D('2026-06-30'),
         status: 'EXPIRED',
         remarks: 'Not renewed',
@@ -2074,6 +2080,7 @@ async function main() {
         heads: 12,
         amountCovered: 480000,
         startDate: D(ago(345)),
+        applicationDate: D(ago(345)),
         endDate: D(ahead(20)),
         status: 'ACTIVE',
         remarks: 'Owner reminded to renew',

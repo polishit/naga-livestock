@@ -46,7 +46,7 @@ test('move a tagged animal to another group on its farm', async ({ page }) => {
   await shot(page, 'move-group');
   await d.getByRole('button', { name: 'Move animal' }).click();
   await expectToast(page, 'NC-C-0007 moved to its new group.');
-  await page.getByRole('tab', { name: 'Record history' }).click();
+  await page.getByRole('tab', { name: 'Activity log' }).click();
   await expect(page.getByText(/Moved from GRP-0021 to GRP-\d+ — Now adult/)).toBeVisible();
 });
 
@@ -205,21 +205,19 @@ test('cowlick is asked only for cattle and carabao', async ({ page }) => {
   await expect(d.getByLabel('Cowlick (hair whorl) pattern')).toHaveCount(0);
 });
 
-test('PCIC policy lists its insured ear tags', async ({ page }) => {
+test('PCIC application lists its insured ear tags', async ({ page }) => {
   await page.goto('/owners/8');
-  await page.getByRole('button', { name: 'Add Policy' }).click();
+  await page.getByRole('button', { name: 'Attach Application' }).click();
   const d = dialog(page);
-  const today = new Date().toLocaleDateString('en-CA');
-  await d.getByLabel('Policy number').fill('PCIC-E2E-0001');
-  await d.getByLabel('Species').selectOption('Cattle');
-  await d.getByLabel('Insured heads').fill('2');
-  await d.getByLabel('Coverage start').fill(today);
-  await d.getByLabel('Coverage end').fill(`${Number(today.slice(0, 4)) + 1}${today.slice(4)}`);
+  await d.getByLabel('Date of application *').fill('2026-02-03');
+  await d.getByLabel('Species insured').selectOption('Cattle');
   await d.getByLabel(/ET-2411/).check();
   await shot(page, 'pcic-animals');
   await d.getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Insurance policy recorded.');
-  await expect(page.getByRole('group', { name: /PCIC-E2E-0001/ }).getByText('ET-2411')).toBeVisible();
+  await expectToast(page, 'Insurance application attached.');
+  await expect(
+    page.getByRole('group', { name: 'Insurance application Feb 3, 2026' }).getByText('ET-2411'),
+  ).toBeVisible();
 });
 
 test('owners can be filtered by RSBSA registration', async ({ page }) => {

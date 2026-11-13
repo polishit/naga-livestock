@@ -11,8 +11,15 @@ import {
   MIN_DATE,
   OWNER_STATUSES,
   PCIC_STATUSES,
+  PCIC_APPLICATION_LABELS,
+  PCIC_APPLICATION_TYPES,
+  ANIMAL_PURPOSES,
+  ANIMAL_PURPOSE_LABELS,
+  isLargeRuminant,
+  isoDate,
   SEXES,
   SPECIES,
+  fmtDate,
   fmtMonth,
   isoMonth,
   farmCreateSchema,
@@ -40,7 +47,7 @@ import {
 } from '@/lib/hooks';
 import { MapView } from '@/components/MapView';
 import { BreakdownEditor, breakdownOk, cleanBreakdown } from '@/dialogs/services';
-import { AddressLookupHint, err, useZodForm } from '@/components/forms';
+import { AddressLookupHint, DocumentPicker, err, useZodForm } from '@/components/forms';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -216,7 +223,7 @@ export function OwnerDialog({
         </Field>
         {(String(err(e, 'fullName') ?? '').startsWith('Possible duplicate') ||
           form.watch('confirmDuplicate')) && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 sm:col-span-2">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 sm:col-span-2">
             <Checkbox
               label="This is a different person — save anyway"
               checked={!!form.watch('confirmDuplicate')}
@@ -343,7 +350,7 @@ export function ArchiveOwnerDialog({
     >
       {farms.length > 0 ? (
         <>
-          <div className="mb-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-[14.5px] text-red-700">
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[15px] text-red-700">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             This owner still has {farms.length} active farm(s). Reassign or archive each farm before archiving
             the owner.
@@ -426,15 +433,19 @@ export function ArchiveOwnerDialog({
 
 export interface PcicRecord {
   id: number;
-  policyNo: string;
+  /** Older records only */
+  policyNo: string | null;
   species: string;
-  heads: number;
-  amountCovered: number | null;
-  startDate: string;
-  endDate: string;
+  heads: number | null;
+  applicationDate: string | null;
+  applicationType: string;
+  subsidized: boolean;
+  rsbsaRef: string | null;
+  /** The scanned PCIC application */
+  fileKeys: string[];
   status: string;
   remarks: string | null;
-  /** Tagged animals insured by this policy. */
+  /** Tagged animals on the application. */
   animals?: { id: number; code: string; earTag: string | null }[];
 }
 
@@ -448,28 +459,46 @@ export interface InsurableAnimal {
   farmName: string;
 }
 
-/** Record a PCIC policy, or update one (e.g. mark it claimed or cancelled). */
+/**
+ * Livestock insurance: attach the scanned PCIC Application for Livestock Mortality Insurance and note
+ * its date, whether it is new or a renewal, the RSBSA subsidy and the ear tags on it.
+ */
 export function PcicDialog({
   open,
   onOpenChange,
   ownerId,
   policy,
   animals = [],
-}: DialogProps & { ownerId: number; policy?: PcicRecord | null; animals?: InsurableAnimal[] }) {
+  rsbsa,
+}: DialogProps & {
+  ownerId: number;
+  policy?: PcicRecord | null;
+  animals?: InsurableAnimal[];
+  /** The owner's RSBSA number (suggested as the subsidy reference). */
+  rsbsa?: string | null;
+}) {
   const form = useZodForm(pcicCreateSchema, {});
+  const [files, setFiles] = useState<File[]>([]);
+  const [keep, setKeep] = useState<string[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    setFiles([]);
+    setKeep(policy?.fileKeys ?? []);
+  }, [open, policy]);
   useResetOnOpen(open, form, {
-    policyNo: policy?.policyNo ?? '',
-    species: policy?.species ?? 'Swine',
-    heads: String(policy?.heads ?? 1),
-    amountCovered: policy?.amountCovered ?? '',
-    startDate: policy?.startDate ?? '',
-    endDate: policy?.endDate ?? '',
+    species: policy?.species ?? 'Cattle',
+    applicationDate: policy?.applicationDate ?? isoDate(),
+    applicationType: policy?.applicationType ?? 'NEW',
+    subsidized: policy?.subsidized ?? false,
+    rsbsaRef: policy?.rsbsaRef ?? rsbsa ?? '',
+    heads: policy?.heads != null ? String(policy.heads) : '',
     status: policy?.status ?? 'ACTIVE',
     remarks: policy?.remarks ?? '',
     animalIds: (policy?.animals ?? []).map((a) => String(a.id)),
   } as any);
-  // The owner's active animals of the policy's species (plus any already on the policy).
+  // The owner's active animals of the insured species (plus any already on the application).
   const species = form.watch('species');
+  const subsidized = !!form.watch('subsidized');
   const linked = new Set((policy?.animals ?? []).map((a) => a.id));
   const choices = animals.filter((a) => a.species === species && (a.status === 'ACTIVE' || linked.has(a.id)));
   const chosen = (form.watch('animalIds') || []) as string[];
@@ -477,8 +506,10 @@ export function PcicDialog({
     policy ? 'PATCH' : 'POST',
     policy ? `/api/owners/pcic/${policy.id}` : `/api/owners/${ownerId}/pcic`,
     {
-      success: policy ? 'Insurance policy updated.' : 'Insurance policy recorded.',
+      success: policy ? 'Insurance record updated.' : 'Insurance application attached.',
       form,
+      files: () => files,
+      photoField: 'fileKeys',
       onDone: () => onOpenChange(false),
     },
   );
@@ -487,7 +518,7 @@ export function PcicDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={policy ? `Update policy ${policy.policyNo}` : 'Add PCIC insurance policy'}
+      title={policy ? 'Update insurance record' : 'Attach PCIC insurance application'}
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -505,34 +536,64 @@ export function PcicDialog({
         onSubmit={form.handleSubmit((v) =>
           save.mutate({
             ...v,
+            fileKeys: keep,
             // Animals of another species (ticked before the species changed) are not sent.
             animalIds: ((v.animalIds ?? []) as number[]).filter((id) => choices.some((a) => a.id === id)),
           }),
         )}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
-        <Field label="Policy number *" error={err(e, 'policyNo')}>
-          <Input {...form.register('policyNo')} />
+        <Field
+          label="Scanned application form"
+          className="sm:col-span-2"
+          hint="The filled-in PCIC Application for Livestock Mortality Insurance (the policy itself is issued by PCIC)."
+        >
+          <DocumentPicker
+            files={files}
+            onFilesChange={setFiles}
+            existing={keep}
+            onExistingChange={setKeep}
+            label="Attach scanned form"
+          />
         </Field>
-        <Field label="Species" error={err(e, 'species')}>
+        <Field label="Date of application *" error={err(e, 'applicationDate')}>
+          <Input type="date" min={MIN_DATE} max={isoDate()} {...form.register('applicationDate')} />
+        </Field>
+        <Field label="Application type" error={err(e, 'applicationType')}>
+          <Select {...form.register('applicationType')}>
+            {PCIC_APPLICATION_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {PCIC_APPLICATION_LABELS[t]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Species insured" error={err(e, 'species')}>
           <Select {...form.register('species')}>
             {SPECIES.map((s) => (
               <option key={s}>{s}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Insured heads *" error={err(e, 'heads')}>
+        <Field
+          label="No. of heads"
+          error={err(e, 'heads')}
+          hint="Optional — the tagged animals below are counted"
+        >
           <Input type="number" min={1} {...form.register('heads')} />
         </Field>
-        <Field label="Amount covered (₱)" error={err(e, 'amountCovered')}>
-          <Input type="number" min={0} step="0.01" {...form.register('amountCovered')} />
-        </Field>
-        <Field label="Coverage start *" error={err(e, 'startDate')}>
-          <Input type="date" min={MIN_DATE} {...form.register('startDate')} />
-        </Field>
-        <Field label="Coverage end *" error={err(e, 'endDate')}>
-          <Input type="date" min={form.watch('startDate') || MIN_DATE} {...form.register('endDate')} />
-        </Field>
+        <div className="sm:col-span-2">
+          <Checkbox
+            label="Premium subsidized through RSBSA"
+            checked={subsidized}
+            onChange={(v) => form.setValue('subsidized', v as any, { shouldDirty: true })}
+          />
+        </div>
+        {subsidized && (
+          <Field label="RSBSA reference no." error={err(e, 'rsbsaRef')}>
+            <Input {...form.register('rsbsaRef')} />
+          </Field>
+        )}
         <Field label="Status" error={err(e, 'status')}>
           <Select {...form.register('status')}>
             {PCIC_STATUSES.map((s) => (
@@ -542,23 +603,23 @@ export function PcicDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Remarks" error={err(e, 'remarks')}>
+        <Field label="Remarks" error={err(e, 'remarks')} className={subsidized ? 'sm:col-span-2' : undefined}>
           <Input {...form.register('remarks')} />
         </Field>
         <Field
-          label={`Insured animals (ear tags) · ${chosen.filter((id) => choices.some((a) => String(a.id) === String(id))).length} selected`}
-          hint="Tick the tagged animals this policy covers. Untagged heads can stay unlinked."
+          label={`Insured animals (ear tags on the form) · ${chosen.filter((id) => choices.some((a) => String(a.id) === String(id))).length} selected`}
+          hint="The owner tags the animals when insuring them. Untagged heads can stay unlinked."
           error={err(e, 'animalIds')}
           className="sm:col-span-2"
         >
           {choices.length ? (
-            <div className="grid max-h-44 grid-cols-1 gap-1 overflow-y-auto rounded-md border border-slate-200 p-2 sm:grid-cols-2">
+            <div className="grid max-h-44 grid-cols-1 gap-1 overflow-y-auto rounded-lg border border-slate-200 p-2 sm:grid-cols-2">
               {choices.map((a) => (
                 <label key={a.id} className="flex items-center gap-2 text-[14px] text-slate-700">
                   <input
                     type="checkbox"
                     value={String(a.id)}
-                    className="h-4 w-4 rounded border-slate-300 accent-[#1d6fd8]"
+                    className="h-4 w-4 rounded border-slate-300 accent-brand-strong"
                     {...form.register('animalIds')}
                   />
                   <span>
@@ -574,7 +635,7 @@ export function PcicDialog({
               ))}
             </div>
           ) : (
-            <p className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-[13.5px] text-slate-500">
+            <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2 text-[14px] text-slate-500">
               This owner has no active tagged {String(species).toLowerCase()}.
             </p>
           )}
@@ -836,6 +897,7 @@ export function GroupDialog({
     reportingMonth: isoMonth(),
     count: '0',
     healthStatus: 'Healthy',
+    purpose: '',
     remarks: '',
   } as any);
   const [classify, setClassify] = useState(false);
@@ -946,6 +1008,22 @@ export function GroupDialog({
             ))}
           </Select>
         </Field>
+        {isLargeRuminant(form.watch('species') ?? '') && (
+          <Field
+            label="Purpose"
+            error={err(e, 'purpose')}
+            hint="Cattle and carabao (as on the PCIC application)"
+          >
+            <Select {...form.register('purpose')}>
+              <option value="">Not set</option>
+              {ANIMAL_PURPOSES.map((p) => (
+                <option key={p} value={p}>
+                  {ANIMAL_PURPOSE_LABELS[p]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Remarks" error={err(e, 'remarks')}>
           <Input {...form.register('remarks')} />
         </Field>
@@ -1071,7 +1149,7 @@ export function PopulationUpdateDialog({
         className="space-y-3"
       >
         {note && (
-          <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[14px] text-slate-700">
+          <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[14px] text-slate-700">
             {note}
           </p>
         )}
@@ -1115,7 +1193,7 @@ export function PopulationUpdateDialog({
                     />
                   </Field>
                   <span
-                    className={`w-10 pb-2.5 text-right text-[14px] ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-red-600' : 'text-slate-400'}`}
+                    className={`w-10 pb-2.5 text-right text-[14px] ${diff > 0 ? 'text-brand-strong' : diff < 0 ? 'text-red-600' : 'text-slate-400'}`}
                   >
                     {diff > 0 ? `+${diff}` : diff}
                   </span>
@@ -1142,7 +1220,7 @@ export function PopulationUpdateDialog({
             </div>
           );
         })}
-        <p className="text-[12.5px] leading-relaxed text-slate-400">
+        <p className="text-[13px] leading-relaxed text-slate-400">
           Change is measured against the previous month's value. Re-saving a month that already has an update
           amends it (the earlier entry is kept as "superseded" and never added again). Reasons use signed
           quantities (e.g. births +3, deaths −1). Animals registered with ID tags are counted within their
@@ -1167,6 +1245,8 @@ export function GroupEditDialog({
     sex: string;
     lifeStage: string;
     healthStatus: string;
+    purpose?: string | null;
+    remarks?: string | null;
   } | null;
 }) {
   const form = useZodForm(groupUpdateSchema, {});
@@ -1175,7 +1255,8 @@ export function GroupEditDialog({
     sex: group?.sex ?? 'Mixed',
     lifeStage: group?.lifeStage ?? 'Mixed',
     healthStatus: group?.healthStatus ?? 'Healthy',
-    remarks: '',
+    purpose: group?.purpose ?? '',
+    remarks: group?.remarks ?? '',
   } as any);
   const save = useSave<any>('PATCH', `/api/population/groups/${group?.id}`, {
     success: 'Group updated.',
@@ -1233,13 +1314,85 @@ export function GroupEditDialog({
             ))}
           </Select>
         </Field>
+        {isLargeRuminant(group.species) && (
+          <Field label="Purpose" error={err(e, 'purpose')}>
+            <Select {...form.register('purpose')}>
+              <option value="">Not set</option>
+              {ANIMAL_PURPOSES.map((p) => (
+                <option key={p} value={p}>
+                  {ANIMAL_PURPOSE_LABELS[p]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
           <Input {...form.register('remarks')} />
         </Field>
-        <p className="text-[12.5px] text-slate-400 sm:col-span-2">
+        <p className="text-[13px] text-slate-400 sm:col-span-2">
           To change the head count, use Update population. A group can be archived once its count is 0.
         </p>
       </form>
+    </Dialog>
+  );
+}
+
+interface GroupActivityItem {
+  key: string;
+  at: string;
+  date: string | null;
+  kind: 'count' | 'service' | 'edit';
+  title: string;
+  detail: string | null;
+  by: string | null;
+}
+
+/** Activity log of one livestock group: head count changes, services and edits, newest first. */
+export function GroupActivityDialog({
+  open,
+  onOpenChange,
+  group,
+}: DialogProps & { group: { id: number; code: string; species: string } | null }) {
+  const { data, isLoading } = useApi<GroupActivityItem[]>(
+    open && group ? `/api/population/groups/${group.id}/activity` : null,
+  );
+  const tag = { count: 'Head count', service: 'Service', edit: 'Record' } as const;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={group ? `Activity Log — ${group.code} · ${group.species}` : 'Activity Log'}
+      footer={
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
+          Close
+        </Button>
+      }
+    >
+      {isLoading ? (
+        <p className="text-[14px] text-slate-500">Loading…</p>
+      ) : data?.length ? (
+        <ol className="relative max-h-[60vh] overflow-y-auto pr-1">
+          {data.map((it, i) => (
+            <li key={it.key} className="relative pb-4 pl-6 last:pb-1">
+              {i < data.length - 1 && <span className="absolute left-[4px] top-3 h-full w-px bg-slate-200" />}
+              <span className="absolute left-0 top-[7px] h-[9px] w-[9px] rounded-full bg-brand-dark" />
+              <div className="text-[13px] text-slate-400">
+                {it.kind === 'count' && it.date ? fmtMonth(it.date) : fmtDate(it.date)}
+                {it.by ? ` · ${it.by}` : ''}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[15px] font-medium text-slate-900">
+                {it.title}
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[12px] font-normal text-slate-700">
+                  {tag[it.kind]}
+                </span>
+              </div>
+              {it.detail && <div className="text-[14px] text-slate-600">{it.detail}</div>}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-[14px] text-slate-500">Nothing recorded for this group yet.</p>
+      )}
     </Dialog>
   );
 }

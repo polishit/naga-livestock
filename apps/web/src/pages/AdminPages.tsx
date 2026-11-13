@@ -1,4 +1,5 @@
-import { Pencil, Plus } from 'lucide-react';
+import { Download, Pencil, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { ROLE_LABELS, fmtDateTime, settingsSchema, type Role, type SettingsInput } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
@@ -98,8 +99,27 @@ export function UsersPage() {
   );
 }
 
+/** Download every record as one JSON file (admin). Retries once after refreshing an expired login. */
+async function downloadBackup() {
+  let res = await fetch('/api/settings/backup', { credentials: 'include' });
+  if (res.status === 401) {
+    await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
+    res = await fetch('/api/settings/backup', { credentials: 'include' });
+  }
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Backup failed (${res.status})`);
+  const blob = await res.blob();
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'backup.json';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function SettingsPage() {
   const { isAdmin } = useAuth();
+  const [backingUp, setBackingUp] = useState(false);
   const { data, isLoading } = useApi<SettingsInput>('/api/settings');
   const form = useZodForm(settingsSchema, {});
   useResetOnOpen(!!data, form, (data ?? {}) as any);
@@ -111,6 +131,27 @@ export function SettingsPage() {
       <PageHeader
         title="System Settings"
         subtitle="Office details used on reports, and thresholds used by monitoring."
+        actions={
+          isAdmin && (
+            <Button
+              variant="outline"
+              loading={backingUp}
+              onClick={async () => {
+                setBackingUp(true);
+                try {
+                  await downloadBackup();
+                  toast.success('Backup downloaded. Keep the file somewhere safe.');
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'Backup failed');
+                } finally {
+                  setBackingUp(false);
+                }
+              }}
+            >
+              <Download /> Download backup
+            </Button>
+          )
+        }
       />
       <form
         noValidate
@@ -132,6 +173,23 @@ export function SettingsPage() {
             </Field>
             <Field label="Letterhead line 2" error={err(e, 'letterheadLine2')}>
               <Input {...form.register('letterheadLine2')} />
+            </Field>
+            <Field
+              label="Office address"
+              error={err(e, 'officeAddress')}
+              hint="Printed as “Submitted by” on the laboratory forms"
+              className="sm:col-span-2"
+            >
+              <Input
+                {...form.register('officeAddress')}
+                placeholder="Del Rosario, Naga City, Camarines Sur"
+              />
+            </Field>
+            <Field label="Office contact no." error={err(e, 'officeContact')}>
+              <Input {...form.register('officeContact')} />
+            </Field>
+            <Field label="Office email" error={err(e, 'officeEmail')}>
+              <Input type="email" {...form.register('officeEmail')} />
             </Field>
           </fieldset>
         </Card>

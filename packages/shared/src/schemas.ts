@@ -21,6 +21,13 @@ import {
   SERVICE_TYPES,
   VISIT_PURPOSES,
   VISIT_FINDINGS,
+  ANIMAL_PURPOSES,
+  ANIMAL_CONDITIONS,
+  CLINICAL_SIGNS,
+  LAB_PURPOSES,
+  PCIC_APPLICATION_TYPES,
+  PD_RESULTS,
+  RESULT_RECEIVED_VIA,
 } from './constants';
 import { isoDate, isoMonth } from './format';
 
@@ -171,6 +178,13 @@ const photoKeys = z
   .max(MAX_PHOTOS, `You can attach up to ${MAX_PHOTOS} photos`)
   .optional();
 
+/** An optional choice from a list ("" or null means none). */
+const optEnum = <T extends readonly [string, ...string[]]>(values: T) =>
+  z.preprocess(blankToUndefined, z.enum(values).optional());
+const optBool = z.preprocess((v) => v === true || v === 'true' || v === 'on', z.boolean()).default(false);
+/** Scanned documents (PDF or image), e.g. a PCIC application or an ownership certificate. */
+const fileKeys = z.array(z.string().min(1).max(300)).max(5, 'You can attach up to 5 files').optional();
+
 /* ---------- auth & users ---------- */
 
 export const loginSchema = z.object({
@@ -219,17 +233,22 @@ export const ownerCreateSchema = z.object({
 export type OwnerCreateInput = z.infer<typeof ownerCreateSchema>;
 export const ownerUpdateSchema = ownerCreateSchema.extend({ status: z.enum(OWNER_STATUSES).optional() });
 
+/**
+ * Livestock mortality insurance: the office attaches the scanned PCIC application and notes a few
+ * details so insured owners and animals can be counted (the policy itself is issued by PCIC).
+ */
 export const pcicCreateSchema = z
   .object({
-    policyNo: reqText(60),
     species: z.enum(SPECIES),
-    heads: intField(1, undefined, MAX_HEAD),
-    amountCovered: nullableNumber(0, 100_000_000),
-    startDate: reqAnyDate,
-    endDate: reqAnyDate,
+    applicationDate: reqPastDate(),
+    applicationType: z.enum(PCIC_APPLICATION_TYPES).default('NEW'),
+    subsidized: optBool,
+    rsbsaRef: optText(60),
+    heads: optInt(1, MAX_HEAD),
+    fileKeys,
     status: z.enum(PCIC_STATUSES).default('ACTIVE'),
     remarks: optText(500),
-    /** The insured tagged animals (optional; at most the number of insured heads). */
+    /** The insured tagged animals (ear tags on the application). */
     animalIds: z
       .preprocess(
         (v) => (v == null || v === false ? [] : (Array.isArray(v) ? v : [v]).map(Number)),
@@ -237,11 +256,7 @@ export const pcicCreateSchema = z
       )
       .optional(),
   })
-  .refine((v) => v.endDate >= v.startDate, {
-    path: ['endDate'],
-    message: 'Coverage end cannot be before the start',
-  })
-  .refine((v) => !v.animalIds || v.animalIds.length <= v.heads, {
+  .refine((v) => !v.animalIds || !v.heads || v.animalIds.length <= v.heads, {
     path: ['animalIds'],
     message: 'More animals are selected than the number of insured heads',
   });
@@ -296,6 +311,7 @@ export const groupCreateSchema = z
     count: intField(0, undefined, MAX_HEAD),
     breakdown: breakdownField,
     healthStatus: z.string().default('Healthy'),
+    purpose: optEnum(ANIMAL_PURPOSES),
     remarks: optText(500),
   })
   .refine((v) => breakdownMatches(v.count, v.breakdown), {
@@ -309,6 +325,7 @@ export const groupUpdateSchema = z.object({
   sex: z.string().min(1).max(20),
   lifeStage: z.string().min(1).max(30),
   healthStatus: z.string().min(1).max(40),
+  purpose: optEnum(ANIMAL_PURPOSES),
   remarks: optText(500),
 });
 
@@ -345,6 +362,11 @@ export const animalCreateSchema = z.object({
   lifeStage: optText(40),
   markings: optText(200),
   cowlick: optText(200),
+  purpose: optEnum(ANIMAL_PURPOSES),
+  /** Certificate of Ownership of Large Cattle (cattle and carabao) */
+  colcNo: optText(60),
+  colcDate: pastDate(),
+  colcFileKeys: fileKeys,
   health: optText(80),
   photoKeys,
   remarks: optText(500),
@@ -449,6 +471,7 @@ export const caseCreateSchema = z
     symptomsDate: pastDate(),
     reportedAt: pastDate(),
     symptoms: optText(1000),
+    clinicalSigns: z.array(z.enum(CLINICAL_SIGNS)).max(CLINICAL_SIGNS.length).optional(),
     reportedBy: optText(120),
     assignedToId: optId,
     sampleInfo: optText(300),
@@ -457,6 +480,8 @@ export const caseCreateSchema = z
     lng: nullableNumber(-180, 180),
     photoKeys,
     relatedCaseId: optId,
+    /** A positive surveillance sample this case is opened from (it is attached to the case). */
+    fromSampleId: optId,
   })
   .refine((v) => v.deaths <= v.affected, {
     path: ['deaths'],
@@ -477,6 +502,7 @@ export const caseUpdateSchema = z
     deaths: intField(0, undefined, MAX_HEAD),
     symptomsDate: pastDate(),
     symptoms: optText(1000),
+    clinicalSigns: z.array(z.enum(CLINICAL_SIGNS)).max(CLINICAL_SIGNS.length).optional(),
     reportedBy: optText(120),
     assignedToId: optId,
     sampleInfo: optText(300),
@@ -518,11 +544,21 @@ export const investigationCreateSchema = z
     path: ['nextVisit'],
     message: 'Next visit must be after the visit date',
   });
+/** What is known about the animal a sample came from (as on the Sample Collection Form). */
+const sampleAnimal = {
+  animalAge: optText(20),
+  animalSex: optEnum(['M', 'F'] as const),
+  condition: optEnum(ANIMAL_CONDITIONS),
+  hoursSinceDeath: optInt(0, 720),
+  organs: optText(120),
+};
 export const labCreateSchema = z
   .object({
     sampleId: reqText(60),
     sampleType: optText(80),
     sampleCount: optInt(1, 10000),
+    ...sampleAnimal,
+    receivedVia: optEnum(RESULT_RECEIVED_VIA),
     testMethod: optText(80),
     collectedAt: pastDate(),
     laboratory: optText(120),
@@ -548,7 +584,57 @@ export const labCreateSchema = z
   .refine((v) => v.result === 'PENDING' || !!v.resultDate, {
     path: ['resultDate'],
     message: 'Enter the date the result was released',
+  })
+  .refine((v) => v.sampleType !== 'Tissue / Organs' || !!v.organs, {
+    path: ['organs'],
+    message: 'Enter the organs taken (e.g. spleen, lymph node)',
   });
+
+/* ---------- laboratory submissions (batches) ---------- */
+
+export const labSampleSchema = z.object({
+  /** Set when editing a sample already in the batch. */
+  id: optId,
+  farmId: idField('Select the farm'),
+  species: z.enum(SPECIES, { errorMap: () => ({ message: 'Select a species' }) }),
+  sampleId: reqText(60),
+  sampleType: reqText(80),
+  ...sampleAnimal,
+  collectedAt: reqPastDate(),
+});
+export type LabSampleInput = z.infer<typeof labSampleSchema>;
+export const labSubmissionSchema = z
+  .object({
+    purpose: z.enum(LAB_PURPOSES).default('SURVEILLANCE'),
+    examination: reqText(120),
+    laboratory: reqText(120),
+    submittedAt: pastDate(),
+    submittedBy: optText(120),
+    notedBy: optText(120),
+    requestId: optText(60),
+    accessionNo: optText(60),
+    remarks: optText(2000),
+    samples: z.array(labSampleSchema).min(1, 'Add at least one sample').max(200),
+  })
+  .refine((v) => new Set(v.samples.map((x) => x.sampleId.trim().toLowerCase())).size === v.samples.length, {
+    path: ['samples'],
+    message: 'Each sample needs its own sample ID',
+  })
+  .refine(
+    (v) => !v.submittedAt || v.samples.every((x) => !x.collectedAt || x.collectedAt <= v.submittedAt!),
+    {
+      path: ['submittedAt'],
+      message: 'Samples cannot be collected after the date submitted',
+    },
+  );
+export type LabSubmissionInput = z.infer<typeof labSubmissionSchema>;
+/** Results for a batch as they come back (often by email). */
+export const labResultsSchema = z.object({
+  resultDate: reqPastDate(),
+  receivedVia: optEnum(RESULT_RECEIVED_VIA),
+  results: z.array(z.object({ id: idField(), result: z.enum(LAB_RESULTS) })).min(1, 'No results to save'),
+});
+
 export const responseCreateSchema = z
   .object({
     type: z.enum(RESPONSE_TYPES),
@@ -596,6 +682,8 @@ export const vaccinationCreateSchema = z
     serviceType: z.enum(SERVICE_TYPES).default('DEWORMING'),
     count: intField(1, undefined, MAX_HEAD),
     vaccine: optText(120),
+    /** Pregnancy diagnosis result */
+    result: optEnum(PD_RESULTS),
     date: pastDate(),
     nextDate: anyDate,
     doseNumber: intField(1, undefined, 20).default(1),
@@ -606,6 +694,10 @@ export const vaccinationCreateSchema = z
   .refine((v) => v.serviceType !== 'VACCINATION' || !!v.vaccine, {
     path: ['vaccine'],
     message: 'Enter the vaccine used',
+  })
+  .refine((v) => v.serviceType !== 'PREGNANCY_DIAGNOSIS' || !!v.result, {
+    path: ['result'],
+    message: 'Select the result',
   })
   .refine((v) => (v.target === 'GROUP' ? !!v.groupId : !!v.animalId), {
     path: ['groupId'],
@@ -632,6 +724,7 @@ export const vaccinationUpdateSchema = z
     serviceType: z.enum(SERVICE_TYPES).optional(),
     count: intField(1, undefined, MAX_HEAD),
     vaccine: optText(120),
+    result: optEnum(PD_RESULTS),
     date: pastDate(),
     nextDate: anyDate,
     doseNumber: intField(1, undefined, 20).default(1),
@@ -668,6 +761,10 @@ export const settingsSchema = z.object({
   vaccinationUpcomingDays: intField(1, undefined, 365),
   letterheadLine1: optText(150),
   letterheadLine2: optText(150),
+  /** "Submitted by" on the laboratory forms */
+  officeAddress: optText(200),
+  officeContact: optText(60),
+  officeEmail: optText(120),
 });
 export type SettingsInput = z.infer<typeof settingsSchema>;
 

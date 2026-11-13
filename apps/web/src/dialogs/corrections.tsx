@@ -59,12 +59,12 @@ export function DeleteDialog({
       {refused ? (
         <p
           role="alert"
-          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14px] text-amber-900"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14px] text-amber-900"
         >
           {refused}
         </p>
       ) : (
-        <div className="space-y-2 text-[14.5px] text-slate-700">
+        <div className="space-y-2 text-[15px] text-slate-700">
           <p>
             Use this only for a record <b>entered by mistake</b>. It is removed for good and cannot be brought
             back.

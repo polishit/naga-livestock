@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, MapPin, Upload, X } from 'lucide-react';
+import { FileText, Loader2, MapPin, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -52,14 +52,16 @@ export function PhotoPicker({
     const picked = Array.from(list);
     const ok = picked.filter((f) => f.size <= maxMb * 1024 * 1024);
     if (ok.length < picked.length) {
-      toast.error(`${picked.length - ok.length} photo(s) skipped — each photo must be ${maxMb} MB or smaller.`);
+      toast.error(
+        `${picked.length - ok.length} photo(s) skipped — each photo must be ${maxMb} MB or smaller.`,
+      );
     }
     const room = max - total;
     if (ok.length > room) toast.error(`You can attach up to ${max} photos. Extra photos were not added.`);
     if (room > 0 && ok.length) onFilesChange([...files, ...ok.slice(0, room)]);
   };
 
-  const tile = 'relative h-20 w-20 overflow-hidden rounded-md border border-slate-300 bg-white';
+  const tile = 'relative h-20 w-20 overflow-hidden rounded-lg border border-slate-300 bg-white';
   const removeBtn = (onClick: () => void) => (
     <button
       type="button"
@@ -87,7 +89,7 @@ export function PhotoPicker({
           </div>
         ))}
         {total === 0 && (
-          <div className="flex h-20 w-[112px] items-center justify-center rounded-md border border-dashed border-slate-400 bg-white text-[13px] text-slate-400">
+          <div className="flex h-20 w-[112px] items-center justify-center rounded-lg border border-dashed border-slate-400 bg-white text-[13px] text-slate-400">
             No image
           </div>
         )}
@@ -102,7 +104,7 @@ export function PhotoPicker({
         >
           <Upload /> {total ? 'Add more photos' : 'Choose images'}
         </Button>
-        <span className="text-[12.5px] text-slate-500">
+        <span className="text-[13px] text-slate-500">
           {total} / {max} photos · JPG, PNG or WEBP · max {maxMb} MB each
         </span>
       </div>
@@ -131,7 +133,7 @@ export function AddressLookupHint({
 }) {
   if (state.status === 'idle') return null;
   return (
-    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12.5px] text-slate-500" role="status">
+    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-slate-500" role="status">
       {state.status === 'loading' && (
         <>
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Looking up the address…
@@ -140,7 +142,9 @@ export function AddressLookupHint({
       {state.status === 'filled' && (
         <>
           <MapPin className="h-3.5 w-3.5 text-brand-dark" /> Address filled in from the map
-          {state.barangay ? ` (Barangay ${state.barangay})` : ''} — you can edit it.
+          {state.barangay
+            ? ` (Barangay ${state.barangay})`
+            : ''} — you can edit it.
         </>
       )}
       {state.status === 'kept' && (
@@ -169,11 +173,141 @@ export function PhotoGallery({ keys, className = '' }: { keys: string[]; classNa
           href={`/api/files/${k}`}
           target="_blank"
           rel="noreferrer"
-          className="block h-20 w-20 overflow-hidden rounded-md border border-slate-300 hover:ring-2 hover:ring-brand"
+          className="block h-20 w-20 overflow-hidden rounded-lg border border-slate-300 hover:ring-2 hover:ring-brand"
         >
           <img src={`/api/files/${k}`} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
         </a>
       ))}
     </div>
+  );
+}
+
+const docName = (key: string, i: number) => {
+  const ext = key.split('.').pop()?.toUpperCase();
+  return `Document ${i + 1}${ext && ext.length <= 4 ? ` (${ext})` : ''}`;
+};
+
+/**
+ * Attach scanned documents (PDF or photo): a PCIC application, an ownership certificate…
+ * `existing` are files already saved (storage keys); `files` are the ones chosen now.
+ */
+export function DocumentPicker({
+  files,
+  onFilesChange,
+  existing = [],
+  onExistingChange,
+  max = 5,
+  maxMb = MAX_PHOTO_MB,
+  label = 'Attach scanned document',
+}: {
+  files: File[];
+  onFilesChange: (files: File[]) => void;
+  existing?: string[];
+  onExistingChange?: (keys: string[]) => void;
+  max?: number;
+  maxMb?: number;
+  label?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const total = existing.length + files.length;
+  const add = (list: FileList | null) => {
+    if (!list) return;
+    const picked = Array.from(list);
+    const ok = picked.filter((f) => f.size <= maxMb * 1024 * 1024);
+    if (ok.length < picked.length) toast.error(`Each file must be ${maxMb} MB or smaller.`);
+    const room = max - total;
+    if (ok.length > room) toast.error(`You can attach up to ${max} files.`);
+    if (room > 0 && ok.length) onFilesChange([...files, ...ok.slice(0, room)]);
+  };
+  const chip =
+    'inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[14px] text-slate-700';
+  return (
+    <div>
+      {total > 0 && (
+        <ul className="mb-2 flex flex-wrap gap-2">
+          {existing.map((key, i) => (
+            <li key={key} className={chip}>
+              <FileText className="h-4 w-4 shrink-0 text-brand-dark" />
+              <a
+                href={`/api/files/${key}`}
+                target="_blank"
+                rel="noreferrer"
+                className="truncate hover:underline"
+              >
+                {docName(key, i)}
+              </a>
+              {onExistingChange && (
+                <button
+                  type="button"
+                  aria-label={`Remove ${docName(key, i)}`}
+                  onClick={() => onExistingChange(existing.filter((k) => k !== key))}
+                  className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-red-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+          {files.map((f, i) => (
+            <li key={`${f.name}-${i}`} className={chip}>
+              <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+              <span className="truncate">{f.name}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${f.name}`}
+                onClick={() => onFilesChange(files.filter((_, j) => j !== i))}
+                className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-red-600"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={total >= max}
+          onClick={() => ref.current?.click()}
+        >
+          <Upload /> {label}
+        </Button>
+        <span className="text-[13px] text-slate-500">PDF or photo · max {maxMb} MB each</span>
+      </div>
+      <input
+        ref={ref}
+        type="file"
+        multiple
+        accept="application/pdf,image/png,image/jpeg,image/webp"
+        className="hidden"
+        aria-label={label}
+        onChange={(e) => {
+          add(e.target.files);
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
+/** Saved documents as links (read-only). */
+export function DocumentLinks({ keys, empty = 'No file attached' }: { keys: string[]; empty?: string }) {
+  if (!keys.length) return <span className="text-slate-400">{empty}</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-x-3 gap-y-1">
+      {keys.map((k, i) => (
+        <a
+          key={k}
+          href={`/api/files/${k}`}
+          target="_blank"
+          rel="noreferrer"
+          className="link inline-flex items-center gap-1"
+        >
+          <FileText className="h-3.5 w-3.5" /> {docName(k, i)}
+        </a>
+      ))}
+    </span>
   );
 }

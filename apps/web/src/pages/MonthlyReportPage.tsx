@@ -75,7 +75,7 @@ export default function MonthlyReportPage() {
           all="All barangays"
           className="w-[calc(50%-4px)] sm:w-48"
         />
-        <span className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-500 sm:ml-auto">
+        <span className="inline-flex items-center gap-1.5 text-[13px] text-slate-500 sm:ml-auto">
           <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
           Updates automatically
           {dataUpdatedAt
@@ -142,6 +142,47 @@ export default function MonthlyReportPage() {
             </ChartCard>
           </div>
 
+          <Card>
+            <CardHeader title={`Deworming, Pregnancy Diagnosis, Insemination and Check-up · ${m.label}`} />
+            {m.perSpecies.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-[15px]">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/80 text-left text-[13px] font-semibold text-slate-500">
+                      <th className="px-4 py-2.5">Species</th>
+                      <th className="px-4 py-2.5 text-right">Dewormed</th>
+                      <th className="px-4 py-2.5 text-right">Pregnancy Diagnosis</th>
+                      <th className="px-4 py-2.5 text-right">Pregnant</th>
+                      <th className="px-4 py-2.5 text-right">Insemination</th>
+                      <th className="px-4 py-2.5 text-right">Check-up</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {m.perSpecies.map((x) => (
+                      <tr key={x.species}>
+                        <td className="px-4 py-2.5 font-medium text-slate-900">{x.species}</td>
+                        <td className="px-4 py-2.5 text-right">{fmtNumber(x.dewormed)}</td>
+                        <td className="px-4 py-2.5 text-right">{fmtNumber(x.pregnancyDiagnosis)}</td>
+                        <td className="px-4 py-2.5 text-right">{fmtNumber(x.pregnant)}</td>
+                        <td className="px-4 py-2.5 text-right">{fmtNumber(x.inseminated)}</td>
+                        <td className="px-4 py-2.5 text-right">{fmtNumber(x.checkups)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="px-4 py-6 text-center text-[14px] text-slate-500">
+                No deworming, pregnancy diagnosis, insemination or check-up this month.
+              </p>
+            )}
+            <p className="border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-500">
+              Heads served per species. Laboratory samples collected this month: {m.lab.collected} (
+              {m.lab.surveillance} routine surveillance) — {m.lab.pending} pending, {m.lab.positive} positive,{' '}
+              {m.lab.negative} negative.
+            </p>
+          </Card>
+
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader title={`Disease Reports · ${m.label}`} />
@@ -154,13 +195,13 @@ export default function MonthlyReportPage() {
                         className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 hover:bg-slate-50"
                       >
                         <span>
-                          <span className="text-[14.5px] font-medium text-slate-900">{c.disease}</span>
+                          <span className="text-[15px] font-medium text-slate-900">{c.disease}</span>
                           <span className="text-[13px] text-slate-500">
                             {' '}
                             · {c.species} · {c.barangay}
                             {c.farmName ? ` · ${c.farmName}` : ''}
                           </span>
-                          <div className="text-[12.5px] text-slate-500">
+                          <div className="text-[13px] text-slate-500">
                             {c.code} · {c.reportedAt ? fmtDate(c.reportedAt) : '—'} · {c.affected} affected,{' '}
                             {c.deaths} deaths
                           </div>
@@ -182,8 +223,8 @@ export default function MonthlyReportPage() {
                 {m.services.map((s) => (
                   <div key={s.type} className="flex items-center justify-between gap-3 px-4 py-2.5">
                     <div>
-                      <div className="text-[14.5px] font-medium text-slate-900">{s.label}</div>
-                      <div className="text-[12.5px] text-slate-500">
+                      <div className="text-[15px] font-medium text-slate-900">{s.label}</div>
+                      <div className="text-[13px] text-slate-500">
                         {s.records} record(s) · {s.farms} farm(s)
                         {s.bySpecies.length
                           ? ` · ${s.bySpecies.map((x) => `${x.species} ${x.head}`).join(', ')}`
@@ -198,8 +239,8 @@ export default function MonthlyReportPage() {
                 ))}
                 <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <div>
-                    <div className="text-[14.5px] font-medium text-slate-900">Farm visits</div>
-                    <div className="text-[12.5px] text-slate-500">
+                    <div className="text-[15px] font-medium text-slate-900">Farm visits</div>
+                    <div className="text-[13px] text-slate-500">
                       {m.visits.byPurpose
                         .filter((p) => p.count)
                         .map((p) => `${p.label} ${p.count}`)
@@ -214,11 +255,11 @@ export default function MonthlyReportPage() {
               </div>
             </Card>
           </div>
-          <p className="text-[12.5px] text-slate-500">
+          <p className="text-[13px] text-slate-500">
             Population is the current masterlist count; disease reports, services and visits cover {m.label}.
             The printed report follows the standard sections: I. Livestock Population, II. Disease
-            Surveillance, III. Deworming, IV. Check-ups and Other Services, V. Farm Visits, VI. Six-Month
-            Summary.
+            Surveillance, III. Deworming, Pregnancy Diagnosis, Insemination and Check-up per species, IV.
+            Other Services, V. Farm Visits, VI. Laboratory Samples, VII. Six-Month Summary.
           </p>
         </div>
       )}

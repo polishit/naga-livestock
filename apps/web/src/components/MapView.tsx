@@ -411,7 +411,7 @@ export function MapView({
       <button
         type="button"
         onClick={() => setVersion((v) => v + 1)}
-        className="absolute right-3 top-3 z-[500] inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[13px] text-slate-700 shadow-sm hover:bg-slate-50"
+        className="absolute right-3 top-3 z-[500] inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[13px] text-slate-700 shadow-sm hover:bg-slate-50"
       >
         <LocateFixed className="h-3.5 w-3.5" /> Reset
       </button>

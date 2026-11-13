@@ -551,14 +551,10 @@ describe('richer records, date rules and record keeping', () => {
     // CASE-0006 was reported on 2026-09-20: follow-up records cannot be earlier.
     const early = await admin.post('/api/cases/6/investigations').send({ date: '2026-09-01', notes: 'x' });
     expect(early.body.fieldErrors.date[0]).toMatch(/before the case began/);
-    const pcic = await admin.post('/api/owners/1/pcic').send({
-      policyNo: 'P-1',
-      species: 'Swine',
-      heads: 2,
-      startDate: '2026-06-01',
-      endDate: '2026-01-01',
-    });
-    expect(pcic.body.fieldErrors.endDate).toBeDefined();
+    const pcic = await admin
+      .post('/api/owners/1/pcic')
+      .send({ species: 'Swine', applicationDate: '2099-01-01' });
+    expect(pcic.body.fieldErrors.applicationDate).toBeDefined();
     const phone = await admin
       .post('/api/owners')
       .send({ fullName: 'Pedro Penduko', barangay: 'Pacol', contact: 'call me' });
@@ -859,38 +855,40 @@ describe('logic audit: corrections, reminders and record integrity', () => {
     expect(dup.body.fieldErrors.sampleId[0]).toMatch(/already used/);
   });
 
-  it('PCIC policies: one number per policy, expiry shown, status can be updated', async () => {
+  it('PCIC insurance: the scanned application with its date, type and RSBSA subsidy; status can be updated', async () => {
     const p = await admin.post('/api/owners/2/pcic').send({
-      policyNo: 'PCIC-AUDIT-1',
       species: 'Swine',
-      heads: 3,
-      startDate: '2025-01-01',
-      endDate: '2025-12-31',
+      applicationDate: '2026-01-05',
+      applicationType: 'NEW',
+      subsidized: true,
+      rsbsaRef: 'RSBSA-REF-1',
+      fileKeys: ['documents/2026-01/pcic-application.pdf'],
     });
     expect(p.status).toBe(201);
-    const again = await admin.post('/api/owners/5/pcic').send({
-      policyNo: 'pcic-audit-1',
-      species: 'Swine',
-      heads: 3,
-      startDate: '2026-01-01',
-      endDate: '2026-12-31',
+    const noDate = await admin.post('/api/owners/2/pcic').send({ species: 'Swine' });
+    expect(noDate.body.fieldErrors.applicationDate).toBeDefined();
+    const saved = (await admin.get('/api/owners/2')).body.pcic.find(
+      (x: { id: number }) => x.id === p.body.id,
+    );
+    expect(saved).toMatchObject({
+      applicationDate: '2026-01-05',
+      applicationType: 'NEW',
+      subsidized: true,
+      rsbsaRef: 'RSBSA-REF-1',
+      fileKeys: ['documents/2026-01/pcic-application.pdf'],
+      status: 'ACTIVE',
     });
-    expect(again.body.fieldErrors.policyNo[0]).toMatch(/already recorded/);
-    const owner = (await admin.get('/api/owners/2')).body;
-    expect(owner.pcic.find((x: { id: number }) => x.id === p.body.id).status).toBe('EXPIRED');
     const claim = await admin.patch(`/api/owners/pcic/${p.body.id}`).send({
-      policyNo: 'PCIC-AUDIT-1',
       species: 'Swine',
-      heads: 3,
-      startDate: '2025-01-01',
-      endDate: '2025-12-31',
+      applicationDate: '2026-01-05',
+      applicationType: 'NEW',
       status: 'CLAIMED',
       remarks: 'Claim paid',
     });
     expect(claim.status).toBe(200);
     expect(
       (await admin.get('/api/owners/2')).body.pcic.find((x: { id: number }) => x.id === p.body.id),
-    ).toMatchObject({ status: 'CLAIMED', remarks: 'Claim paid' });
+    ).toMatchObject({ status: 'CLAIMED', remarks: 'Claim paid', subsidized: false, rsbsaRef: null });
   });
 
   it("an animal's record shows its new herd's doses only from when it arrived", async () => {
@@ -1094,11 +1092,10 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     });
     const url = `/api/owners/${herd.ownerId}/pcic`;
     const base = {
-      policyNo: 'PCIC-LS-2026-9001',
       species: 'Cattle',
       heads: 1,
-      startDate: today,
-      endDate: `${Number(today.slice(0, 4)) + 1}${today.slice(4)}`,
+      applicationDate: today,
+      applicationType: 'NEW',
       status: 'ACTIVE',
     };
     const tooMany = await admin.post(url).send({ ...base, animalIds: [c1, c2] });
@@ -1110,17 +1107,18 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     );
     const ok = await admin.post(url).send({ ...base, animalIds: [c1] });
     expect(ok.status).toBe(201);
-    const twice = await admin.post(url).send({ ...base, policyNo: 'PCIC-LS-2026-9002', animalIds: [c1] });
-    expect(twice.body.fieldErrors.animalIds[0]).toMatch(/already insured under PCIC-LS-2026-9001/);
+    const twice = await admin.post(url).send({ ...base, animalIds: [c1] });
+    expect(twice.body.fieldErrors.animalIds[0]).toMatch(/already on the insurance application of/);
     const tag = (await prisma.animal.findUnique({ where: { id: c1 } }))!.earTag;
     const owner = (await admin.get(`/api/owners/${herd.ownerId}`)).body;
     expect(owner.pcic[0].animals.map((a: { earTag: string }) => a.earTag)).toEqual([tag]);
-    expect((await admin.get(`/api/animals/${c1}`)).body.insurance[0].policyNo).toBe(base.policyNo);
+    expect((await admin.get(`/api/animals/${c1}`)).body.insurance[0].applicationDate).toBe(today);
     // Updating without the list keeps the animals; an empty list removes them.
     await admin.patch(`/api/owners/pcic/${ok.body.id}`).send({ ...base, remarks: 'Renewed' });
     expect((await admin.get(`/api/animals/${c1}`)).body.insurance).toHaveLength(1);
     const report = (await admin.get('/api/reports/pcic-policies')).body;
-    expect(report.rows.find((r: { policy: string }) => r.policy === base.policyNo).animals).toBe(tag);
+    expect(report.rows.find((r: { owner: string }) => r.owner === 'Insured Owner').animals).toBe(tag);
+    expect(report.rows.find((r: { owner: string }) => r.owner === 'Insured Owner').file).toBe('Missing');
     await admin.patch(`/api/owners/pcic/${ok.body.id}`).send({ ...base, animalIds: [] });
     expect((await admin.get(`/api/animals/${c1}`)).body.insurance).toHaveLength(0);
   });
@@ -1637,5 +1635,224 @@ describe('CVO revisions: masterlist, deworming, farm visits, monthly report', ()
     const s = await admin.get('/api/search?q=farm');
     expect(s.status).toBe(200);
     expect(s.body.some((x: { type: string }) => x.type === 'Farm')).toBe(true);
+  });
+});
+
+describe('CVO forms: laboratory submissions, cattle and carabao services, search', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const batch = (samples: object[], extra: object = {}) =>
+    admin.post('/api/lab-submissions').send({
+      purpose: 'SURVEILLANCE',
+      examination: 'PCR – African Swine Fever (ASF)',
+      laboratory: 'RADDL Region V, San Agustin, Pili, Camarines Sur',
+      submittedAt: today,
+      samples,
+      ...extra,
+    });
+  const pig = (sampleId: string, extra: object = {}) => ({
+    farmId: 1,
+    species: 'Swine',
+    sampleId,
+    sampleType: 'Blood',
+    animalAge: '3 m',
+    animalSex: 'M',
+    condition: 'LIVE',
+    collectedAt: today,
+    ...extra,
+  });
+
+  it('a surveillance batch holds samples from many farms; results come back; a positive opens a case', async () => {
+    // Every row is checked: the farm must raise the species, sample IDs are unique, organs for tissue.
+    const bad = await batch([pig('SURV-A1'), pig('SURV-A1')]);
+    expect(bad.body.fieldErrors.samples[0]).toMatch(/own sample ID/);
+    const wrongSpecies = await batch([pig('SURV-A1', { farmId: 10 })]);
+    expect(wrongSpecies.body.fieldErrors['samples.0.species'][0]).toMatch(/no swine on record/);
+    const noOrgans = await batch([pig('SURV-A1', { condition: 'DEAD', sampleType: 'Tissue / Organs' })]);
+    expect(noOrgans.status).toBe(201);
+    const b = await batch([
+      pig('SURV-B1'),
+      pig('SURV-B2', { animalSex: 'F' }),
+      pig('SURV-B3', {
+        condition: 'DEAD',
+        sampleType: 'Tissue / Organs',
+        organs: 'Spleen, Lymph node',
+        hoursSinceDeath: 6,
+      }),
+    ]);
+    expect(b.status).toBe(201);
+    expect(b.body.code).toMatch(/^SUB-\d{4}$/);
+    const dup = await batch([pig('SURV-B1')]);
+    expect(dup.body.fieldErrors['samples.0.sampleId'][0]).toMatch(/already used/);
+    let s = (await admin.get(`/api/lab-submissions/${b.body.id}`)).body;
+    expect(s).toMatchObject({ total: 3, pending: 3, barangays: [expect.any(String)], species: ['Swine'] });
+    expect(s.samples[2]).toMatchObject({
+      organs: 'Spleen, Lymph node',
+      hoursSinceDeath: 6,
+      condition: 'DEAD',
+    });
+    expect(s.samples[0].sentAt).toBe(today);
+    // Results by email: two negative, one positive.
+    const [x1, x2, x3] = s.samples.map((x: { id: number }) => x.id);
+    const r = await admin.post(`/api/lab-submissions/${b.body.id}/results`).send({
+      resultDate: today,
+      receivedVia: 'EMAIL',
+      results: [
+        { id: x1, result: 'NEGATIVE' },
+        { id: x2, result: 'NEGATIVE' },
+        { id: x3, result: 'POSITIVE' },
+      ],
+    });
+    expect(r.body.changed).toBe(3);
+    s = (await admin.get(`/api/lab-submissions/${b.body.id}`)).body;
+    expect(s).toMatchObject({ pending: 0, negative: 2, positive: 1, positiveNoCase: 1 });
+    expect(s.samples[0].receivedVia).toBe('EMAIL');
+    // A sample with a result cannot be dropped from the batch.
+    const header = {
+      purpose: 'SURVEILLANCE',
+      examination: 'PCR – African Swine Fever (ASF)',
+      laboratory: 'RADDL Region V',
+      submittedAt: today,
+    };
+    const drop = await admin
+      .patch(`/api/lab-submissions/${b.body.id}`)
+      .send({ ...header, samples: [pig('SURV-B1', { id: x1 })] });
+    expect(drop.body.error).toMatch(/already has a result/);
+    // The dashboard asks for a case for the positive sample.
+    const tasks = (await admin.get('/api/insights/tasks')).body;
+    expect(JSON.stringify(tasks)).toMatch(new RegExp(`${s.code}: 1 positive sample`));
+    // Opening a case from it attaches the sample, so the case is Positive (Active) at once.
+    const c = await admin.post('/api/cases').send({
+      ownerId: s.samples[2].ownerId,
+      farmId: 1,
+      species: 'Swine',
+      disease: 'African Swine Fever (ASF)',
+      affected: 1,
+      deaths: 1,
+      fromSampleId: x3,
+    });
+    expect(c.status).toBe(201);
+    const detail = (await admin.get(`/api/cases/${c.body.id}`)).body;
+    expect(detail.case).toMatchObject({ status: 'POSITIVE', classification: 'ACTIVE', classLabel: 'Active' });
+    expect(detail.labs[0]).toMatchObject({ sampleId: 'SURV-B3', submissionCode: s.code });
+    const again = await admin.post('/api/cases').send({
+      ownerId: s.samples[2].ownerId,
+      farmId: 1,
+      species: 'Swine',
+      disease: 'ASF',
+      affected: 1,
+      deaths: 0,
+      fromSampleId: x3,
+    });
+    expect(again.body.error).toMatch(/already on a disease case/);
+    // Close it again so later tests see the same open cases.
+    await admin.post(`/api/cases/${c.body.id}/void`).send({ reason: 'Test case' });
+  });
+
+  it('cases are classified Reported → Suspected → Active / Negative → Closed', async () => {
+    const c = await admin.post('/api/cases').send({
+      ownerId: 1,
+      farmId: 1,
+      species: 'Swine',
+      disease: 'ASF',
+      affected: 1,
+      deaths: 0,
+      clinicalSigns: ['FEVER', 'SKIN_REDNESS'],
+    });
+    const get = async () => (await admin.get(`/api/cases/${c.body.id}`)).body.case;
+    expect(await get()).toMatchObject({
+      classification: 'REPORTED',
+      clinicalSigns: ['FEVER', 'SKIN_REDNESS'],
+    });
+    await admin.post(`/api/cases/${c.body.id}/investigations`).send({ date: today, notes: 'Visited' });
+    expect((await get()).classification).toBe('SUSPECTED');
+    await admin.post(`/api/cases/${c.body.id}/void`).send({ reason: 'Test case' });
+    expect((await get()).classification).toBe('CLOSED');
+  });
+
+  it('pregnancy diagnosis and insemination are for cattle and carabao; the monthly report counts per species', async () => {
+    const groups = await prisma.populationGroup.findMany({ where: { archived: false } });
+    const g = groups.find((x) => x.species === 'Goat' && x.count > 0)!;
+    const k = groups.find((x) => x.species === 'Carabao' && x.count > 0)!;
+    const pdGoat = await admin.post('/api/vaccinations').send({
+      farmId: g.farmId,
+      target: 'GROUP',
+      groupId: g.id,
+      count: 1,
+      serviceType: 'PREGNANCY_DIAGNOSIS',
+      result: 'PREGNANT',
+      date: today,
+    });
+    expect(pdGoat.body.fieldErrors.groupId[0]).toMatch(/cattle and carabao only/);
+    const noResult = await admin.post('/api/vaccinations').send({
+      farmId: k.farmId,
+      target: 'GROUP',
+      groupId: k.id,
+      count: 1,
+      serviceType: 'PREGNANCY_DIAGNOSIS',
+      date: today,
+    });
+    expect(noResult.body.fieldErrors.result).toBeDefined();
+    const pd = await admin.post('/api/vaccinations').send({
+      farmId: k.farmId,
+      target: 'GROUP',
+      groupId: k.id,
+      count: 1,
+      serviceType: 'PREGNANCY_DIAGNOSIS',
+      result: 'PREGNANT',
+      date: today,
+    });
+    expect(pd.status).toBe(201);
+    const ai = await admin.post('/api/vaccinations').send({
+      farmId: k.farmId,
+      target: 'GROUP',
+      groupId: k.id,
+      count: 1,
+      serviceType: 'INSEMINATION',
+      vaccine: 'Murrah semen',
+      date: today,
+    });
+    expect(ai.status).toBe(201);
+    const m = (await admin.get(`/api/monthly-summary?month=${today.slice(0, 7)}`)).body;
+    const row = m.perSpecies.find((x: { species: string }) => x.species === 'Carabao');
+    expect(row.pregnancyDiagnosis).toBeGreaterThanOrEqual(1);
+    expect(row.pregnant).toBeGreaterThanOrEqual(1);
+    expect(row.inseminated).toBeGreaterThanOrEqual(1);
+    expect(m.lab.collected).toBeGreaterThanOrEqual(3);
+    // The group's activity log shows the services.
+    const log = (await admin.get(`/api/population/groups/${k.id}/activity`)).body;
+    expect(log.some((x: { title: string }) => /Pregnancy Diagnosis/.test(x.title))).toBe(true);
+    expect(log.some((x: { title: string }) => /Artificial Insemination/.test(x.title))).toBe(true);
+  });
+
+  it('cattle and carabao keep their purpose and ownership certificate; edits are logged field by field', async () => {
+    const a = await prisma.animal.findFirst({ where: { species: 'Carabao', status: 'ACTIVE' } });
+    const r = await admin.patch(`/api/animals/${a!.id}`).send({
+      purpose: 'DRAFT',
+      colcNo: 'COLC-2026-0042',
+      colcDate: today,
+      colcFileKeys: ['documents/colc.pdf'],
+    });
+    expect(r.status).toBe(200);
+    const d = (await admin.get(`/api/animals/${a!.id}`)).body;
+    expect(d.animal).toMatchObject({
+      purpose: 'DRAFT',
+      purposeLabel: 'Draft',
+      colcNo: 'COLC-2026-0042',
+      colcFileKeys: ['documents/colc.pdf'],
+    });
+    expect(d.history[0].summary).toMatch(/purpose — → DRAFT; ownership certificate no\. — → COLC-2026-0042/);
+    const found = (await admin.get('/api/search?q=COLC-2026-0042&limit=20')).body;
+    expect(found[0]).toMatchObject({ type: 'Animal' });
+  });
+
+  it('the search page narrows by type, barangay and species', async () => {
+    const all = (await admin.get('/api/search?q=SURV-B&limit=50')).body;
+    expect(all.some((x: { type: string }) => x.type === 'Sample')).toBe(true);
+    const batches = (await admin.get('/api/search?q=SUB-&type=submission&limit=50')).body;
+    expect(batches.length).toBeGreaterThan(0);
+    expect(batches.every((x: { type: string }) => x.type === 'Lab batch')).toBe(true);
+    const pacolSwine = (await admin.get('/api/search?barangay=Pacol&species=Swine&limit=100')).body;
+    expect(pacolSwine.length).toBeGreaterThan(0);
+    expect(pacolSwine.every((x: { barangay?: string }) => x.barangay === 'Pacol')).toBe(true);
   });
 });

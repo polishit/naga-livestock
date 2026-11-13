@@ -280,7 +280,13 @@ export async function loadCases(f: Filters & { voided?: 'exclude' | 'only' } = {
         ? { status: f.caseStatus as CaseStatus }
         : {}),
     },
-    include: { farm: true, owner: true, assignedTo: true, relatedCase: true },
+    include: {
+      farm: true,
+      owner: true,
+      assignedTo: true,
+      relatedCase: true,
+      _count: { select: { investigations: { where: { voidedAt: null } } } },
+    },
     orderBy: { reportedAt: 'desc' },
   });
 }

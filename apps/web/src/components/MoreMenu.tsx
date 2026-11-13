@@ -44,7 +44,7 @@ export function MoreMenu({
               key={label}
               onSelect={onSelect}
               className={cn(
-                'flex cursor-pointer items-start gap-2 rounded-md px-3 py-2 text-[14px] outline-none data-[highlighted]:bg-slate-50',
+                'flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2 text-[14px] outline-none data-[highlighted]:bg-slate-50',
                 danger ? 'text-red-600' : 'text-slate-700',
               )}
             >

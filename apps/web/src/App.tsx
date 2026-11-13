@@ -33,6 +33,16 @@ const ResponseActivitiesPage = lazy(() =>
   import('@/pages/CasesPages').then((m) => ({ default: m.ResponseActivitiesPage })),
 );
 const ServicesPage = lazy(() => import('@/pages/ServicesPage'));
+const LabSubmissionsPage = lazy(() =>
+  import('@/pages/LabSubmissionsPages').then((m) => ({ default: m.LabSubmissionsPage })),
+);
+const LabSubmissionFormPage = lazy(() =>
+  import('@/pages/LabSubmissionsPages').then((m) => ({ default: m.LabSubmissionFormPage })),
+);
+const LabSubmissionDetailPage = lazy(() =>
+  import('@/pages/LabSubmissionsPages').then((m) => ({ default: m.LabSubmissionDetailPage })),
+);
+const SearchPage = lazy(() => import('@/pages/SearchPage'));
 const MonthlyReportPage = lazy(() => import('@/pages/MonthlyReportPage'));
 const AnalyticsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.AnalyticsPage })));
 const ReportsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.ReportsPage })));
@@ -94,6 +104,25 @@ export default function App() {
           <Route path="case-tracking" element={<Navigate to="/cases?view=board" replace />} />
           <Route path="investigation" element={<InvestigationPage />} />
           <Route path="response" element={<ResponseActivitiesPage />} />
+          <Route path="lab-submissions" element={<LabSubmissionsPage />} />
+          <Route
+            path="lab-submissions/new"
+            element={
+              <RequireEditor>
+                <LabSubmissionFormPage />
+              </RequireEditor>
+            }
+          />
+          <Route
+            path="lab-submissions/:id/edit"
+            element={
+              <RequireEditor>
+                <LabSubmissionFormPage />
+              </RequireEditor>
+            }
+          />
+          <Route path="lab-submissions/:id" element={<LabSubmissionDetailPage />} />
+          <Route path="search" element={<SearchPage />} />
           <Route path="services" element={<ServicesPage />} />
           <Route path="vaccinations" element={<Navigate to="/services" replace />} />
           <Route path="monthly-report" element={<MonthlyReportPage />} />

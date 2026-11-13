@@ -10,6 +10,7 @@ import {
   Stethoscope,
   Tag,
   Trash2,
+  History,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -26,6 +27,8 @@ import {
   titleCase,
   type Breakdown,
   type FarmType,
+  ANIMAL_PURPOSE_LABELS,
+  type AnimalPurpose,
 } from '@livestock/shared';
 import { ApiError, api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -41,7 +44,13 @@ import { ActiveBadge, CaseStatusBadge, RecordStatusBadge, SpeciesChip } from '@/
 import { ActivityTimeline, LastVisit, RaisedBadge, SpeciesCard, sourceLabel } from '@/components/livestock';
 import { Badge, Button, Card, CardHeader, Checkbox, Tabs } from '@/components/ui';
 import { AnimalDialog } from '@/dialogs/animals';
-import { FarmDialog, GroupDialog, GroupEditDialog, PopulationUpdateDialog } from '@/dialogs/registry';
+import {
+  FarmDialog,
+  GroupActivityDialog,
+  GroupDialog,
+  GroupEditDialog,
+  PopulationUpdateDialog,
+} from '@/dialogs/registry';
 import { FarmVisitDialog, ServiceDialog, ServiceEditDialog, type VisitRecord } from '@/dialogs/services';
 import { DeleteDialog } from '@/dialogs/corrections';
 import type { CaseRow, FarmSummary, VaccinationRow } from './types';
@@ -251,6 +260,8 @@ interface FarmDetail {
     count: number;
     tagged: number;
     healthStatus: string;
+    purpose: string | null;
+    remarks: string | null;
     lastVerified: string | null;
     breakdown: Breakdown | null;
   }[];
@@ -300,6 +311,7 @@ export function FarmDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [dlg, setDlg] = useState<Dlg>(null);
   const [editGroup, setEditGroup] = useState<FarmDetail['groups'][number] | null>(null);
+  const [activityGroup, setActivityGroup] = useState<FarmDetail['groups'][number] | null>(null);
   const [classifyId, setClassifyId] = useState<number | null>(null);
   const [editVisit, setEditVisit] = useState<VisitRecord | null>(null);
   const [editService, setEditService] = useState<VaccinationRow | null>(null);
@@ -474,11 +486,11 @@ export function FarmDetailPage() {
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MiniStat label="Total livestock" value={`${f.total} head`} />
-        <MiniStat label="Livestock raised" value={<span className="text-[17px]">{f.livestockRaised}</span>} />
+        <MiniStat label="Livestock raised" value={<span className="text-[18px]">{f.livestockRaised}</span>} />
         <MiniStat
           label="Last farm visit"
           value={
-            <span className="text-[17px]">{f.lastVisitAt ? fmtDate(f.lastVisitAt) : 'Not visited yet'}</span>
+            <span className="text-[18px]">{f.lastVisitAt ? fmtDate(f.lastVisitAt) : 'Not visited yet'}</span>
           }
         />
         <MiniStat label="Open disease cases" value={openCases.length} />
@@ -573,7 +585,7 @@ export function FarmDetailPage() {
                   live.map((g) => (
                     <span
                       key={g.id}
-                      className="rounded-md bg-slate-100 px-3 py-1.5 text-[14px] text-slate-700"
+                      className="rounded-lg bg-slate-100 px-3 py-1.5 text-[14px] text-slate-700"
                     >
                       <b className="font-semibold text-slate-900">{g.count}</b> {g.species}
                       {g.breakdown && breakdownText(g.species, g.breakdown) ? (
@@ -588,9 +600,9 @@ export function FarmDetailPage() {
             </Card>
             <Card className="lg:col-span-2">
               <CardHeader title={`Farm Visits & Veterinary Services (${activity.length})`} />
-              <div className="flex flex-wrap gap-3 border-b border-slate-100 px-4 py-2 text-[12.5px] text-slate-600">
+              <div className="flex flex-wrap gap-3 border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Visit, no signs of disease
+                  <span className="h-2 w-2 rounded-full bg-brand-strong" /> Visit, no signs of disease
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-red-500" /> Visit, sick animals found
@@ -655,46 +667,54 @@ export function FarmDetailPage() {
                     meta={
                       <>
                         {g.code} · {g.healthStatus}
+                        {g.purpose
+                          ? ` · ${ANIMAL_PURPOSE_LABELS[g.purpose as AnimalPurpose] ?? g.purpose}`
+                          : ''}
                         {g.tagged ? ` · ${g.tagged} tagged` : ''} · counted {fmtMonth(g.lastVerified)}
                       </>
                     }
                     actions={
-                      editable && (
-                        <>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() => {
-                              setClassifyId(g.id);
-                              setDlg('update');
-                            }}
-                          >
-                            Update count / classify
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => {
-                              setEditGroup(g);
-                              setDlg('group-edit');
-                            }}
-                          >
-                            Edit details
-                          </Button>
-                          {g.count === 0 && g.tagged === 0 && (
-                            <Button size="xs" variant="ghost" onClick={() => archiveGroup(g)}>
-                              Remove
+                      <>
+                        <Button size="xs" variant="ghost" onClick={() => setActivityGroup(g)}>
+                          <History /> Activity log
+                        </Button>
+                        {editable && (
+                          <>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={() => {
+                                setClassifyId(g.id);
+                                setDlg('update');
+                              }}
+                            >
+                              Update count / classify
                             </Button>
-                          )}
-                        </>
-                      )
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditGroup(g);
+                                setDlg('group-edit');
+                              }}
+                            >
+                              Edit details
+                            </Button>
+                            {g.count === 0 && g.tagged === 0 && (
+                              <Button size="xs" variant="ghost" onClick={() => archiveGroup(g)}>
+                                Remove
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </>
                     }
                   />
                 ))}
               </div>
             ) : (
               <Card>
-                <p className="px-4 py-8 text-center text-[14.5px] text-slate-500">
+                <p className="px-4 py-8 text-center text-[15px] text-slate-500">
                   No livestock recorded yet. Select “Add Species” for each kind of animal kept on this farm.
                 </p>
               </Card>
@@ -762,7 +782,7 @@ export function FarmDetailPage() {
                   key: 'change',
                   header: 'Change',
                   cell: (r) => (
-                    <span className={r.change > 0 ? 'text-emerald-600' : r.change < 0 ? 'text-red-600' : ''}>
+                    <span className={r.change > 0 ? 'text-brand-strong' : r.change < 0 ? 'text-red-600' : ''}>
                       {r.change > 0 ? `+${r.change}` : r.change}
                     </span>
                   ),
@@ -831,6 +851,11 @@ export function FarmDetailPage() {
       <FarmDialog {...dlgProps('edit')} farm={f} />
       <GroupDialog {...dlgProps('group')} farmId={f.id} />
       <GroupEditDialog {...dlgProps('group-edit')} group={editGroup} />
+      <GroupActivityDialog
+        open={!!activityGroup}
+        onOpenChange={(o) => !o && setActivityGroup(null)}
+        group={activityGroup}
+      />
       <PopulationUpdateDialog
         {...dlgProps('update')}
         farm={f}

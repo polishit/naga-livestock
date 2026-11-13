@@ -34,6 +34,12 @@
   #root {
     height: 100%;
   }
+  a,
+  button,
+  tr,
+  [role='button'] {
+    @apply transition-colors duration-150;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: 'cv11', 'ss01';
@@ -54,10 +60,10 @@
     @apply flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5 sm:px-5;
   }
   .card-title {
-    @apply text-[15.5px] font-semibold text-slate-900;
+    @apply text-[16px] font-semibold text-slate-900;
   }
   .kv {
-    @apply grid grid-cols-[minmax(110px,38%)_1fr] gap-x-4 gap-y-2.5 text-[14.5px] leading-snug;
+    @apply grid grid-cols-[minmax(110px,38%)_1fr] gap-x-4 gap-y-2.5 text-[15px] leading-snug;
   }
   .kv dt {
     @apply text-slate-500;

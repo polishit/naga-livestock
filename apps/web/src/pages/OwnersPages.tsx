@@ -1,4 +1,4 @@
-import { Archive, IdCard, Pencil, Plus, RotateCcw, Trash2, UserPlus } from 'lucide-react';
+import { Archive, IdCard, Pencil, Plus, Printer, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -8,6 +8,12 @@ import {
   OWNER_STATUSES,
   RECORD_SOURCES,
   RECORD_SOURCE_LABELS,
+  PCIC_APPLICATION_LABELS,
+  FARM_TYPES,
+  FARM_TYPE_LABELS,
+  SPECIES,
+  type FarmType,
+  type ReportResult,
   fmtDate,
   fmtDateTime,
   titleCase,
@@ -15,10 +21,12 @@ import {
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { printOwnerCard } from '@/lib/print';
+import { printReport } from '@/lib/export';
 import { useApi } from '@/lib/hooks';
 import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
+import { DocumentLinks } from '@/components/forms';
 import { MapView } from '@/components/MapView';
 import { MoreMenu } from '@/components/MoreMenu';
 import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/components/page';
@@ -48,6 +56,9 @@ interface OwnerRow {
   livestock: number;
   status: string;
   source: string | null;
+  species: string[];
+  farmTypes: string[];
+  insured: boolean;
 }
 
 export function OwnersPage() {
@@ -61,15 +72,68 @@ export function OwnersPage() {
   // ?rsbsa=no lists the owners still without an RSBSA number (linked from Record completeness).
   const [rsbsa, setRsbsa] = useState(params.get('rsbsa') ?? '');
   const [source, setSource] = useState('');
+  const [species, setSpecies] = useState(params.get('species') ?? '');
+  const [farmType, setFarmType] = useState('');
+  const [insured, setInsured] = useState('');
   const [raiser, setRaiser] = useState(false);
+  const lh = useLetterhead();
   const {
     data: all,
     isLoading,
     error,
   } = useApi<OwnerRow[]>(`/api/owners${qs({ barangay, status, archived })}`);
   const data = all?.filter(
-    (o) => (!rsbsa || (rsbsa === 'yes' ? !!o.rsbsa : !o.rsbsa)) && (!source || o.source === source),
+    (o) =>
+      (!rsbsa || (rsbsa === 'yes' ? !!o.rsbsa : !o.rsbsa)) &&
+      (!source || o.source === source) &&
+      (!species || o.species.includes(species)) &&
+      (!farmType || o.farmTypes.includes(farmType)) &&
+      (!insured || (insured === 'yes') === o.insured),
   );
+  // Print the list as filtered (for the office files or a barangay meeting).
+  const print = () =>
+    printReport(
+      {
+        id: 'owners',
+        title: 'Livestock Owners Masterlist',
+        subtitle: [
+          barangay ? `Barangay ${barangay}` : 'All barangays',
+          species && `raising ${species.toLowerCase()}`,
+          farmType && FARM_TYPE_LABELS[farmType as FarmType],
+          rsbsa && (rsbsa === 'yes' ? 'with RSBSA No.' : 'without RSBSA No.'),
+          insured && (insured === 'yes' ? 'insured (PCIC)' : 'not insured'),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        columns: [
+          { key: 'code', label: 'Owner No.' },
+          { key: 'name', label: 'Livestock Owner' },
+          { key: 'barangay', label: 'Barangay' },
+          { key: 'contact', label: 'Contact' },
+          { key: 'rsbsa', label: 'RSBSA No.' },
+          { key: 'raises', label: 'Livestock Raised' },
+          { key: 'farms', label: 'Farms' },
+          { key: 'head', label: 'No. of Heads' },
+          { key: 'insured', label: 'PCIC' },
+        ],
+        rows: (data ?? []).map((o) => ({
+          code: o.code,
+          name: o.fullName,
+          barangay: o.barangay,
+          contact: o.contact ?? '—',
+          rsbsa: o.rsbsa ?? '—',
+          raises: o.species.join(', ') || '—',
+          farms: o.farms,
+          head: o.livestock,
+          insured: o.insured ? 'Insured' : '—',
+        })),
+        summary: [
+          { label: 'Owners', value: data?.length ?? 0 },
+          { label: 'Heads', value: (data ?? []).reduce((a, o) => a + o.livestock, 0) },
+        ],
+      } as ReportResult,
+      lh,
+    );
   const activeCount = all?.filter((o) => o.status !== 'ARCHIVED').length ?? 0;
 
   return (
@@ -78,12 +142,17 @@ export function OwnersPage() {
         title="Livestock Owners"
         subtitle={`Owner masterlist · ${activeCount} livestock owner${activeCount === 1 ? '' : 's'} (from DA lists and farm visits)`}
         actions={
-          canEdit && (
-            // One guided flow: owner → farm → livestock, with Back and Next.
-            <Button onClick={() => setRaiser(true)}>
-              <UserPlus /> Add Owner
+          <>
+            <Button variant="outline" onClick={print} disabled={!data?.length}>
+              <Printer /> Print list
             </Button>
-          )
+            {canEdit && (
+              // One guided flow: owner → farm → livestock, with Back and Next.
+              <Button onClick={() => setRaiser(true)}>
+                <UserPlus /> Add Owner
+              </Button>
+            )}
+          </>
         }
       />
       {error ? (
@@ -125,6 +194,33 @@ export function OwnersPage() {
                     { value: 'no', label: 'No RSBSA No.' },
                   ]}
                   all="RSBSA: all"
+                  className="w-[calc(50%-4px)] sm:w-40"
+                />
+                <FilterSelect
+                  label="Livestock raised"
+                  value={species}
+                  onChange={setSpecies}
+                  options={SPECIES}
+                  all="Any livestock"
+                  className="w-[calc(50%-4px)] sm:w-40"
+                />
+                <FilterSelect
+                  label="Farm type"
+                  value={farmType}
+                  onChange={setFarmType}
+                  options={FARM_TYPES.map((t) => ({ value: t, label: FARM_TYPE_LABELS[t] }))}
+                  all="Any farm type"
+                  className="w-[calc(50%-4px)] sm:w-44"
+                />
+                <FilterSelect
+                  label="Insurance"
+                  value={insured}
+                  onChange={setInsured}
+                  options={[
+                    { value: 'yes', label: 'Insured (PCIC)' },
+                    { value: 'no', label: 'Not insured' },
+                  ]}
+                  all="Insurance: all"
                   className="w-[calc(50%-4px)] sm:w-40"
                 />
                 <FilterSelect
@@ -346,10 +442,10 @@ export function OwnerDetailPage() {
                           className="flex flex-col gap-0.5 px-4 py-3 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
                         >
                           <span>
-                            <span className="text-[14.5px] font-medium text-slate-900">
+                            <span className="text-[15px] font-medium text-slate-900">
                               {t.earTag ?? t.animalCode}
                             </span>
-                            <span className="text-[13.5px] text-slate-600">
+                            <span className="text-[14px] text-slate-600">
                               {' '}
                               · {t.fromOwnerName} → {t.toOwnerName}
                             </span>
@@ -382,7 +478,7 @@ export function OwnerDetailPage() {
                           setAddPcic(true);
                         }}
                       >
-                        <Plus /> Add Policy
+                        <Plus /> Attach Application
                       </Button>
                     )
                   }
@@ -393,32 +489,40 @@ export function OwnerDetailPage() {
                       <div
                         key={p.id}
                         role="group"
-                        aria-label={`Policy ${p.policyNo}`}
+                        aria-label={`Insurance application ${fmtDate(p.applicationDate)}`}
                         className="rounded-lg border border-slate-200 p-3"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <div className="text-[14.5px] font-semibold text-slate-900">{p.policyNo}</div>
+                            <div className="text-[15px] font-semibold text-slate-900">
+                              {PCIC_APPLICATION_LABELS[p.applicationType as 'NEW' | 'RENEWAL'] ??
+                                'Application'}{' '}
+                              · {fmtDate(p.applicationDate)}
+                            </div>
                             <div className="text-[13px] text-slate-600">
-                              {p.species} · {p.heads} head
-                              {p.amountCovered ? ` · ₱${p.amountCovered.toLocaleString()}` : ''}
+                              {p.species}
+                              {p.heads ? ` · ${p.heads} head` : ''}
+                              {p.subsidized
+                                ? ` · RSBSA subsidized${p.rsbsaRef ? ` (${p.rsbsaRef})` : ''}`
+                                : ''}
+                              {p.policyNo ? ` · Policy ${p.policyNo}` : ''}
                             </div>
                           </div>
                           <Badge tone={PCIC_TONE[p.status] ?? 'slate'}>{titleCase(p.status)}</Badge>
                         </div>
-                        <div className="mt-1.5 text-[12.5px] text-slate-500">
-                          {fmtDate(p.startDate)} – {fmtDate(p.endDate)}
+                        <div className="mt-1.5 text-[13px]">
+                          <DocumentLinks keys={p.fileKeys} empty="Scanned form not attached yet" />
                         </div>
                         {!!p.animals?.length && (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {p.animals.map((a) => (
-                              <Link key={a.id} to={`/animals/${a.id}`} className="link text-[12.5px]">
+                              <Link key={a.id} to={`/animals/${a.id}`} className="link text-[13px]">
                                 {a.earTag ?? a.code}
                               </Link>
                             ))}
                           </div>
                         )}
-                        {p.remarks && <div className="mt-1 text-[12.5px] text-slate-500">{p.remarks}</div>}
+                        {p.remarks && <div className="mt-1 text-[13px] text-slate-500">{p.remarks}</div>}
                         {canEdit && (
                           <div className="mt-2 flex gap-1">
                             <Button
@@ -437,7 +541,10 @@ export function OwnerDetailPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="px-4 py-4 text-[14px] text-slate-500">No insurance policies on record.</p>
+                  <p className="px-4 py-4 text-[14px] text-slate-500">
+                    No insurance on record. Attach the owner's PCIC application when they insure their
+                    animals.
+                  </p>
                 )}
               </Card>
             </div>
@@ -460,7 +567,7 @@ export function OwnerDetailPage() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-[15.5px] font-semibold text-slate-900">{f.name}</div>
+                      <div className="text-[16px] font-semibold text-slate-900">{f.name}</div>
                       <div className="text-[13px] text-slate-500">
                         {f.code} · {f.barangay}
                         {f.zone ? ` · ${f.zone}` : ''}
@@ -495,7 +602,7 @@ export function OwnerDetailPage() {
             </div>
           ) : (
             <Card>
-              <p className="px-4 py-8 text-center text-[14.5px] text-slate-500">
+              <p className="px-4 py-8 text-center text-[15px] text-slate-500">
                 No farms yet. Select “Add Farm” and pin it on the map.
               </p>
             </Card>
@@ -617,6 +724,7 @@ export function OwnerDetailPage() {
         ownerId={o.id}
         policy={pcicEdit}
         animals={data.animals}
+        rsbsa={o.rsbsa}
       />
     </div>
   );

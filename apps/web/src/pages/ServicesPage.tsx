@@ -57,6 +57,8 @@ const SERVICE_TONE: Record<string, 'blue' | 'amber' | 'green' | 'violet' | 'slat
   DEWORMING: 'blue',
   VACCINATION: 'amber',
   CHECKUP: 'green',
+  PREGNANCY_DIAGNOSIS: 'violet',
+  INSEMINATION: 'violet',
   TREATMENT: 'violet',
   OTHER: 'slate',
 };
@@ -145,7 +147,11 @@ export default function ServicesPage() {
     { key: 'barangay', header: 'Barangay' },
     { key: 'species', header: 'Species' },
     { key: 'count', header: 'No. of Heads', className: 'font-semibold' },
-    { key: 'vaccine', header: 'Product Used', cell: (r) => r.vaccine ?? '—' },
+    {
+      key: 'vaccine',
+      header: 'Product / Result',
+      cell: (r) => [r.resultLabel, r.vaccine].filter(Boolean).join(' · ') || '—',
+    },
     { key: 'administeredBy', header: 'Done By' },
     { key: 'remarks', header: 'Remarks', cell: (r) => r.remarks ?? '—' },
     ...(canEdit
@@ -203,7 +209,7 @@ export default function ServicesPage() {
         barangay: v.barangay,
         species: v.species,
         head: v.count,
-        product: v.vaccine ?? '—',
+        product: [v.resultLabel, v.vaccine].filter(Boolean).join(' · ') || '—',
         by: v.administeredBy ?? '—',
         remarks: v.remarks ?? '—',
       })),
@@ -511,7 +517,7 @@ export default function ServicesPage() {
                 empty="Nothing scheduled. Enter a next schedule date when recording a service to get a reminder."
               />
             )}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 px-4 py-2.5 text-[12.5px] text-slate-600">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-600">
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-sm bg-sky-200" /> Deworming
               </span>
@@ -538,18 +544,18 @@ export default function ServicesPage() {
                   <Card key={c.species}>
                     <CardHeader title={c.species} />
                     <div className="grid grid-cols-2 gap-3 p-4">
-                      <div className="rounded-md bg-emerald-50 p-3">
-                        <div className="text-[12px] text-emerald-700">Exact — tagged animals</div>
-                        <div className="mt-1 text-[22px] font-semibold text-slate-900">
+                      <div className="rounded-lg bg-brand-light p-3">
+                        <div className="text-[12px] text-brand-dark">Exact — tagged animals</div>
+                        <div className="mt-1 text-[24px] font-semibold text-slate-900">
                           {c.exactPct == null ? '—' : `${c.exactPct}%`}
                         </div>
                         <div className="text-[13px] text-slate-500">
                           {c.exactVaccinated} of {c.tagged} tagged
                         </div>
                       </div>
-                      <div className="rounded-md bg-amber-50 p-3">
+                      <div className="rounded-lg bg-amber-50 p-3">
                         <div className="text-[12px] text-amber-700">Estimated — all heads</div>
-                        <div className="mt-1 text-[22px] font-semibold text-slate-900">
+                        <div className="mt-1 text-[24px] font-semibold text-slate-900">
                           ≈ {c.estimatedPct}%
                         </div>
                         <div className="text-[13px] text-slate-500">

@@ -12,6 +12,7 @@ import { env } from './env';
 import { HttpError } from './lib/http';
 import { animalsRouter, straysRouter, transfersRouter } from './routes/animals';
 import { casesRouter, labsRouter, radiusRouter, recordsRouter } from './routes/cases';
+import { labSubmissionsRouter } from './routes/labSubmissions';
 import { insightsRouter } from './routes/insights';
 import { recordActionsRouter } from './routes/recordActions';
 import { farmsRouter } from './routes/farms';
@@ -70,6 +71,7 @@ export function createApp() {
   api.use('/strays', straysRouter);
   api.use('/cases', casesRouter);
   api.use('/labs', labsRouter);
+  api.use('/lab-submissions', labSubmissionsRouter);
   api.use('/radius', radiusRouter);
   api.use('/', recordsRouter);
   api.use('/vaccinations', vaccinationsRouter);

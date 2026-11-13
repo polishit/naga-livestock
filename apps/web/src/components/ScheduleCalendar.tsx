@@ -21,7 +21,7 @@ export interface CalendarItem {
 const CHIP: Record<CalendarItem['tone'], string> = {
   blue: 'bg-sky-100 text-sky-800',
   amber: 'bg-amber-100 text-amber-800',
-  green: 'bg-emerald-100 text-emerald-800',
+  green: 'bg-emerald-100 text-brand-dark',
   violet: 'bg-violet-100 text-violet-800',
   slate: 'bg-slate-100 text-slate-700',
   red: 'bg-red-100 text-red-800',
@@ -131,7 +131,7 @@ export function ScheduleCalendar({ items, empty }: { items: CalendarItem[]; empt
                 >
                   <div
                     className={cn(
-                      'mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12.5px]',
+                      'mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[13px]',
                       d === today ? 'bg-brand font-semibold text-white' : 'text-slate-600',
                     )}
                   >
@@ -142,7 +142,7 @@ export function ScheduleCalendar({ items, empty }: { items: CalendarItem[]; empt
                       <div
                         key={it.id}
                         className={cn(
-                          'truncate rounded px-1.5 py-0.5 text-[11.5px] font-medium',
+                          'truncate rounded px-1.5 py-0.5 text-[12px] font-medium',
                           CHIP[it.tone],
                         )}
                         title={it.label}
@@ -151,7 +151,7 @@ export function ScheduleCalendar({ items, empty }: { items: CalendarItem[]; empt
                       </div>
                     ))}
                     {its.length > PER_DAY && (
-                      <div className="px-1.5 text-[11.5px] font-medium text-slate-500">
+                      <div className="px-1.5 text-[12px] font-medium text-slate-500">
                         + {its.length - PER_DAY} more
                       </div>
                     )}
@@ -167,14 +167,14 @@ export function ScheduleCalendar({ items, empty }: { items: CalendarItem[]; empt
           <>
             <div className="mb-2 text-[14px] font-semibold text-slate-900">{fmtDate(day)}</div>
             {list.length ? (
-              <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+              <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                 {list.map((it) => (
                   <li key={it.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                     <div className="min-w-0">
                       <span className={cn('rounded px-1.5 py-0.5 text-[12px] font-medium', CHIP[it.tone])}>
                         {it.label}
                       </span>
-                      {it.detail && <div className="mt-1 text-[13.5px] text-slate-600">{it.detail}</div>}
+                      {it.detail && <div className="mt-1 text-[14px] text-slate-600">{it.detail}</div>}
                     </div>
                     {it.action}
                   </li>
@@ -185,7 +185,7 @@ export function ScheduleCalendar({ items, empty }: { items: CalendarItem[]; empt
             )}
           </>
         ) : (
-          <p className="text-[13.5px] text-slate-500">
+          <p className="text-[14px] text-slate-500">
             {items.length ? 'Select a day to see what is scheduled.' : empty}
           </p>
         )}

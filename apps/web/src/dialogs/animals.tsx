@@ -19,12 +19,23 @@ import {
   strayFormSchema,
   titleCase,
   transferCreateSchema,
+  ANIMAL_PURPOSES,
+  ANIMAL_PURPOSE_LABELS,
+  isLargeRuminant,
 } from '@livestock/shared';
-import { api, isQueued } from '@/lib/api';
+import { toast } from 'sonner';
+import { api, isQueued, uploadFile } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAddressLookup, useApi, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
 import { MapView } from '@/components/MapView';
-import { AddressLookupHint, PhotoGallery, PhotoPicker, err, useZodForm } from '@/components/forms';
+import {
+  AddressLookupHint,
+  DocumentPicker,
+  PhotoGallery,
+  PhotoPicker,
+  err,
+  useZodForm,
+} from '@/components/forms';
 import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
 import { DeleteDialog } from './corrections';
 import { VoidDialog } from './surveillance';
@@ -46,6 +57,11 @@ export interface AnimalRecord {
   lifeStage: string | null;
   markings: string | null;
   cowlick: string | null;
+  purpose?: string | null;
+  purposeLabel?: string | null;
+  colcNo?: string | null;
+  colcDate?: string | null;
+  colcFileKeys?: string[];
   health: string | null;
   photoKeys: string[];
   remarks: string | null;
@@ -71,10 +87,16 @@ export function AnimalDialog({
   const { data: lookups } = useLookups();
   const [photos, setPhotos] = useState<File[]>([]);
   const [kept, setKept] = useState<string[]>([]);
+  // The scanned Certificate of Ownership of Large Cattle.
+  const [colcFiles, setColcFiles] = useState<File[]>([]);
+  const [colcKept, setColcKept] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   useEffect(() => {
     if (open) {
       setPhotos([]);
       setKept(animal?.photoKeys ?? []);
+      setColcFiles([]);
+      setColcKept(animal?.colcFileKeys ?? []);
     }
   }, [open, animal]);
   const form = useZodForm(editing ? animalUpdateSchema : animalCreateSchema, {});
@@ -88,6 +110,9 @@ export function AnimalDialog({
     lifeStage: animal?.lifeStage ?? 'adult',
     markings: animal?.markings ?? '',
     cowlick: animal?.cowlick ?? '',
+    purpose: animal?.purpose ?? '',
+    colcNo: animal?.colcNo ?? '',
+    colcDate: animal?.colcDate ?? '',
     health: animal?.health ?? 'healthy',
     remarks: animal?.remarks ?? '',
     ...(editing ? { status: animal!.status } : {}),
@@ -112,6 +137,8 @@ export function AnimalDialog({
   const selectedGroup = lookups?.groups.find((g) => String(g.id) === String(form.watch('groupId')));
   // Cowlicks (hair whorls) identify cattle and carabao on ownership papers; other species skip it.
   const showCowlick = hasCowlick(selectedGroup?.species ?? animal?.species) || !!animal?.cowlick;
+  // Purpose and the ownership certificate (COLC) are kept for cattle and carabao.
+  const largeRuminant = isLargeRuminant(selectedGroup?.species ?? animal?.species ?? '');
   return (
     <Dialog
       open={open}
@@ -123,7 +150,7 @@ export function AnimalDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button form="animal-form" type="submit" loading={save.isPending}>
+          <Button form="animal-form" type="submit" loading={save.isPending || uploading}>
             Save
           </Button>
         </>
@@ -132,13 +159,30 @@ export function AnimalDialog({
       <form
         id="animal-form"
         noValidate
-        onSubmit={form.handleSubmit((v) =>
+        onSubmit={form.handleSubmit(async (v) => {
+          // The certificate scans are uploaded first (they need a connection).
+          let colcKeys = colcKept;
+          if (largeRuminant && colcFiles.length) {
+            setUploading(true);
+            try {
+              colcKeys = [...colcKept];
+              for (const f of colcFiles) colcKeys.push(await uploadFile(f, f.name, 'documents'));
+            } catch {
+              toast.error('Could not upload the certificate scan. Check the connection and try again.');
+              return;
+            } finally {
+              setUploading(false);
+            }
+          }
           save.mutate({
             ...v,
             ...(showCowlick ? {} : { cowlick: editing ? null : undefined }),
+            ...(largeRuminant
+              ? { colcFileKeys: colcKeys }
+              : { purpose: undefined, colcNo: undefined, colcDate: undefined }),
             photoKeys: kept,
-          }),
-        )}
+          });
+        })}
         className="grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
         {!editing && (
@@ -201,6 +245,40 @@ export function AnimalDialog({
           >
             <Input {...form.register('cowlick')} placeholder="e.g. 2 on forehead, 1 on back" />
           </Field>
+        )}
+        {largeRuminant && (
+          <>
+            <Field label="Purpose" error={err(e, 'purpose')}>
+              <Select {...form.register('purpose')}>
+                <option value="">Not set</option>
+                {ANIMAL_PURPOSES.map((p) => (
+                  <option key={p} value={p}>
+                    {ANIMAL_PURPOSE_LABELS[p]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="Ownership certificate no."
+              hint="Certificate of Ownership of Large Cattle (COLC)"
+              error={err(e, 'colcNo')}
+            >
+              <Input {...form.register('colcNo')} />
+            </Field>
+            <Field label="Date issued" error={err(e, 'colcDate')}>
+              <Input type="date" min={MIN_DOB} max={isoDate()} {...form.register('colcDate')} />
+            </Field>
+            <Field label="Scanned certificate" className="sm:col-span-3">
+              <DocumentPicker
+                files={colcFiles}
+                onFilesChange={setColcFiles}
+                existing={colcKept}
+                onExistingChange={setColcKept}
+                max={2}
+                label="Attach certificate"
+              />
+            </Field>
+          </>
         )}
         {editing && (
           <Field label="Status" error={err(e, 'status')}>
@@ -282,7 +360,7 @@ export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { 
             </Select>
           </Field>
         ) : (
-          <p className="rounded-md bg-slate-50 px-3 py-2.5 text-[14px] text-slate-600">
+          <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-[14px] text-slate-600">
             {animal.farmName} has no other {animal.species.toLowerCase()} group. Add one on the farm page
             first (e.g. an &ldquo;adult&rdquo; group).
           </p>
@@ -290,7 +368,7 @@ export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { 
         <Field label="Reason" error={err(e, 'reason')}>
           <Input {...form.register('reason')} placeholder="e.g. Weaned — now adult" />
         </Field>
-        <p className="text-[12.5px] text-slate-400">
+        <p className="text-[13px] text-slate-400">
           One head moves from the old group to the new one; both changes are written to the farm&apos;s
           population history. To move the animal to another farm, use Transfer instead.
         </p>
@@ -325,8 +403,8 @@ export function OwnerStrayHistory({
       role="status"
       className={
         repeat
-          ? 'rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13.5px] text-red-800'
-          : 'rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-800'
+          ? 'rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[14px] text-red-800'
+          : 'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[14px] text-amber-800'
       }
     >
       <b className="font-semibold">{repeat ? 'Repeat offender: ' : 'Earlier incident: '}</b>
@@ -382,7 +460,7 @@ export function TransferDialog({ open, onOpenChange, animal }: DialogProps & { a
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
-        <div className="rounded-md bg-slate-50 px-3 py-2 text-[14px] text-slate-600 sm:col-span-2">
+        <div className="rounded-lg bg-slate-50 px-3 py-2 text-[14px] text-slate-600 sm:col-span-2">
           Current: <b className="font-medium text-slate-900">{animal.ownerName}</b> · {animal.farmName}
         </div>
         <Field label="Receiving farm (new owner) *" error={err(e, 'toFarmId')} className="sm:col-span-2">
@@ -409,7 +487,7 @@ export function TransferDialog({ open, onOpenChange, animal }: DialogProps & { a
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
           <Input {...form.register('remarks')} placeholder="Sale between registered owners" />
         </Field>
-        <p className="text-[12.5px] text-slate-400 sm:col-span-2">
+        <p className="text-[13px] text-slate-400 sm:col-span-2">
           The animal moves to the receiving farm's {animal.species.toLowerCase()} group; one head is moved
           between the group counts.
         </p>
@@ -586,7 +664,7 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
             fitKey={open ? 1 : 0}
           />
           {point && (
-            <p className="mt-1 text-[12.5px] text-slate-500">
+            <p className="mt-1 text-[13px] text-slate-500">
               {point.lat.toFixed(6)}, {point.lng.toFixed(6)}
             </p>
           )}
@@ -702,7 +780,7 @@ export function StrayUpdateDialog({
       {stray.voided && (
         <p
           role="status"
-          className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[14px] text-red-800"
+          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[14px] text-red-800"
         >
           <b className="font-medium">Voided</b>
           {stray.voidedBy ? ` by ${stray.voidedBy}` : ''}: {stray.voidReason}. It no longer counts in any
@@ -728,7 +806,7 @@ export function StrayUpdateDialog({
         />
       )}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-        <div className="space-y-1 text-[14.5px] text-slate-700">
+        <div className="space-y-1 text-[15px] text-slate-700">
           <div>
             <span className="text-slate-500">Location:</span> {stray.location}, {stray.barangay}
           </div>
@@ -797,7 +875,7 @@ export function StrayUpdateDialog({
               <label className="flex h-10 items-center gap-2 text-[15px] text-slate-700">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 accent-[#1d6fd8]"
+                  className="h-4 w-4 rounded border-slate-300 accent-brand-strong"
                   {...form.register('finePaid')}
                 />
                 Fine paid
@@ -819,7 +897,7 @@ export function StrayUpdateDialog({
           {unpaidClose && (
             <p
               role="status"
-              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-800 sm:col-span-2"
+              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[14px] text-amber-800 sm:col-span-2"
             >
               The fine has not been paid yet.
             </p>

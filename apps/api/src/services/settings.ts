@@ -9,6 +9,9 @@ export const DEFAULT_SETTINGS: SettingsInput = {
   vaccinationUpcomingDays: 30,
   letterheadLine1: 'Republic of the Philippines',
   letterheadLine2: 'City Government of Naga',
+  officeAddress: 'Naga City, Camarines Sur',
+  officeContact: '',
+  officeEmail: '',
 };
 
 export async function getSettings(): Promise<SettingsInput> {

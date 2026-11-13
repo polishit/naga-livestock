@@ -9,12 +9,14 @@ import {
   ClipboardList,
   FileText,
   FileWarning,
+  FlaskConical,
   Home,
   LayoutGrid,
   Map,
   MapPinned,
   Microscope,
   Radar,
+  Search,
   Settings,
   ShieldCheck,
   Stethoscope,
@@ -48,7 +50,10 @@ export const NAV: NavSection[] = [
   {
     id: 'home',
     label: null,
-    items: [{ to: '/', label: 'Dashboard', icon: LayoutGrid, hint: 'Summary of the whole city' }],
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutGrid, hint: 'Summary of the whole city' },
+      { to: '/search', label: 'Search', icon: Search, hint: 'Find any owner, farm, animal, case or sample' },
+    ],
   },
   {
     id: 'registry',
@@ -129,6 +134,12 @@ export const NAV: NavSection[] = [
         label: 'Samples & Lab Results',
         icon: Microscope,
         hint: 'Lab results awaited and field visits due',
+      },
+      {
+        to: '/lab-submissions',
+        label: 'Lab Submissions',
+        icon: FlaskConical,
+        hint: 'Batches of samples sent to RADDL, with the forms to print',
       },
       {
         to: '/response',

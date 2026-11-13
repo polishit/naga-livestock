@@ -1,4 +1,4 @@
-import type { CaseStatus } from '@livestock/shared';
+import type { CaseClass, CaseStatus } from '@livestock/shared';
 
 export interface FarmSummary {
   id: number;
@@ -38,6 +38,10 @@ export interface CaseRow {
   species: string;
   status: CaseStatus;
   statusLabel: string;
+  /** The office's classification: Reported, Suspected, Active, Negative, Closed */
+  classification: CaseClass;
+  classLabel: string;
+  clinicalSigns: string[];
   reportedAt: string;
   symptomsDate: string | null;
   barangay: string;
@@ -77,8 +81,11 @@ export interface VaccinationRow {
   code: string;
   date: string;
   nextDate: string | null;
-  /** DEWORMING, VACCINATION, CHECKUP, TREATMENT or OTHER. */
+  /** DEWORMING, VACCINATION, CHECKUP, PREGNANCY_DIAGNOSIS, INSEMINATION, TREATMENT or OTHER. */
   serviceType: string;
+  /** Pregnancy diagnosis result */
+  result?: string | null;
+  resultLabel?: string | null;
   serviceLabel: string;
   /** Vaccine, dewormer or medicine used. */
   vaccine: string | null;

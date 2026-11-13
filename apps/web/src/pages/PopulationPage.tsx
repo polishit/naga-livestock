@@ -1,7 +1,25 @@
-import { ClipboardList, Plus } from 'lucide-react';
+import { ClipboardList, Plus, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { BARANGAYS, SPECIES, breakdownText, fmtMonth, fmtNumber, type Breakdown } from '@livestock/shared';
+import {
+  ANIMAL_PURPOSES,
+  ANIMAL_PURPOSE_LABELS,
+  BARANGAYS,
+  FARM_TYPES,
+  FARM_TYPE_LABELS,
+  HEALTH_STATUSES,
+  SPECIES,
+  breakdownText,
+  fmtMonth,
+  fmtNumber,
+  isoMonth,
+  type AnimalPurpose,
+  type Breakdown,
+  type FarmType,
+  type ReportResult,
+} from '@livestock/shared';
+import { useLetterhead } from '@/components/ExportButtons';
+import { printReport } from '@/lib/export';
 import { useAuth } from '@/lib/auth';
 import { useApi, useLookups } from '@/lib/hooks';
 import { qs } from '@/lib/utils';
@@ -25,6 +43,9 @@ interface GroupRow {
   sex: string;
   count: number;
   tagged: number;
+  healthStatus: string;
+  purpose: string | null;
+  farmType: string;
   lastVerified: string | null;
   breakdown: Breakdown | null;
 }
@@ -51,7 +72,13 @@ export default function PopulationPage() {
   const [tab, setTab] = useState<PopTab>((params.get('tab') as PopTab) || 'summary');
   const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
   const [species, setSpecies] = useState(params.get('species') ?? '');
+  // More filters for the farm list: farm type, purpose, health and when it was last counted.
+  const [farmType, setFarmType] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [health, setHealth] = useState('');
+  const [counted, setCounted] = useState('');
   const [dlg, setDlg] = useState<null | 'group' | 'update'>(null);
+  const lh = useLetterhead();
   const { data: lookups } = useLookups();
   const totals = useApi<Totals>(`/api/population/totals${qs({ barangay, species })}`);
   const groups = useApi<GroupRow[]>(
@@ -68,6 +95,107 @@ export default function PopulationPage() {
     setParams(p, { replace: true });
   };
   const t = totals.data;
+  const month = isoMonth();
+  const rows = groups.data?.filter(
+    (r) =>
+      (!farmType || r.farmType === farmType) &&
+      (!purpose || r.purpose === purpose) &&
+      (!health || r.healthStatus === health) &&
+      (!counted ||
+        (counted === 'month' ? r.lastVerified === month : !r.lastVerified || r.lastVerified < month)),
+  );
+  const scope = [
+    barangay ? `Barangay ${barangay}` : 'All barangays',
+    species,
+    farmType && FARM_TYPE_LABELS[farmType as FarmType],
+    purpose && ANIMAL_PURPOSE_LABELS[purpose as AnimalPurpose],
+    health,
+    counted && (counted === 'month' ? `counted in ${fmtMonth(month)}` : `not counted in ${fmtMonth(month)}`),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  // Print what is on screen: species totals, the farm list, or the barangay table.
+  const print = () => {
+    if (tab === 'farms')
+      return printReport(
+        {
+          id: 'population-farms',
+          title: 'Livestock Population by Farm',
+          subtitle: scope,
+          columns: [
+            { key: 'farm', label: 'Farm' },
+            { key: 'owner', label: 'Owner' },
+            { key: 'barangay', label: 'Barangay' },
+            { key: 'type', label: 'Type' },
+            { key: 'species', label: 'Species' },
+            { key: 'head', label: 'No. of Heads' },
+            { key: 'classes', label: 'Classification' },
+            { key: 'counted', label: 'Last Counted' },
+          ],
+          rows: (rows ?? []).map((r) => ({
+            farm: r.farmName,
+            owner: r.ownerName,
+            barangay: r.barangay,
+            type: FARM_TYPE_LABELS[r.farmType as FarmType] ?? r.farmType,
+            species: `${r.species}${r.purpose ? ` (${ANIMAL_PURPOSE_LABELS[r.purpose as AnimalPurpose]})` : ''}`,
+            head: r.count,
+            classes: breakdownText(r.species, r.breakdown) || 'Not classified',
+            counted: fmtMonth(r.lastVerified),
+          })),
+          summary: [
+            { label: 'Groups', value: rows?.length ?? 0 },
+            { label: 'Heads', value: (rows ?? []).reduce((a, r) => a + r.count, 0) },
+          ],
+        } as ReportResult,
+        lh,
+      );
+    if (!t) return;
+    if (tab === 'barangays')
+      return printReport(
+        {
+          id: 'population-barangays',
+          title: 'Livestock Population by Barangay',
+          subtitle: scope,
+          columns: [
+            { key: 'barangay', label: 'Barangay' },
+            { key: 'owners', label: 'Owners' },
+            { key: 'farms', label: 'Farms' },
+            { key: 'head', label: 'No. of Heads' },
+          ],
+          rows: [...t.byBarangay]
+            .sort((a, b) => b.population - a.population)
+            .map((b) => ({ barangay: b.barangay, owners: b.owners, farms: b.farms, head: b.population })),
+          summary: [{ label: 'Total heads', value: t.total }],
+        } as ReportResult,
+        lh,
+      );
+    return printReport(
+      {
+        id: 'population-species',
+        title: 'Livestock Population by Species',
+        subtitle: scope,
+        columns: [
+          { key: 'species', label: 'Species' },
+          { key: 'farms', label: 'Farms' },
+          { key: 'head', label: 'No. of Heads' },
+          { key: 'tagged', label: 'Tagged' },
+          { key: 'classes', label: 'Classification (Age / Sex / Stage)' },
+        ],
+        rows: t.bySpecies
+          .filter((x) => x.population > 0)
+          .sort((a, b) => b.population - a.population)
+          .map((x) => ({
+            species: x.species,
+            farms: x.farms,
+            head: x.population,
+            tagged: x.tagged,
+            classes: breakdownText(x.species, x.breakdown) || 'Not classified',
+          })),
+        summary: [{ label: 'Total heads', value: t.total }],
+      } as ReportResult,
+      lh,
+    );
+  };
 
   return (
     <div>
@@ -98,7 +226,7 @@ export default function PopulationPage() {
           )
         }
       />
-      <div className="mb-4 flex flex-wrap gap-2">
+      <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
         <FilterSelect
           label="Barangay"
           value={barangay}
@@ -115,7 +243,54 @@ export default function PopulationPage() {
           all="All species"
           className="w-[calc(50%-4px)] sm:w-40"
         />
-      </div>
+        {tab === 'farms' && (
+          <>
+            <FilterSelect
+              label="Farm type"
+              value={farmType}
+              onChange={setFarmType}
+              options={FARM_TYPES.map((x) => ({ value: x, label: FARM_TYPE_LABELS[x] }))}
+              all="Any farm type"
+              className="w-[calc(50%-4px)] sm:w-44"
+            />
+            <FilterSelect
+              label="Purpose"
+              value={purpose}
+              onChange={setPurpose}
+              options={ANIMAL_PURPOSES.map((x) => ({ value: x, label: ANIMAL_PURPOSE_LABELS[x] }))}
+              all="Any purpose"
+              className="w-[calc(50%-4px)] sm:w-40"
+            />
+            <FilterSelect
+              label="Health"
+              value={health}
+              onChange={setHealth}
+              options={HEALTH_STATUSES}
+              all="Any health status"
+              className="w-[calc(50%-4px)] sm:w-44"
+            />
+            <FilterSelect
+              label="Last counted"
+              value={counted}
+              onChange={setCounted}
+              options={[
+                { value: 'month', label: 'Counted this month' },
+                { value: 'due', label: 'Not counted this month' },
+              ]}
+              all="Any count date"
+              className="w-[calc(50%-4px)] sm:w-52"
+            />
+          </>
+        )}
+        <Button
+          variant="outline"
+          className="sm:ml-auto"
+          onClick={print}
+          disabled={tab === 'farms' ? !rows?.length : !t}
+        >
+          <Printer /> Print
+        </Button>
+      </Card>
       <Tabs
         value={tab}
         onChange={setTab}
@@ -166,7 +341,7 @@ export default function PopulationPage() {
                       </div>
                       <button
                         type="button"
-                        className="link mt-3 text-[13.5px]"
+                        className="link mt-3 text-[14px]"
                         onClick={() => {
                           setSpecies(s.species);
                           setTab('farms');
@@ -179,7 +354,7 @@ export default function PopulationPage() {
               </div>
               {!t.bySpecies.some((s) => s.population > 0) && (
                 <Card>
-                  <p className="px-4 py-8 text-center text-[14.5px] text-slate-500">
+                  <p className="px-4 py-8 text-center text-[15px] text-slate-500">
                     No livestock recorded for this selection.
                   </p>
                 </Card>
@@ -192,7 +367,7 @@ export default function PopulationPage() {
           ) : (
             <Card>
               <DataTable
-                rows={groups.data}
+                rows={rows}
                 empty="No livestock found for this selection."
                 loading={groups.isLoading}
                 rowKey={(r) => r.id}
@@ -215,7 +390,19 @@ export default function PopulationPage() {
                   { key: 'farmName', header: 'Farm Name', className: 'font-medium text-slate-900' },
                   { key: 'ownerName', header: 'Livestock Owner' },
                   { key: 'barangay', header: 'Barangay' },
-                  { key: 'species', header: 'Species' },
+                  {
+                    key: 'farmType',
+                    header: 'Type',
+                    cell: (r) => (r.farmType === 'commercial' ? 'CM' : 'BY'),
+                  },
+                  {
+                    key: 'species',
+                    header: 'Species',
+                    cell: (r) =>
+                      r.purpose
+                        ? `${r.species} · ${ANIMAL_PURPOSE_LABELS[r.purpose as AnimalPurpose]}`
+                        : r.species,
+                  },
                   { key: 'count', header: 'No. of Heads', className: 'font-semibold' },
                   {
                     key: 'breakdown',

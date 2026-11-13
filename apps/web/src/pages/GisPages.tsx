@@ -266,7 +266,7 @@ export function GisMapPage() {
                   aria-pressed={radius === r}
                   onClick={() => setRadius(r)}
                   className={cn(
-                    'h-8 rounded-md border px-2.5 text-[13px]',
+                    'h-8 rounded-lg border px-2.5 text-[13px]',
                     radius === r
                       ? 'border-brand-strong bg-brand-strong text-white'
                       : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
@@ -370,7 +370,7 @@ export function GisMapPage() {
                   </button>
                 }
               />
-              <div className="space-y-1.5 px-4 py-3 text-[14.5px] text-slate-700">
+              <div className="space-y-1.5 px-4 py-3 text-[15px] text-slate-700">
                 <CaseStatusBadge status={selCase.status} />
                 <div>
                   {selCase.farmName} · {selCase.barangay}
@@ -438,7 +438,7 @@ export function GisMapPage() {
                   </button>
                 }
               />
-              <div className="space-y-1.5 px-4 py-3 text-[14.5px] text-slate-700">
+              <div className="space-y-1.5 px-4 py-3 text-[15px] text-slate-700">
                 <div className="flex flex-wrap items-center gap-2">
                   <RaisedBadge value={selFarm.livestockRaised} />
                   <span className="text-[13px] text-slate-500">
@@ -453,7 +453,7 @@ export function GisMapPage() {
                       <SpeciesChip key={s.species} species={s.species} count={s.count} />
                     ))}
                 </div>
-                <div className="text-[13.5px]">
+                <div className="text-[14px]">
                   Last visit: <LastVisit at={selFarm.lastVisitAt} purpose={selFarm.lastVisitPurpose} />
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
@@ -495,7 +495,7 @@ export function GisMapPage() {
                       )}
                     >
                       <span className="min-w-0">
-                        <span className="block text-[14.5px] text-slate-900">{c.disease}</span>
+                        <span className="block text-[15px] text-slate-900">{c.disease}</span>
                         <span className="block text-[12px] text-slate-500">
                           {c.code} · {c.barangay}
                           {!c.mapped && ' · no map location'}
@@ -527,7 +527,7 @@ export function GisMapPage() {
                         selFarm?.id === f.id && 'bg-brand-light',
                       )}
                     >
-                      <span className="block text-[14.5px] text-slate-900">{f.name}</span>
+                      <span className="block text-[15px] text-slate-900">{f.name}</span>
                       <span className="block text-[12px] text-slate-500">
                         {f.barangay} · {f.livestockRaised} · {f.total} head
                       </span>
@@ -837,7 +837,7 @@ function OutbreakTimeline() {
                 setIdx(Number(e.target.value));
               }}
               aria-label="Month"
-              className="mt-3 w-full accent-[#166534]"
+              className="mt-3 w-full accent-brand-strong"
             />
             {/* New cases per month; the selected month is dark. */}
             <div className="mt-2 flex h-14 items-end gap-[3px]" aria-hidden>
@@ -859,7 +859,7 @@ function OutbreakTimeline() {
                 />
               ))}
             </div>
-            <div className="mt-1 flex justify-between text-[11.5px] text-slate-500">
+            <div className="mt-1 flex justify-between text-[12px] text-slate-500">
               <span>{fmtMonth(months[0])}</span>
               <span>New cases per month</span>
               <span>{fmtMonth(months[months.length - 1])}</span>
@@ -887,7 +887,7 @@ function OutbreakTimeline() {
                   <Link to={`/cases/${c.id}`} className="text-[15px] text-slate-900 hover:underline">
                     {c.code} · {c.disease}
                   </Link>
-                  <div className="text-[12.5px] text-slate-500">
+                  <div className="text-[13px] text-slate-500">
                     {c.farmName} · {c.barangay}
                     {!c.mapped && ' · not mapped'}
                   </div>
@@ -1063,7 +1063,7 @@ export function BarangayMapPage() {
               Loading barangay boundaries…
             </Card>
           )}
-          <p className="mt-1 text-[11.5px] text-slate-400">
+          <p className="mt-1 text-[12px] text-slate-400">
             Barangay boundaries: PSA / NAMRIA, via philippines-json-maps (MIT licence). Tap a barangay for its
             figures.
           </p>
@@ -1103,7 +1103,7 @@ export function BarangayMapPage() {
                         selected === b && 'bg-brand-light',
                       )}
                     >
-                      <span className="flex items-center justify-between gap-2 text-[14.5px]">
+                      <span className="flex items-center justify-between gap-2 text-[15px]">
                         <span className="text-slate-900">{b}</span>
                         <span className="font-medium text-slate-700">{fmtNumber(v)}</span>
                       </span>
@@ -1184,9 +1184,7 @@ export function RadiusPage() {
       <Card className="p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
           <div className="w-full lg:w-96">
-            <div className="mb-1.5 text-[13.5px] font-medium text-slate-700">
-              Disease report (ground zero)
-            </div>
+            <div className="mb-1.5 text-[14px] font-medium text-slate-700">Disease report (ground zero)</div>
             <FilterSelect
               label="Ground-zero case"
               value={caseId}
@@ -1198,7 +1196,7 @@ export function RadiusPage() {
             />
           </div>
           <div>
-            <div className="mb-1.5 text-[13.5px] font-medium text-slate-700">Radius</div>
+            <div className="mb-1.5 text-[14px] font-medium text-slate-700">Radius</div>
             <div className="flex flex-wrap items-center gap-1.5">
               {RADIUS_PRESETS.map((r) => (
                 <button
@@ -1209,7 +1207,7 @@ export function RadiusPage() {
                     setCustom(String(r));
                   }}
                   className={cn(
-                    'h-9 rounded-md border px-3 text-[13.5px]',
+                    'h-9 rounded-lg border px-3 text-[14px]',
                     radius === r
                       ? 'border-brand-strong bg-brand-strong text-white'
                       : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
@@ -1287,7 +1285,7 @@ export function RadiusPage() {
             </div>
           )}
           {data.excluded > 0 && (
-            <div className="mt-4 flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[14.5px] text-slate-700">
+            <div className="mt-4 flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[15px] text-slate-700">
               <Info className="h-4 w-4 text-sky-600" /> {data.excluded} active farm(s) left out — no map
               location.{' '}
               <Link to="/farms?location=unmapped" className="underline">
@@ -1376,7 +1374,7 @@ export function RadiusPage() {
                     cell: (r) => (
                       <div>
                         <div className="text-brand-dark">{r.name}</div>
-                        <div className="text-[12.5px] text-slate-500">
+                        <div className="text-[13px] text-slate-500">
                           {r.ownerName} · {r.ownerContact ?? '—'}
                         </div>
                       </div>

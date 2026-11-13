@@ -33,7 +33,7 @@ test('report a disease incident and move it through the surveillance stages', as
   await page.getByRole('button', { name: 'Submit report' }).click();
   await expect(page.getByText('Deaths cannot exceed animals affected')).toBeVisible();
   await page.getByLabel('Deaths').fill('4');
-  await page.getByLabel('Observed symptoms').fill('Sudden deaths, swollen heads');
+  await page.getByLabel('Other signs / history of the sick animals').fill('Sudden deaths, swollen heads');
   await page.getByLabel('Assigned inspector').selectOption({ label: 'Dr. Mark Inspector' });
   await page.getByRole('button', { name: 'Submit report' }).click();
   await expectToast(page, 'Disease incident reported.');

@@ -1,6 +1,9 @@
 import {
   CASE_STATUS_LABELS,
+  MONTHLY_SERVICES,
+  SERVICE_SPECIES_ORDER,
   SERVICE_TYPES,
+  type ServiceType,
   SERVICE_TYPE_LABELS,
   VISIT_PURPOSES,
   VISIT_PURPOSE_LABELS,
@@ -73,6 +76,40 @@ export async function monthlySummary(month = isoMonth(), barangay?: string) {
     };
   });
 
+  // End-of-month counts per species: dewormed, pregnancy diagnosis, artificial insemination, check-up.
+  const counted = services.filter((x) => MONTHLY_SERVICES.includes(x.serviceType as ServiceType));
+  const order = SERVICE_SPECIES_ORDER as readonly string[];
+  const perSpecies = [...new Set(counted.map((x) => x.species))]
+    .sort((a, b) => order.indexOf(a) - order.indexOf(b))
+    .map((sp) => {
+      const of = (t: ServiceType) => counted.filter((x) => x.species === sp && x.serviceType === t);
+      return {
+        species: sp,
+        dewormed: sum(of('DEWORMING').map((x) => x.count)),
+        pregnancyDiagnosis: sum(of('PREGNANCY_DIAGNOSIS').map((x) => x.count)),
+        pregnant: sum(
+          of('PREGNANCY_DIAGNOSIS')
+            .filter((x) => x.result === 'PREGNANT')
+            .map((x) => x.count),
+        ),
+        inseminated: sum(of('INSEMINATION').map((x) => x.count)),
+        checkups: sum(of('CHECKUP').map((x) => x.count)),
+      };
+    });
+  // Laboratory samples collected this month (cases and surveillance batches).
+  const samples = await prisma.labRecord.findMany({
+    where: { voidedAt: null, collectedAt: range, ...(barangay ? { farm: { barangay } } : {}) },
+    select: { result: true, submissionId: true, caseId: true },
+  });
+  const lab = {
+    collected: samples.length,
+    surveillance: samples.filter((x) => x.submissionId && !x.caseId).length,
+    pending: samples.filter((x) => x.result === 'PENDING').length,
+    positive: samples.filter((x) => x.result === 'POSITIVE').length,
+    negative: samples.filter((x) => x.result === 'NEGATIVE').length,
+    inconclusive: samples.filter((x) => x.result === 'INCONCLUSIVE').length,
+  };
+
   // Six-month trend ending in the chosen month.
   const months = Array.from({ length: 6 }, (_, i) => addMonths(month, i - 5));
   const trendFrom = monthRange(months[0]).gte;
@@ -104,6 +141,14 @@ export async function monthlySummary(month = isoMonth(), barangay?: string) {
     ),
     checkups: sum(
       tServices.filter((s) => s.serviceType === 'CHECKUP' && inMonth(s.date, m)).map((s) => s.count),
+    ),
+    pregnancyDiagnosis: sum(
+      tServices
+        .filter((s) => s.serviceType === 'PREGNANCY_DIAGNOSIS' && inMonth(s.date, m))
+        .map((s) => s.count),
+    ),
+    inseminated: sum(
+      tServices.filter((s) => s.serviceType === 'INSEMINATION' && inMonth(s.date, m)).map((s) => s.count),
     ),
     visits: tVisits.filter((v) => inMonth(v.date, m)).length,
   }));
@@ -147,6 +192,8 @@ export async function monthlySummary(month = isoMonth(), barangay?: string) {
       })),
     },
     services: serviceRows,
+    perSpecies,
+    lab,
     visits: {
       total: visits.length,
       farms: new Set(visits.map((v) => v.farmId)).size,

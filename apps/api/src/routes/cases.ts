@@ -202,15 +202,19 @@ casesRouter.get(
         linkedCases: { include: { farm: true }, orderBy: { id: 'asc' } },
         history: { orderBy: [{ at: 'desc' }, { id: 'desc' }] },
         investigations: { orderBy: [{ date: 'desc' }, { id: 'desc' }] },
-        labRecords: { orderBy: { id: 'asc' } },
+        labRecords: { orderBy: { id: 'asc' }, include: { submission: true } },
         responses: { orderBy: [{ date: 'desc' }, { id: 'desc' }] },
+        monitoringVisits: { select: { farmId: true } },
       },
     });
     if (!c) throw notFound('Case');
     const radius = c.lat != null ? await radiusAnalysis(id) : null;
     const culled = culledHeads(c.responses);
+    // Visited: a site visit on the case, or a Farm Visit to its farm linked to it.
+    const visited =
+      c.investigations.some((i) => !i.voidedAt) || c.monitoringVisits.some((v) => v.farmId === c.farmId);
     res.json({
-      case: { ...serializeCase(c), culled, pendingPopulation: pendingPopulation(c, culled) },
+      case: { ...serializeCase({ ...c, visited }), culled, pendingPopulation: pendingPopulation(c, culled) },
       history: c.history.map((h) => ({
         id: h.id,
         status: h.status,
@@ -270,13 +274,23 @@ function serializeInvestigation(i: any) {
   };
 }
 
-function serializeLab(l: any) {
+export function serializeLab(l: any) {
   return {
     ...voidInfo(l),
     id: l.id,
     caseId: l.caseId,
     caseCode: l.case?.code,
     caseClosed: l.case ? l.case.closedAt != null : undefined,
+    submissionId: l.submissionId ?? null,
+    submissionCode: l.submission?.code ?? null,
+    farmId: l.farmId ?? null,
+    species: l.species ?? null,
+    animalAge: l.animalAge ?? null,
+    animalSex: l.animalSex ?? null,
+    condition: l.condition ?? null,
+    hoursSinceDeath: l.hoursSinceDeath ?? null,
+    organs: l.organs ?? null,
+    receivedVia: l.receivedVia ?? null,
     sampleId: l.sampleId,
     sampleType: l.sampleType,
     sampleCount: l.sampleCount,
@@ -343,6 +357,18 @@ casesRouter.post(
       const parent = await prisma.diseaseCase.findUnique({ where: { id: d.relatedCaseId } });
       if (!parent) throw badRequest('The linked case no longer exists');
     }
+    // Opened from a surveillance sample: the sample must be from this farm and species, with no case yet.
+    const sample = d.fromSampleId
+      ? await prisma.labRecord.findUnique({ where: { id: d.fromSampleId }, include: { submission: true } })
+      : null;
+    if (d.fromSampleId) {
+      if (!sample || sample.voidedAt) throw badRequest('The laboratory sample no longer exists');
+      if (sample.caseId) throw badRequest('This sample is already on a disease case');
+      if (sample.farmId !== d.farmId || (sample.species && sample.species !== d.species))
+        throw badRequest('Validation failed', {
+          fieldErrors: { farmId: ['The case must be for the farm and species the sample came from'] },
+        });
+    }
     const reportedAt = d.reportedAt ?? today();
     const c = await prisma.$transaction(async (tx) => {
       const created = await tx.diseaseCase.create({
@@ -359,6 +385,7 @@ casesRouter.post(
           symptomsDate: dateOnly(d.symptomsDate) ?? null,
           reportedAt: dateOnly(reportedAt)!,
           symptoms: d.symptoms ?? null,
+          clinicalSigns: d.clinicalSigns ?? [],
           reportedBy: d.reportedBy ?? null,
           assignedToId: d.assignedToId ?? null,
           sampleInfo: d.sampleInfo ?? null,
@@ -385,6 +412,16 @@ casesRouter.post(
         req.user?.name,
         tx,
       );
+      if (sample) {
+        await tx.labRecord.update({ where: { id: sample.id }, data: { caseId: cc.id } });
+        await historyNote(
+          tx,
+          cc,
+          `Opened from sample ${sample.sampleId}${sample.submission ? ` (${sample.submission.code})` : ''}`,
+          req.user?.name,
+        );
+        await syncCaseStatus(tx, cc.id, req.user?.name);
+      }
       if (d.relatedCaseId) {
         await logActivity(
           'case',
@@ -459,6 +496,12 @@ function labData(d: LabInput) {
     sampleId: d.sampleId,
     sampleType: d.sampleType ?? null,
     sampleCount: d.sampleCount ?? null,
+    animalAge: d.animalAge ?? null,
+    animalSex: d.animalSex ?? null,
+    condition: d.condition ?? null,
+    hoursSinceDeath: d.condition === 'DEAD' ? (d.hoursSinceDeath ?? null) : null,
+    organs: d.sampleType === 'Tissue / Organs' ? (d.organs ?? null) : null,
+    receivedVia: d.result !== 'PENDING' ? (d.receivedVia ?? null) : null,
     testMethod: d.testMethod ?? null,
     collectedAt: dateOnly(d.collectedAt) ?? null,
     laboratory: d.laboratory ?? null,
@@ -473,14 +516,16 @@ function labData(d: LabInput) {
 type LabInput = ReturnType<typeof labCreateSchema.parse>;
 
 /** A laboratory sample ID identifies one sample: it cannot be used twice (voided records excepted). */
-async function assertUniqueSample(sampleId: string, exceptId?: number) {
+export async function assertUniqueSample(sampleId: string, exceptId?: number) {
   const dup = await prisma.labRecord.findFirst({
     where: { sampleId, voidedAt: null, ...(exceptId ? { NOT: { id: exceptId } } : {}) },
-    include: { case: true },
+    include: { case: true, submission: true },
   });
   if (dup)
     throw badRequest('Validation failed', {
-      fieldErrors: { sampleId: [`Sample ID already used on ${dup.case.code}`] },
+      fieldErrors: {
+        sampleId: [`Sample ID already used on ${dup.case?.code ?? dup.submission?.code ?? 'another sample'}`],
+      },
     });
 }
 type ResponseInput = ReturnType<typeof responseCreateSchema.parse>;
@@ -582,7 +627,9 @@ casesRouter.post(
     notBeforeCase(c, { collectedAt: d.collectedAt, sentAt: d.sentAt, resultDate: d.resultDate });
     await assertUniqueSample(d.sampleId);
     const l = await prisma.$transaction(async (tx) => {
-      const created = await tx.labRecord.create({ data: { caseId: id, ...labData(d) } });
+      const created = await tx.labRecord.create({
+        data: { caseId: id, farmId: c.farmId, species: c.species, ...labData(d) },
+      });
       await historyNote(
         tx,
         c,
@@ -760,6 +807,12 @@ casesRouter.patch(
     diff('symptoms observed', fmtDate(ymd(c.symptomsDate)), fmtDate(d.symptomsDate ?? null));
     diff('inspector', c.assignedTo?.name ?? null, assignee?.name ?? null);
     if ((c.symptoms ?? '') !== (d.symptoms ?? '')) changes.push('symptoms updated');
+    if (
+      'clinicalSigns' in (req.body ?? {}) &&
+      JSON.stringify([...((c.clinicalSigns as string[] | null) ?? [])].sort()) !==
+        JSON.stringify([...(d.clinicalSigns ?? [])].sort())
+    )
+      changes.push('clinical signs updated');
     if ((c.sampleInfo ?? '') !== (d.sampleInfo ?? '')) changes.push('sample info updated');
     if ((c.remarks ?? '') !== (d.remarks ?? '')) changes.push('remarks updated');
     if ((c.reportedBy ?? '') !== (d.reportedBy ?? '')) changes.push('reported by updated');
@@ -773,6 +826,7 @@ casesRouter.patch(
           deaths: d.deaths,
           symptomsDate: dateOnly(d.symptomsDate) ?? null,
           symptoms: d.symptoms ?? null,
+          ...('clinicalSigns' in (req.body ?? {}) ? { clinicalSigns: d.clinicalSigns ?? [] } : {}),
           reportedBy: d.reportedBy ?? null,
           assignedToId: d.assignedToId ?? null,
           sampleInfo: d.sampleInfo ?? null,
@@ -837,8 +891,9 @@ labsRouter.patch(
     const id = idParam(req);
     const d = parse(labCreateSchema, req.body);
     assertNotFuture({ collectedAt: d.collectedAt, sentAt: d.sentAt, resultDate: d.resultDate });
-    const l = await prisma.labRecord.findUnique({ where: { id }, include: { case: true } });
-    if (!l || l.voidedAt) throw notFound('Laboratory record');
+    const found = await prisma.labRecord.findUnique({ where: { id }, include: { case: true } });
+    if (!found || found.voidedAt || !found.case) throw notFound('Laboratory record');
+    const l = { ...found, case: found.case, caseId: found.case.id };
     if (l.case.closedAt) throw closedError();
     notBeforeCase(l.case, { collectedAt: d.collectedAt, sentAt: d.sentAt, resultDate: d.resultDate });
     await assertUniqueSample(d.sampleId, id);
@@ -976,7 +1031,7 @@ recordsRouter.get(
     res.json({
       labs: labs.map((l) => ({
         id: l.id,
-        ...caseInfo(l.case),
+        ...caseInfo(l.case!),
         sampleId: l.sampleId,
         sampleType: l.sampleType,
         testMethod: l.testMethod,
@@ -1057,14 +1112,15 @@ for (const [path, label] of [
       let caseRef: { id: number; status: CaseStatus } | null = null;
       if (path === 'labs') {
         const r = await prisma.labRecord.findUnique({ where: { id }, include: { case: true } });
-        if (!r || r.voidedAt) throw notFound(label);
-        if (r.case.closedAt) throw closedError();
+        if (!r || r.voidedAt || !r.case) throw notFound(label);
+        const rc = r.case;
+        if (rc.closedAt) throw closedError();
         await prisma.$transaction(async (tx) => {
           await tx.labRecord.update({ where: { id }, data });
-          await syncCaseStatus(tx, r.caseId, req.user?.name);
+          await syncCaseStatus(tx, rc.id, req.user?.name);
         });
-        entityId = r.caseId;
-        caseRef = r.case;
+        entityId = rc.id;
+        caseRef = rc;
         what = `lab record ${r.sampleId}`;
       } else if (path === 'investigations') {
         const r = await prisma.investigation.findUnique({ where: { id }, include: { case: true } });

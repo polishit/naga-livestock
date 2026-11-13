@@ -1,5 +1,9 @@
 import {
+  CASE_CLASS_LABELS,
   CASE_STATUS_LABELS,
+  PD_RESULT_LABELS,
+  caseClass,
+  type PdResult,
   SERVICE_TYPE_LABELS,
   type ServiceType,
   VISIT_FINDING_LABELS,
@@ -10,6 +14,12 @@ import {
 import { ymd } from '../lib/dates';
 
 export function serializeCase(c: any) {
+  // The office's own classification (Reported → Suspected → Active → Closed).
+  const classification = caseClass({
+    status: c.status,
+    closed: c.closedAt != null,
+    visited: c.visited ?? (c._count?.investigations ?? 0) > 0,
+  });
   return {
     id: c.id,
     code: c.code,
@@ -17,6 +27,8 @@ export function serializeCase(c: any) {
     species: c.species,
     status: c.status,
     statusLabel: CASE_STATUS_LABELS[c.status as keyof typeof CASE_STATUS_LABELS],
+    classification,
+    classLabel: CASE_CLASS_LABELS[classification],
     reportedAt: ymd(c.reportedAt),
     symptomsDate: ymd(c.symptomsDate),
     barangay: c.barangay,
@@ -35,6 +47,7 @@ export function serializeCase(c: any) {
     assignedToId: c.assignedToId,
     assignedToName: c.assignedTo?.name ?? null,
     symptoms: c.symptoms,
+    clinicalSigns: (c.clinicalSigns as string[] | null) ?? [],
     sampleInfo: c.sampleInfo,
     remarks: c.remarks,
     photoKeys: (c.photoKeys as string[] | null) ?? [],
@@ -61,6 +74,8 @@ export function serializeVaccination(v: any) {
     serviceType: v.serviceType,
     serviceLabel: SERVICE_TYPE_LABELS[v.serviceType as ServiceType] ?? v.serviceType,
     vaccine: v.vaccine,
+    result: v.result ?? null,
+    resultLabel: v.result ? (PD_RESULT_LABELS[v.result as PdResult] ?? v.result) : null,
     species: v.species,
     target: v.target,
     targetLabel: target,

@@ -56,7 +56,7 @@ export default function LoginPage() {
   });
 
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-[#f3f4ec]">
+    <div className="relative min-h-[100dvh] overflow-hidden bg-background">
       {/* Background scaled like object-fit: cover, keeping the 1634×1014 artwork proportions */}
       <div
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
@@ -110,7 +110,7 @@ function LoginCard({
       className={`flex flex-col justify-center rounded-[20px] border border-white/70 bg-white/55 px-7 py-10 shadow-[0_8px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-[15%] ${className}`}
     >
       <h1 className="text-[24px] font-semibold tracking-tight text-slate-900">Sign in</h1>
-      <p className="mt-1 text-[14.5px] text-slate-600">Livestock Monitoring System with GIS Integration.</p>
+      <p className="mt-1 text-[15px] text-slate-600">Livestock Monitoring System with GIS Integration.</p>
       <form className="mt-8 space-y-4" onSubmit={onSubmit} noValidate>
         <div>
           <label htmlFor="email" className="mb-1.5 block text-[15px] text-slate-800">
@@ -151,7 +151,7 @@ function LoginCard({
           {e.password && <p className="mt-1 text-[13px] text-red-600">{e.password.message}</p>}
         </div>
         {error && (
-          <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-[13.5px] text-red-700">
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-[14px] text-red-700">
             {error}
           </p>
         )}

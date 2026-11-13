@@ -16,7 +16,7 @@ import { RegisterRaiser } from '@/dialogs/RegisterRaiser';
 import { Button } from './ui';
 
 const ITEM =
-  'flex cursor-pointer items-start gap-2.5 rounded-md px-3 py-2 text-left outline-none data-[highlighted]:bg-slate-50';
+  'flex cursor-pointer items-start gap-2.5 rounded-lg px-3 py-2 text-left outline-none data-[highlighted]:bg-slate-50';
 
 /** "+ New" in the top bar: the everyday jobs, one click away from any page. */
 export function QuickNew() {
@@ -81,7 +81,7 @@ export function QuickNew() {
                 <Icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-dark" />
                 <span>
                   <span className="block text-[14px] font-medium text-slate-900">{label}</span>
-                  <span className="block text-[12.5px] text-slate-500">{hint}</span>
+                  <span className="block text-[13px] text-slate-500">{hint}</span>
                 </span>
               </DropdownMenu.Item>
             ))}

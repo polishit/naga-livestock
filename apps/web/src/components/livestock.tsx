@@ -132,7 +132,7 @@ export function SpeciesCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
-            <span className="text-[15.5px] font-semibold text-slate-900">{species}</span>
+            <span className="text-[16px] font-semibold text-slate-900">{species}</span>
           </div>
           {breed && <div className="mt-0.5 text-[13px] text-slate-500">{breed}</div>}
         </div>
@@ -144,7 +144,7 @@ export function SpeciesCard({
       <div className="mt-3 flex-1">
         <BreakdownBars species={species} total={count} breakdown={breakdown} />
       </div>
-      {meta && <div className="mt-3 text-[12.5px] text-slate-500">{meta}</div>}
+      {meta && <div className="mt-3 text-[13px] text-slate-500">{meta}</div>}
       {actions && <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">{actions}</div>}
     </div>
   );
@@ -166,9 +166,9 @@ export function ActivityTimeline({
   }[];
   empty?: ReactNode;
 }) {
-  if (!items.length) return <p className="px-4 py-8 text-center text-[14.5px] text-slate-500">{empty}</p>;
+  if (!items.length) return <p className="px-4 py-8 text-center text-[15px] text-slate-500">{empty}</p>;
   const dot = {
-    green: 'bg-emerald-500',
+    green: 'bg-brand-strong',
     red: 'bg-red-500',
     blue: 'bg-sky-500',
     amber: 'bg-amber-500',
@@ -187,7 +187,7 @@ export function ActivityTimeline({
           />
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-[12.5px] text-slate-500">{fmtDate(it.date)}</div>
+              <div className="text-[13px] text-slate-500">{fmtDate(it.date)}</div>
               <div className="flex flex-wrap items-center gap-2 text-[15px] font-medium text-slate-900">
                 {it.title}
                 {it.tag}

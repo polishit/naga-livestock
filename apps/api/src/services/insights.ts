@@ -612,7 +612,7 @@ export async function taskList(): Promise<Task[]> {
     const waiting = sent ? Math.round((day(t).getTime() - day(sent).getTime()) / 86400_000) : null;
     tasks.push({
       group: 'Lab results',
-      title: `${l.case.code}: result for sample ${l.sampleId}`,
+      title: `${l.case!.code}: result for sample ${l.sampleId}`,
       sub: sent
         ? `Sent ${fmtDate(sent)} · waiting ${waiting} day${waiting === 1 ? '' : 's'}`
         : 'Not sent to the laboratory yet',
@@ -621,6 +621,39 @@ export async function taskList(): Promise<Task[]> {
       due: null,
       overdue: (waiting ?? 0) > 14,
     });
+  }
+  // Surveillance batches still waiting for results, and positive samples with no case yet.
+  const batches = await prisma.labSubmission.findMany({
+    include: { samples: { where: { voidedAt: null, caseId: null }, select: { result: true } } },
+    orderBy: { id: 'asc' },
+  });
+  for (const b of batches) {
+    const pending = b.samples.filter((x) => x.result === 'PENDING').length;
+    const positive = b.samples.filter((x) => x.result === 'POSITIVE').length;
+    const sent = ymd(b.submittedAt);
+    const waiting = sent ? Math.round((day(t).getTime() - day(sent).getTime()) / 86400_000) : null;
+    if (positive)
+      tasks.push({
+        group: 'Lab results',
+        title: `${b.code}: ${positive} positive sample${positive === 1 ? '' : 's'} with no disease case`,
+        sub: b.examination,
+        href: `/lab-submissions/${b.id}`,
+        action: 'Open a case',
+        due: null,
+        overdue: true,
+      });
+    if (pending)
+      tasks.push({
+        group: 'Lab results',
+        title: `${b.code}: ${pending} result${pending === 1 ? '' : 's'} pending`,
+        sub: sent
+          ? `Submitted ${fmtDate(sent)} · waiting ${waiting} day${waiting === 1 ? '' : 's'}`
+          : 'Not submitted yet',
+        href: `/lab-submissions/${b.id}`,
+        action: 'Enter results',
+        due: null,
+        overdue: (waiting ?? 0) > 14,
+      });
   }
   for (const m of measures) {
     const label = RESPONSE_TYPE_LABELS[m.type as ResponseType] ?? m.type;

@@ -173,6 +173,8 @@ farmsRouter.get(
         breakdown: (g.breakdown as Record<string, number> | null) ?? null,
         tagged: g.animals.length,
         healthStatus: g.healthStatus,
+        purpose: g.purpose,
+        remarks: g.remarks,
         lastVerified: g.lastVerified,
       })),
       animals: animals.map((a) => ({

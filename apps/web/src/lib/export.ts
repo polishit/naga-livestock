@@ -5,6 +5,10 @@ export interface Letterhead {
   line2?: string | null;
   office: string;
   city: string;
+  /** Office address, contact number and email ("Submitted by" on laboratory forms). */
+  address?: string | null;
+  contact?: string | null;
+  email?: string | null;
 }
 
 const safeName = (s: string) =>

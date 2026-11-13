@@ -1,11 +1,12 @@
 import { ArrowRightLeft, MoveRight, Pencil, Plus, Printer, Search, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ANIMAL_STATUSES,
   SPECIES_COLORS,
   fmtDate,
   fmtDateTime,
+  isLargeRuminant,
   titleCase,
   type ReportResult,
   type Species,
@@ -17,7 +18,7 @@ import { printReport } from '@/lib/export';
 import { fileUrl, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
-import { PhotoGallery } from '@/components/forms';
+import { DocumentLinks, PhotoGallery } from '@/components/forms';
 import { MoreMenu } from '@/components/MoreMenu';
 import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge } from '@/components/status';
@@ -96,7 +97,7 @@ export function AnimalsPage() {
 function AnimalArt({ species, label }: { species: string; label: string }) {
   const c = SPECIES_COLORS[species as Species] ?? '#92400e';
   return (
-    <div className="relative flex h-[150px] items-center justify-center rounded-md border-2 border-slate-800 bg-emerald-50">
+    <div className="relative flex h-[150px] items-center justify-center rounded-lg border-2 border-slate-800 bg-brand-light">
       <span className="absolute left-0 right-0 top-2 text-center text-[14px] text-slate-700">{label}</span>
       <svg viewBox="0 0 200 120" className="mt-5 h-[110px]">
         <ellipse cx="110" cy="62" rx="62" ry="30" fill={c} />
@@ -117,13 +118,66 @@ interface AnimalDetail {
   history: { id: number; action: string; summary: string; byName: string | null; at: string }[];
   insurance: {
     id: number;
-    policyNo: string;
+    policyNo: string | null;
     ownerId: number;
     ownerName: string;
-    startDate: string;
-    endDate: string;
+    applicationDate: string | null;
+    applicationType: string;
+    subsidized: boolean;
+    fileKeys: string[];
     status: string;
   }[];
+}
+
+/** Everything that happened to one animal, newest first: services, transfers, cases, insurance, edits. */
+function animalActivity(d: AnimalDetail) {
+  const items = [
+    ...d.vaccinations.map((v) => ({
+      key: `v${v.id}`,
+      at: `${v.date}T12:00:00`,
+      meta: fmtDate(v.date),
+      title: `${v.serviceLabel}${v.target === 'GROUP' ? ' (whole group)' : ''}`,
+      tag: 'Service',
+      body: [v.resultLabel, v.vaccine, v.administeredBy && `by ${v.administeredBy}`]
+        .filter(Boolean)
+        .join(' · '),
+    })),
+    ...d.transfers.map((t) => ({
+      key: `t${t.id}`,
+      at: `${t.date}T12:00:00`,
+      meta: fmtDate(t.date),
+      title: `${titleCase(t.type)}: ${t.fromOwnerName} → ${t.toOwnerName}`,
+      tag: 'Ownership',
+      body: t.remarks ?? '',
+    })),
+    ...d.cases.map((c) => ({
+      key: `c${c.id}`,
+      at: `${c.reportedAt}T12:00:00`,
+      meta: fmtDate(c.reportedAt),
+      title: `${c.code} · ${c.disease} on the farm`,
+      tag: 'Disease',
+      body: c.classLabel ?? c.statusLabel,
+    })),
+    ...d.insurance.map((p) => ({
+      key: `p${p.id}`,
+      at: `${p.applicationDate ?? ''}T12:00:00`,
+      meta: fmtDate(p.applicationDate),
+      title: `PCIC insurance application (${p.applicationType === 'RENEWAL' ? 'renewal' : 'new'})`,
+      tag: 'Insurance',
+      body: titleCase(p.status),
+    })),
+    ...d.history
+      .filter((h) => h.action !== 'vaccination')
+      .map((h) => ({
+        key: `h${h.id}`,
+        at: h.at,
+        meta: `${fmtDateTime(h.at)} · ${h.byName ?? 'System'}`,
+        title: titleCase(h.action),
+        tag: 'Record',
+        body: h.summary,
+      })),
+  ];
+  return items.sort((a, b) => b.at.localeCompare(a.at));
 }
 
 export function AnimalDetailPage() {
@@ -131,7 +185,7 @@ export function AnimalDetailPage() {
   const navigate = useNavigate();
   const { canEdit, isAdmin } = useAuth();
   const lh = useLetterhead();
-  const [tab, setTab] = useState<'vax' | 'own' | 'cases' | 'history'>('vax');
+  const [tab, setTab] = useState<'activity' | 'vax' | 'own' | 'cases'>('activity');
   const [dlg, setDlg] = useState<null | 'edit' | 'transfer' | 'move' | 'delete'>(null);
   const { data, isLoading, error } = useApi<AnimalDetail>(`/api/animals/${id}`);
   if (error) return <ErrorBox error={error} />;
@@ -215,12 +269,12 @@ export function AnimalDetailPage() {
       />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_1fr]">
         <Card className="p-4">
-                    {a.photoKeys.length ? (
+          {a.photoKeys.length ? (
             <>
               <img
                 src={fileUrl(a.photoKeys[0])!}
                 alt={a.code}
-                className="h-[150px] w-full rounded-md border-2 border-slate-800 object-cover"
+                className="h-[150px] w-full rounded-lg border-2 border-slate-800 object-cover"
               />
               {a.photoKeys.length > 1 && <PhotoGallery keys={a.photoKeys.slice(1)} className="mt-2" />}
             </>
@@ -260,19 +314,40 @@ export function AnimalDetailPage() {
                 ...(hasCowlick(a.species) || a.cowlick
                   ? [['Cowlick', a.cowlick] as [string, string | null]]
                   : []),
-                ['Health', a.health],
+                ...(isLargeRuminant(a.species)
+                  ? ([
+                      ['Purpose', a.purposeLabel],
+                      [
+                        'Ownership certificate',
+                        a.colcNo ? (
+                          <span className="inline-flex flex-wrap items-center gap-x-2">
+                            {a.colcNo}
+                            {a.colcDate && (
+                              <span className="text-slate-500">issued {fmtDate(a.colcDate)}</span>
+                            )}
+                            <DocumentLinks keys={a.colcFileKeys ?? []} empty="" />
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">Not recorded</span>
+                        ),
+                      ],
+                    ] as [string, ReactNode][])
+                  : []),
+                ['Health', a.health ? a.health.charAt(0).toUpperCase() + a.health.slice(1) : '—'],
                 [
                   'PCIC insurance',
                   data.insurance.length ? (
                     <div className="space-y-0.5">
                       {data.insurance.map((p) => (
-                        <div key={p.id}>
+                        <div key={p.id} className="flex flex-wrap items-center gap-x-2">
                           <Link className="link" to={`/owners/${p.ownerId}`}>
-                            {p.policyNo}
-                          </Link>{' '}
+                            Application {fmtDate(p.applicationDate)}
+                          </Link>
                           <span className="text-slate-500">
-                            {fmtDate(p.startDate)} – {fmtDate(p.endDate)} · {titleCase(p.status)}
+                            {titleCase(p.status)}
+                            {p.subsidized ? ' · RSBSA subsidized' : ''}
                           </span>
+                          <DocumentLinks keys={p.fileKeys} empty="" />
                         </div>
                       ))}
                     </div>
@@ -291,10 +366,10 @@ export function AnimalDetailPage() {
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: 'vax', label: 'Vaccinations' },
+          { id: 'activity', label: 'Activity log' },
+          { id: 'vax', label: 'Deworming & services' },
           { id: 'own', label: `Ownership history (${data.transfers.length})` },
           { id: 'cases', label: 'Disease cases' },
-          { id: 'history', label: 'Record history' },
         ]}
       />
       <div className="mt-4">
@@ -308,14 +383,17 @@ export function AnimalDetailPage() {
               defaultSort={{ key: 'date', dir: 'desc' }}
               columns={[
                 { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date) },
-                { key: 'vaccine', header: 'Vaccine' },
-                { key: 'species', header: 'Species' },
+                { key: 'serviceLabel', header: 'Service' },
+                {
+                  key: 'vaccine',
+                  header: 'Product / result',
+                  cell: (r) => [r.resultLabel, r.vaccine].filter(Boolean).join(' · ') || '—',
+                },
                 { key: 'targetLabel', header: 'Target' },
-                { key: 'doseNumber', header: 'Dose' },
                 { key: 'nextDate', header: 'Next', cell: (r) => (r.nextDate ? fmtDate(r.nextDate) : '—') },
                 { key: 'administeredBy', header: 'By' },
               ]}
-              empty="No vaccinations recorded."
+              empty="No deworming or other services recorded."
             />
             <p className="border-t border-slate-100 px-3 py-2.5 text-[13px] text-slate-500">
               Group-level events are shown for context; they don't identify this individual animal.
@@ -369,20 +447,17 @@ export function AnimalDetailPage() {
             />
           </Card>
         )}
-        {tab === 'history' && (
+        {tab === 'activity' && (
           <Card>
-            {data.history.length ? (
-              <Timeline
-                items={data.history.map((h) => ({
-                  key: h.id,
-                  meta: `${fmtDateTime(h.at)} · ${h.byName ?? 'System'}`,
-                  title: titleCase(h.action),
-                  body: h.summary,
-                }))}
-              />
-            ) : (
-              <p className="p-4 text-sm text-slate-500">No history yet.</p>
-            )}
+            <CardHeader title="Activity Log" />
+            {(() => {
+              const items = animalActivity(data);
+              return items.length ? (
+                <Timeline items={items} />
+              ) : (
+                <p className="p-4 text-sm text-slate-500">Nothing recorded yet.</p>
+              );
+            })()}
           </Card>
         )}
       </div>

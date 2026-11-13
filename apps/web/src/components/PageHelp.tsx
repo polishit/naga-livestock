@@ -233,6 +233,25 @@ const HELP: Record<string, Help> = {
       'Select a row to open the report, then enter the result or record the visit.',
     ],
   },
+  '/lab-submissions': {
+    title: 'Lab Submissions',
+    purpose: 'Samples sent to the laboratory (RADDL) in one batch, as on the DA forms.',
+    steps: [
+      'New submission: choose the purpose (e.g. Surveillance) and the test (e.g. PCR – ASF).',
+      'Add one row per sample: the farm, species, age, sex, live or dead, and the specimen (blood for a live pig, spleen / lymph node / liver for a dead one).',
+      'Print the Analysis Request Form and the Sample Collection Form and send them with the samples.',
+      'When the results arrive (negatives usually by email), open the batch and select "Enter results".',
+      'A positive sample shows "Open case": the disease case starts as Active with the sample attached.',
+    ],
+  },
+  '/search': {
+    title: 'Search',
+    purpose: 'Find any record from one place.',
+    steps: [
+      'Type a name, code, ear tag, RSBSA number, certificate number or sample ID.',
+      'Narrow it with the record type, barangay or species. With only a barangay or species chosen, everything there is listed.',
+    ],
+  },
   '/response': {
     title: 'Response Activities',
     purpose: 'Quarantines and checkpoints in force, and measures ongoing or planned.',
@@ -325,7 +344,7 @@ export function PageHelp() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-md p-2 text-slate-600 hover:bg-slate-100"
+        className="flex items-center gap-1.5 rounded-lg p-2 text-slate-600 hover:bg-slate-100"
         aria-label="How to use this page"
         title="How to use this page"
       >
@@ -339,11 +358,11 @@ export function PageHelp() {
         guardChanges={false}
         footer={<Button onClick={() => setOpen(false)}>Got it</Button>}
       >
-        <p className="text-[14.5px] text-slate-700">{help.purpose}</p>
+        <p className="text-[15px] text-slate-700">{help.purpose}</p>
         <ol className="mt-4 space-y-2.5">
           {help.steps.map((s, i) => (
-            <li key={i} className="flex gap-3 text-[14.5px] text-slate-700">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-dark text-[12.5px] font-semibold text-white">
+            <li key={i} className="flex gap-3 text-[15px] text-slate-700">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-dark text-[13px] font-semibold text-white">
                 {i + 1}
               </span>
               <span className="pt-0.5">{s}</span>

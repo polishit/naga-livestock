@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import {
+  ANIMAL_PURPOSE_LABELS,
   RESPONSE_TYPE_LABELS,
   SPECIES_ID_LETTER,
+  isLargeRuminant,
+  type AnimalPurpose,
   fmtDate,
   isoDate,
   isoMonth,
@@ -19,7 +22,7 @@ import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, dateTime, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr, sent } from '../lib/http';
-import { pcicStatus } from './owners';
+import { serializePcic } from './owners';
 import { adjustGroupCount } from './population';
 import { serializeCase, serializeTransfer, serializeVaccination } from './serializers';
 
@@ -42,6 +45,11 @@ function serializeAnimal(a: any) {
     lifeStage: a.lifeStage,
     markings: a.markings,
     cowlick: a.cowlick,
+    purpose: a.purpose ?? null,
+    purposeLabel: a.purpose ? (ANIMAL_PURPOSE_LABELS[a.purpose as AnimalPurpose] ?? a.purpose) : null,
+    colcNo: a.colcNo ?? null,
+    colcDate: ymd(a.colcDate),
+    colcFileKeys: (a.colcFileKeys as string[] | null) ?? [],
     health: a.health,
     photoKeys: (a.photoKeys as string[] | null) ?? [],
     remarks: a.remarks,
@@ -124,18 +132,14 @@ animalsRouter.get(
     const insurance = await prisma.pcicPolicy.findMany({
       where: { animals: { some: { id } } },
       include: { owner: true },
-      orderBy: { startDate: 'desc' },
+      orderBy: { applicationDate: 'desc' },
     });
     res.json({
       animal: serializeAnimal(a),
       insurance: insurance.map((p) => ({
-        id: p.id,
-        policyNo: p.policyNo,
+        ...serializePcic(p),
         ownerId: p.ownerId,
         ownerName: p.owner.fullName,
-        startDate: ymd(p.startDate),
-        endDate: ymd(p.endDate),
-        status: pcicStatus(p),
       })),
       vaccinations: vaccinations.map(serializeVaccination),
       transfers: transfers.map((t) => serializeTransfer(t, farmNames)),
@@ -189,6 +193,15 @@ animalsRouter.post(
           lifeStage: d.lifeStage ?? null,
           markings: d.markings ?? null,
           cowlick: d.cowlick ?? null,
+          // Purpose and the ownership certificate apply to cattle and carabao only.
+          ...(isLargeRuminant(group.species)
+            ? {
+                purpose: d.purpose ?? null,
+                colcNo: d.colcNo ?? null,
+                colcDate: dateOnly(d.colcDate) ?? null,
+                colcFileKeys: d.colcFileKeys ?? [],
+              }
+            : {}),
           health: d.health ?? null,
           photoKeys: d.photoKeys ?? [],
           remarks: d.remarks ?? null,
@@ -248,8 +261,13 @@ animalsRouter.patch(
             'cowlick',
             'health',
             'remarks',
+            ...(isLargeRuminant(before.species) ? (['purpose', 'colcNo'] as const) : []),
           ] as const),
           ...('dob' in req.body ? { dob: dateOnly(d.dob) ?? null } : {}),
+          ...('colcDate' in req.body && isLargeRuminant(before.species)
+            ? { colcDate: dateOnly(d.colcDate) ?? null }
+            : {}),
+          ...(d.colcFileKeys && isLargeRuminant(before.species) ? { colcFileKeys: d.colcFileKeys } : {}),
           ...(d.sex ? { sex: d.sex } : {}),
           ...(d.photoKeys ? { photoKeys: d.photoKeys } : {}),
           ...(d.status ? { status: d.status } : {}),
@@ -268,11 +286,41 @@ animalsRouter.patch(
       }
       return updated;
     });
-    const changed =
-      d.status && d.status !== before.status
-        ? ` (status ${before.status.toLowerCase()} → ${d.status.toLowerCase()})`
-        : '';
-    await logActivity('animal', id, 'updated', `Record updated${changed}`, req.user?.name);
+    // The activity log says what changed, field by field.
+    const show = (v: unknown) =>
+      v instanceof Date ? fmtDate(ymd(v)) : v == null || v === '' ? '—' : String(v);
+    const fields: [keyof typeof before & keyof typeof a, string][] = [
+      ['earTag', 'ear tag'],
+      ['breed', 'breed'],
+      ['sex', 'sex'],
+      ['dob', 'birth date'],
+      ['estimatedAge', 'age'],
+      ['lifeStage', 'stage'],
+      ['markings', 'markings'],
+      ['cowlick', 'cowlick'],
+      ['purpose', 'purpose'],
+      ['colcNo', 'ownership certificate no.'],
+      ['colcDate', 'certificate date'],
+      ['health', 'health'],
+      ['status', 'status'],
+    ];
+    const changes = fields
+      .filter(([k]) => show(before[k]) !== show(a[k]))
+      .map(([k, label]) => `${label} ${show(before[k])} → ${show(a[k])}`);
+    const photos =
+      JSON.stringify(before.photoKeys ?? []) !== JSON.stringify(a.photoKeys ?? []) ? ['photos changed'] : [];
+    const colcFiles =
+      JSON.stringify(before.colcFileKeys ?? []) !== JSON.stringify(a.colcFileKeys ?? [])
+        ? ['certificate scan changed']
+        : [];
+    const all = [...changes, ...photos, ...colcFiles];
+    await logActivity(
+      'animal',
+      id,
+      'updated',
+      all.length ? `Record updated: ${all.join('; ')}` : 'Record saved (no changes)',
+      req.user?.name,
+    );
     res.json(a);
   }),
 );

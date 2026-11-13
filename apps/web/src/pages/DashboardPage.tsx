@@ -208,7 +208,7 @@ export default function DashboardPage() {
                       >
                         {r.summary}
                       </Link>
-                      <div className="text-[12.5px] text-slate-400">
+                      <div className="text-[13px] text-slate-400">
                         {fmtDateTime(r.at)} · {r.byName ?? 'System'}
                       </div>
                     </div>

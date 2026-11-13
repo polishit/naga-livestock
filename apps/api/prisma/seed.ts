@@ -844,6 +844,7 @@ async function wipe() {
   await prisma.caseStatusHistory.deleteMany();
   await prisma.investigation.deleteMany();
   await prisma.labRecord.deleteMany();
+  await prisma.labSubmission.deleteMany();
   await prisma.responseActivity.deleteMany();
   await prisma.diseaseCase.deleteMany();
   await prisma.farmVisit.deleteMany();
@@ -865,6 +866,7 @@ async function wipe() {
     'CaseStatusHistory',
     'Investigation',
     'LabRecord',
+    'LabSubmission',
     'ResponseActivity',
     'DiseaseCase',
     'FarmVisit',
@@ -1575,6 +1577,7 @@ async function main() {
         heads: 40,
         amountCovered: 400000,
         startDate: D('2026-05-15'),
+        applicationDate: D('2026-05-15'),
         endDate: D('2027-05-14'),
         status: 'CLAIMED',
         remarks: 'ASF claim for 10 pigs (CASE-0001), paid.',
@@ -1586,6 +1589,7 @@ async function main() {
         heads: 14,
         amountCovered: 560000,
         startDate: D('2026-06-10'),
+        applicationDate: D('2026-06-10'),
         endDate: D('2027-06-09'),
         status: 'ACTIVE',
       },
@@ -1596,6 +1600,7 @@ async function main() {
         heads: 9,
         amountCovered: 360000,
         startDate: D(ago(345)),
+        applicationDate: D(ago(345)),
         endDate: D(ahead(20)),
         status: 'ACTIVE',
         remarks: 'Ends soon; owner reminded to renew',
@@ -1607,6 +1612,7 @@ async function main() {
         heads: 20,
         amountCovered: 180000,
         startDate: D('2025-07-01'),
+        applicationDate: D('2025-07-01'),
         endDate: D('2026-06-30'),
         status: 'EXPIRED',
         remarks: 'Not renewed',
@@ -1617,6 +1623,153 @@ async function main() {
   await prisma.pcicPolicy.update({
     where: { id: 2 },
     data: { animals: { connect: [{ id: 1 }, { id: 3 }] } },
+  });
+
+  // Renewal and RSBSA subsidy as on the PCIC application form.
+  await prisma.pcicPolicy.update({
+    where: { id: 2 },
+    data: { applicationType: 'RENEWAL', subsidized: true, rsbsaRef: 'RSBSA-05-17-24-0031' },
+  });
+
+  /* cattle and carabao: purpose, ownership certificates, pregnancy diagnosis and insemination */
+  const ruminants = await prisma.populationGroup.findMany({
+    where: { archived: false, species: { in: ['Cattle', 'Carabao'] }, count: { gt: 0 } },
+    orderBy: { id: 'asc' },
+  });
+  for (const [k, g] of ruminants.entries())
+    await prisma.populationGroup.update({
+      where: { id: g.id },
+      data: { purpose: g.species === 'Carabao' ? 'DRAFT' : k % 2 ? 'BREEDING' : 'FATTENING' },
+    });
+  for (const [k, a] of (
+    await prisma.animal.findMany({
+      where: { species: { in: ['Cattle', 'Carabao'] } },
+      orderBy: { id: 'asc' },
+    })
+  ).entries())
+    await prisma.animal.update({
+      where: { id: a.id },
+      data: {
+        purpose: a.species === 'Carabao' ? 'DRAFT' : 'BREEDING',
+        ...(k < 3
+          ? { colcNo: `COLC-2025-${String(311 + k).padStart(4, '0')}`, colcDate: D(ago(200 + k * 30)) }
+          : {}),
+      },
+    });
+  let srv = (await prisma.vaccination.count()) + 1;
+  for (const [k, g] of ruminants.slice(0, 4).entries()) {
+    const n = Math.max(1, Math.min(3, Math.floor(g.count / 3)));
+    await prisma.vaccination.create({
+      data: {
+        code: code('SRV', srv++),
+        serviceType: 'PREGNANCY_DIAGNOSIS',
+        farmId: g.farmId,
+        target: 'GROUP',
+        groupId: g.id,
+        species: g.species,
+        count: n,
+        vaccine: 'Rectal palpation',
+        result: k % 2 ? 'NOT_PREGNANT' : 'PREGNANT',
+        date: D(ago(4 + k * 6)),
+        doseNumber: 1,
+        administeredBy: k % 2 ? JOY : MARK,
+        remarks: 'Pregnancy diagnosis during farm visit',
+      },
+    });
+    await prisma.vaccination.create({
+      data: {
+        code: code('SRV', srv++),
+        serviceType: 'INSEMINATION',
+        farmId: g.farmId,
+        target: 'GROUP',
+        groupId: g.id,
+        species: g.species,
+        count: 1,
+        vaccine: g.species === 'Carabao' ? 'Frozen semen — Murrah buffalo' : 'Frozen semen — Brahman',
+        date: D(ago(9 + k * 7)),
+        nextDate: D(ahead(60 - k * 5)),
+        doseNumber: 1,
+        administeredBy: k % 2 ? MARK : JOY,
+        remarks: 'Artificial insemination; pregnancy diagnosis after 60 days',
+      },
+    });
+  }
+
+  /* ASF surveillance: blood samples from pigs in several barangays, sent to RADDL in batches */
+  const piggeries = await prisma.populationGroup.findMany({
+    where: { archived: false, species: 'Swine', count: { gt: 0 } },
+    include: { farm: true },
+    orderBy: { id: 'asc' },
+  });
+  const LAB = 'RADDL Region V, San Agustin, Pili, Camarines Sur';
+  const batch = async (
+    n: number,
+    submittedDaysAgo: number,
+    rows: { farmId: number; sex: string; age: string; dead?: boolean }[],
+    resulted: boolean,
+  ) => {
+    const s = await prisma.labSubmission.create({
+      data: {
+        code: code('SUB', n),
+        purpose: 'SURVEILLANCE',
+        examination: 'PCR – African Swine Fever (ASF)',
+        laboratory: LAB,
+        submittedAt: D(ago(submittedDaysAgo)),
+        submittedBy: MARK,
+        notedBy: 'Dr. Liza Admin',
+        accessionNo: resulted ? `RADDL-2026-${String(4100 + n * 37)}` : null,
+        createdBy: MARK,
+        createdAt: DT(`${ago(submittedDaysAgo)}T16:00:00`),
+      },
+    });
+    await prisma.labRecord.createMany({
+      data: rows.map((r, i) => ({
+        submissionId: s.id,
+        farmId: r.farmId,
+        species: 'Swine',
+        sampleId: `S${ago(submittedDaysAgo + 1)
+          .slice(2)
+          .replace(/-/g, '')}-${String(i + 1).padStart(2, '0')}`,
+        sampleType: r.dead ? 'Tissue / Organs' : 'Blood',
+        organs: r.dead ? 'Spleen, Lymph node, Liver' : null,
+        condition: r.dead ? 'DEAD' : 'LIVE',
+        hoursSinceDeath: r.dead ? 6 : null,
+        animalAge: r.age,
+        animalSex: r.sex,
+        testMethod: 'PCR – African Swine Fever (ASF)',
+        laboratory: LAB,
+        submittedBy: MARK,
+        collectedAt: D(ago(submittedDaysAgo + 1)),
+        sentAt: D(ago(submittedDaysAgo)),
+        result: resulted ? 'NEGATIVE' : 'PENDING',
+        resultDate: resulted ? D(ago(submittedDaysAgo - 2)) : null,
+        receivedVia: resulted ? 'EMAIL' : null,
+      })),
+    });
+    await prisma.activityLog.create({
+      data: {
+        entity: 'lab-submission',
+        entityId: s.id,
+        action: 'created',
+        summary: `${s.code}: ${rows.length} sample(s) for PCR – African Swine Fever (ASF) (surveillance)`,
+        byName: MARK,
+        createdAt: s.createdAt,
+      },
+    });
+  };
+  const ages = ['3 m', '3 m', '3½ m', '4 m', '5 m', '8 m', '1 yr', '4 m'];
+  const pick = (from: number, k: number) =>
+    Array.from({ length: k }, (_, i) => piggeries[(from + i) % piggeries.length]).map((g, i) => ({
+      farmId: g.farmId,
+      sex: i % 3 === 1 ? 'F' : 'M',
+      age: ages[i % ages.length],
+    }));
+  if (piggeries.length) {
+    await batch(1, 24, pick(0, 10), true);
+    await batch(2, 2, [...pick(3, 5), { ...pick(1, 1)[0], dead: true, age: '5 m' }], false);
+  }
+  await prisma.setting.create({
+    data: { key: 'officeAddress', value: JSON.stringify('Naga City, Camarines Sur') },
   });
 
   /* this year's vaccination targets (Reports & Analytics) */

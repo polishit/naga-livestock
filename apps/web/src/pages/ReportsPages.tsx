@@ -182,7 +182,7 @@ function ReportTable({ report, loading }: { report?: ReportResult; loading?: boo
         empty="No records for the selected filters."
       />
       <SummaryChips items={report.summary} />
-      {report.note && <p className="px-4 pb-4 text-[12.5px] text-slate-500">{report.note}</p>}
+      {report.note && <p className="px-4 pb-4 text-[13px] text-slate-500">{report.note}</p>}
     </Card>
   );
 }

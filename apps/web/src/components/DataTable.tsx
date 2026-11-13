@@ -165,7 +165,7 @@ export function DataTable<T>({
                     <div className="min-w-0 text-[15px] font-medium text-slate-900">
                       {second ? render(second) : render(first)}
                     </div>
-                    {second && <div className="shrink-0 text-[12.5px] text-slate-500">{render(first)}</div>}
+                    {second && <div className="shrink-0 text-[13px] text-slate-500">{render(first)}</div>}
                   </div>
                   {rest.length > 0 && (
                     <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
@@ -191,7 +191,7 @@ export function DataTable<T>({
                 <th
                   key={c.key}
                   className={cn(
-                    'whitespace-nowrap px-3 py-2.5 text-[11.5px] font-semibold text-slate-500 first:pl-4 last:pr-4',
+                    'whitespace-nowrap px-3 py-2.5 text-[12px] font-semibold text-slate-500 first:pl-4 last:pr-4',
                     c.headerClassName,
                   )}
                 >
@@ -246,7 +246,7 @@ export function DataTable<T>({
                     <td
                       key={c.key}
                       className={cn(
-                        'px-3 text-[14.5px] text-slate-800 first:pl-4 last:pr-4',
+                        'px-3 text-[15px] text-slate-800 first:pl-4 last:pr-4',
                         dense ? 'py-2' : 'py-3',
                         ci === 0 && 'whitespace-nowrap',
                         c.className,

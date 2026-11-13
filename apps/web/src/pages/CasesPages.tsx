@@ -1,6 +1,8 @@
 import {
   Ban,
   Check,
+  Printer,
+  FlaskConical,
   Link2,
   Lock,
   Map as MapIcon,
@@ -15,6 +17,13 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
+  DEFAULT_LABORATORY,
+  DEFAULT_LAB_TEST,
+  RESULT_RECEIVED_LABELS,
+  CASE_CLASSES,
+  CASE_CLASS_LABELS,
+  CLINICAL_SIGN_LABELS,
+  type ClinicalSign,
   CASE_OUTCOME_LABELS,
   CASE_STATUSES,
   ASF_RESPONSE_STEPS,
@@ -32,6 +41,7 @@ import {
   MAX_PHOTO_MB,
   MIN_DATE,
   caseCreateSchema,
+  titleCase,
   fmtDate,
   fmtDateTime,
   isoDate,
@@ -40,6 +50,8 @@ import {
   type ResponseType,
 } from '@livestock/shared';
 import { isQueued } from '@/lib/api';
+import { printAnalysisRequest, printSampleCollection } from '@/lib/print';
+import { useLetterhead } from '@/components/ExportButtons';
 import { useAuth } from '@/lib/auth';
 import { UNSAVED_MESSAGE, speciesOnFarm, useApi, useLookups, useSave, useUnsavedGuard } from '@/lib/hooks';
 import { cn, qs } from '@/lib/utils';
@@ -51,7 +63,13 @@ import { ActivityTimeline, DiseasePicker } from '@/components/livestock';
 import type { VisitRecord } from '@/dialogs/services';
 import { ErrorBox, FilterSelect, KV, Loading, PageHeader, StatCard, Timeline } from '@/components/page';
 import { ChartCard, DiseaseBars, ReportTrendLine } from '@/components/charts';
-import { CaseStatusBadge, ClosedBadge, GeotagBadge, LabResultBadge } from '@/components/status';
+import {
+  CaseClassBadge,
+  CaseStatusBadge,
+  ClosedBadge,
+  GeotagBadge,
+  LabResultBadge,
+} from '@/components/status';
 import {
   Badge,
   Button,
@@ -68,6 +86,7 @@ import { PopulationUpdateDialog, type GroupRow } from '@/dialogs/registry';
 import {
   CaseCloseDialog,
   CaseEditDialog,
+  ClinicalSignsPicker,
   CaseLocationDialog,
   InvestigationDialog,
   LabDialog,
@@ -78,6 +97,7 @@ import {
   type ResponseEditRecord,
 } from '@/dialogs/surveillance';
 import type { CaseRow, RadiusResult } from './types';
+import type { loadSampleForCase } from './LabSubmissionsPages';
 
 /* ---------------- Incident list ---------------- */
 
@@ -105,6 +125,7 @@ export function CasesPage() {
   const [state, setState] = useState(params.get('state') === 'all' ? '' : (params.get('state') ?? 'open'));
   const status = params.get('status') ?? '';
   const disease = params.get('disease') ?? '';
+  const klass = params.get('class') ?? '';
   const [showTrends, setShowTrends] = useState(true);
   const { data, isLoading, error } = useApi<CaseRow[]>(
     `/api/cases${qs({ barangay, location, state, status, disease })}`,
@@ -120,6 +141,14 @@ export function CasesPage() {
           onClear={() => setParam('status', '')}
         />
       )}
+      <FilterSelect
+        label="Classification"
+        value={klass}
+        onChange={(v) => setParam('class', v)}
+        options={CASE_CLASSES.map((c) => ({ value: c, label: CASE_CLASS_LABELS[c] }))}
+        all="All classifications"
+        className="w-full sm:w-48"
+      />
       <FilterSelect
         label="Disease"
         value={disease}
@@ -169,7 +198,7 @@ export function CasesPage() {
         actions={
           <>
             <div
-              className="inline-flex rounded-md border border-slate-300 p-0.5"
+              className="inline-flex rounded-lg border border-slate-300 p-0.5"
               role="group"
               aria-label="View"
             >
@@ -181,8 +210,8 @@ export function CasesPage() {
                   onClick={() => setView(v)}
                   className={
                     view === v
-                      ? 'rounded bg-brand-strong px-3 py-1.5 text-[13.5px] font-medium text-white'
-                      : 'rounded px-3 py-1.5 text-[13.5px] text-slate-600 hover:bg-slate-50'
+                      ? 'rounded bg-brand-strong px-3 py-1.5 text-[14px] font-medium text-white'
+                      : 'rounded px-3 py-1.5 text-[14px] text-slate-600 hover:bg-slate-50'
                   }
                 >
                   {v === 'table' ? 'Table' : 'Board'}
@@ -198,7 +227,7 @@ export function CasesPage() {
         }
       />
       <div className="mb-3 flex justify-end">
-        <button type="button" className="link text-[13.5px]" onClick={() => setShowTrends((v) => !v)}>
+        <button type="button" className="link text-[14px]" onClick={() => setShowTrends((v) => !v)}>
           {showTrends ? 'Hide graphs' : 'Show graphs'}
         </button>
       </div>
@@ -213,7 +242,7 @@ export function CasesPage() {
       ) : (
         <Card>
           <DataTable
-            rows={data}
+            rows={klass ? data?.filter((r) => r.classification === klass) : data}
             empty="No cases found. Clear the filters, or select “Report incident” when sick or dead animals are reported."
             loading={isLoading}
             rowKey={(r) => r.id}
@@ -238,8 +267,14 @@ export function CasesPage() {
               { key: 'species', header: 'Species' },
               { key: 'assignedToName', header: 'Assigned To', cell: (r) => r.assignedToName ?? '—' },
               {
+                key: 'classification',
+                header: 'Classification',
+                sort: (r) => CASE_CLASSES.indexOf(r.classification),
+                cell: (r) => <CaseClassBadge value={r.classification} />,
+              },
+              {
                 key: 'status',
-                header: 'Status',
+                header: 'Lab Stage',
                 sort: (r) => (r.closed ? 99 : CASE_STATUSES.indexOf(r.status)),
                 cell: (r) => (
                   <div className="flex flex-wrap gap-1.5">
@@ -313,7 +348,7 @@ function SurveillanceTrends({ cases }: { cases: CaseRow[] }) {
 /** A filter that came from a link, shown as a chip the user can remove. */
 function LinkFilter({ label, onClear }: { label: string; onClear: () => void }) {
   return (
-    <span className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-brand/40 bg-brand-light/50 pl-3 pr-1.5 text-[13.5px] text-slate-800">
+    <span className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-brand/40 bg-brand-light/50 pl-3 pr-1.5 text-[14px] text-slate-800">
       {label}
       <button
         type="button"
@@ -355,7 +390,7 @@ function CaseBoard({ cases, showClosed }: { cases: CaseRow[]; showClosed: boolea
               key === 'CLOSED' ? 'bg-slate-200/60' : 'bg-slate-100/80',
             )}
           >
-            <div className="flex items-center justify-between px-1.5 pb-2 pt-1 text-[13.5px] font-medium text-slate-700">
+            <div className="flex items-center justify-between px-1.5 pb-2 pt-1 text-[14px] font-medium text-slate-700">
               {label} <span className="text-slate-500">{items.length}</span>
             </div>
             <div className="space-y-2">
@@ -364,9 +399,9 @@ function CaseBoard({ cases, showClosed }: { cases: CaseRow[]; showClosed: boolea
                   key={c.id}
                   type="button"
                   onClick={() => navigate(`/cases/${c.id}`)}
-                  className="w-full rounded-md border border-slate-200 bg-white p-2.5 text-left shadow-sm hover:border-brand"
+                  className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-left shadow-sm hover:border-brand"
                 >
-                  <div className="text-[13.5px] font-semibold text-slate-900">{c.code}</div>
+                  <div className="text-[14px] font-semibold text-slate-900">{c.code}</div>
                   <div className="text-[13px] text-slate-700">{c.disease}</div>
                   <div className="mt-1 text-[12px] text-slate-400">
                     {c.barangay} · {fmtDate(c.reportedAt)}
@@ -402,7 +437,12 @@ export function CaseNewPage() {
   // /cases/new?from=<case id>&farm=<farm id>
   const [params] = useSearchParams();
   const fromId = params.get('from');
-  const presetFarmId = params.get('farm');
+  const fromSample = params.get('fromSample');
+  const { data: sampleInfo } = useApi<Awaited<ReturnType<typeof loadSampleForCase>>>(
+    fromSample ? `/api/lab-submissions/samples/${fromSample}` : null,
+  );
+  const presetFarmId =
+    params.get('farm') ?? (sampleInfo?.sample.farmId ? String(sampleInfo.sample.farmId) : null);
   const { data: parent } = useApi<CaseDetail>(fromId ? `/api/cases/${fromId}` : null);
   const form = useZodForm(caseCreateSchema, {
     ownerId: '',
@@ -415,6 +455,7 @@ export function CaseNewPage() {
     symptomsDate: '',
     reportedAt: isoDate(),
     symptoms: '',
+    clinicalSigns: [],
     reportedBy: '',
     assignedToId: '',
     sampleInfo: '',
@@ -471,6 +512,25 @@ export function CaseNewPage() {
   const pick = (name: 'ownerId' | 'farmId', value: string) =>
     form.setValue(name, value as any, { shouldDirty: true, shouldValidate: form.formState.isSubmitted });
 
+  // Opened from a positive surveillance sample: the disease follows the test, the animal is counted.
+  useEffect(() => {
+    if (!sampleInfo || !farm) return;
+    const { sample, submission } = sampleInfo;
+    if (!form.getValues('disease'))
+      form.setValue(
+        'disease',
+        (/asf|african swine/i.test(submission.examination) ? 'African Swine Fever (ASF)' : '') as any,
+      );
+    if (sample.species && farmSpecies.some((x) => x.species === sample.species)) {
+      form.setValue('species', sample.species as any);
+      form.setValue('affected', '1' as any);
+      form.setValue('deaths', (sample.condition === 'DEAD' ? '1' : '0') as any);
+    }
+    if (!form.getValues('reportedBy'))
+      form.setValue('reportedBy', `Laboratory result (${submission.code}, sample ${sample.sampleId})` as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sampleInfo?.sample.id, farm?.id, farmSpecies.length]);
+
   // Copy the disease (and the species, if this farm keeps it) from the original case.
   useEffect(() => {
     if (!parent) return;
@@ -503,8 +563,19 @@ export function CaseNewPage() {
         title="Report Disease Incident"
         subtitle="Record a suspected case. No automated diagnosis is performed."
       />
+      {sampleInfo && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[15px] text-slate-700">
+          <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+          <span>
+            Opened from sample <b className="font-medium">{sampleInfo.sample.sampleId}</b> (
+            {sampleInfo.submission.code}, {sampleInfo.submission.examination}) — result{' '}
+            <b className="font-medium">{titleCase(sampleInfo.sample.result)}</b>. The sample is attached to
+            this case, so it opens as Active.
+          </span>
+        </div>
+      )}
       {parent && (
-        <div className="mb-4 flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2.5 text-[14.5px] text-slate-700">
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-[15px] text-slate-700">
           <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
           <span>
             This incident will be linked to <b className="font-medium">{parent.case.code}</b> (
@@ -515,7 +586,13 @@ export function CaseNewPage() {
       )}
       <form
         noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(fromId ? { ...v, relatedCaseId: Number(fromId) } : v))}
+        onSubmit={form.handleSubmit((v) =>
+          save.mutate({
+            ...v,
+            ...(fromId ? { relatedCaseId: Number(fromId) } : {}),
+            ...(sampleInfo ? { fromSampleId: sampleInfo.sample.id } : {}),
+          }),
+        )}
         className="grid grid-cols-1 gap-4 lg:grid-cols-[1.27fr_1fr]"
       >
         <Card className="p-4">
@@ -620,8 +697,26 @@ export function CaseNewPage() {
             <Field label="Date reported" error={err(e, 'reportedAt')}>
               <Input type="date" min={MIN_DATE} max={isoDate()} {...form.register('reportedAt')} />
             </Field>
-            <Field label="Observed symptoms" error={err(e, 'symptoms')} className="sm:col-span-2">
-              <Textarea rows={3} {...form.register('symptoms')} />
+            <Field
+              label="Clinical signs seen"
+              className="sm:col-span-2"
+              hint="Tick all that the owner or the visit found."
+            >
+              <ClinicalSignsPicker
+                value={form.watch('clinicalSigns') ?? []}
+                onChange={(v) => form.setValue('clinicalSigns', v as any, { shouldDirty: true })}
+              />
+            </Field>
+            <Field
+              label="Other signs / history of the sick animals"
+              error={err(e, 'symptoms')}
+              className="sm:col-span-2"
+            >
+              <Textarea
+                rows={3}
+                {...form.register('symptoms')}
+                placeholder="When it started, feed or animals brought in recently, nearby farms with sick animals…"
+              />
             </Field>
             <Field label="Reported by" error={err(e, 'reportedBy')}>
               <Input {...form.register('reportedBy')} placeholder={user?.name} />
@@ -832,7 +927,8 @@ const OLD_TAB_STEP: Record<string, string> = {
 export function CaseDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit: canWrite, isAdmin } = useAuth();
+  const { canEdit: canWrite, isAdmin, user } = useAuth();
+  const lh = useLetterhead();
   const [params] = useSearchParams();
   const tabParam = params.get('tab') ?? '';
   const [tab, setTab] = useState<CaseTab>(() =>
@@ -932,6 +1028,37 @@ export function CaseDetailPage() {
           ? 'current'
           : 'todo';
 
+  // The laboratory forms for this case's samples (the ones still waiting, or all of them).
+  const labForms = () => {
+    const xs = waiting.length ? waiting : labs;
+    return {
+      code: c.code,
+      purposeLabel: 'Disease Investigation',
+      examination: xs.find((l) => l.testMethod)?.testMethod ?? DEFAULT_LAB_TEST,
+      laboratory: xs.find((l) => l.laboratory)?.laboratory ?? DEFAULT_LABORATORY,
+      submittedAt: xs.find((l) => l.sentAt)?.sentAt ?? null,
+      submittedBy: xs.find((l) => l.submittedBy)?.submittedBy ?? user?.name ?? null,
+      notedBy: null,
+      requestId: null,
+      accessionNo: xs.find((l) => l.labReference)?.labReference ?? null,
+      remarks: `${c.code}: ${c.disease} suspected — ${c.affected} affected, ${c.deaths} dead.`,
+      samples: xs.map((l) => ({
+        sampleId: l.sampleId,
+        ownerName: c.ownerName,
+        barangay: c.barangay,
+        species: c.species,
+        animalAge: l.animalAge ?? null,
+        animalSex: l.animalSex ?? null,
+        condition: l.condition ?? null,
+        hoursSinceDeath: l.hoursSinceDeath ?? null,
+        sampleType: l.sampleType,
+        organs: l.organs ?? null,
+        collectedAt: l.collectedAt,
+        lat: c.lat,
+        lng: c.lng,
+      })),
+    };
+  };
   const openVisit = (v: InvestigationEditRecord | null = null) => {
     setInvEdit(v);
     setDlg('inv');
@@ -956,7 +1083,8 @@ export function CaseDetailPage() {
         title={`${c.code} · ${c.disease}`}
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-2">
-            {c.farmName} · {c.barangay} <CaseStatusBadge status={c.status} />
+            {c.farmName} · {c.barangay} <CaseClassBadge value={c.classification} />
+            {!c.closed && <CaseStatusBadge status={c.status} />}
             {c.voided ? <Badge tone="red">Voided</Badge> : c.closed && <ClosedBadge />}
             {!c.mapped && !c.closed && <GeotagBadge />}
           </span>
@@ -1003,7 +1131,7 @@ export function CaseDetailPage() {
       {c.voided && (
         <div
           role="status"
-          className="mb-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-[14.5px] text-red-800"
+          className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[15px] text-red-800"
         >
           <Ban className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
@@ -1017,7 +1145,7 @@ export function CaseDetailPage() {
         </div>
       )}
       {c.closed && !c.voided && (
-        <div className="mb-4 flex items-start gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2.5 text-[14.5px] text-slate-700">
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-[15px] text-slate-700">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
           <div>
             <div>
@@ -1068,7 +1196,7 @@ export function CaseDetailPage() {
               }
             >
               {!c.mapped && !c.closed && (
-                <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-800">
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[14px] text-amber-800">
                   <MapPin className="h-4 w-4" /> No map location yet, so this case is not on the maps or in
                   Farms to Monitor.
                   {canEdit && (
@@ -1097,7 +1225,7 @@ export function CaseDetailPage() {
               }
             >
               {(invs.length > 0 || farmVisits.length > 0) && (
-                <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                   {data.investigations.map((v) => (
                     <li
                       key={`i${v.id}`}
@@ -1193,14 +1321,19 @@ export function CaseDetailPage() {
               }
             >
               {data.labs.length > 0 && (
-                <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                   {data.labs.map((l) => (
                     <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                       <div className="min-w-0 text-[14px]">
                         <VoidAware r={l}>
                           <span className="font-medium text-slate-900">{l.sampleId}</span>
                           <span className="text-slate-500">
-                            {[l.sampleType, l.testMethod, l.laboratory]
+                            {[
+                              l.organs ? `${l.sampleType} (${l.organs})` : l.sampleType,
+                              l.condition === 'DEAD' ? 'dead animal' : null,
+                              l.testMethod,
+                              l.laboratory,
+                            ]
                               .filter(Boolean)
                               .map((x) => ` · ${x}`)
                               .join('')}
@@ -1209,6 +1342,10 @@ export function CaseDetailPage() {
                             Collected {fmtDate(l.collectedAt)} · Sent{' '}
                             {l.sentAt ? fmtDate(l.sentAt) : 'not yet'}
                             {l.resultDate ? ` · Result ${fmtDate(l.resultDate)}` : ''}
+                            {l.receivedVia
+                              ? ` (${RESULT_RECEIVED_LABELS[l.receivedVia as keyof typeof RESULT_RECEIVED_LABELS]})`
+                              : ''}
+                            {l.submissionCode ? ` · sent in ${l.submissionCode}` : ''}
                           </div>
                         </VoidAware>
                       </div>
@@ -1246,6 +1383,24 @@ export function CaseDetailPage() {
                   >
                     <Plus /> {labs.length ? 'Add another sample' : 'Add sample'}
                   </Button>
+                  {labs.length > 0 && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => printAnalysisRequest(labForms(), lh, user?.name)}
+                      >
+                        <Printer /> Analysis Request Form
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => printSampleCollection(labForms(), lh, user?.name)}
+                      >
+                        <Printer /> Sample Collection Form
+                      </Button>
+                    </>
+                  )}
                 </StepActions>
               )}
               {!labs.length && !c.closed && (
@@ -1277,7 +1432,7 @@ export function CaseDetailPage() {
             >
               {isAsf && <AsfSteps detail={data} onLog={canEdit ? (t) => openResponse(t) : undefined} />}
               {data.responses.length > 0 && (
-                <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
+                <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200">
                   {data.responses.map((r) => (
                     <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                       <div className="min-w-0 text-[14px]">
@@ -1468,7 +1623,13 @@ export function CaseDetailPage() {
                         <GeotagBadge />
                       ),
                     ],
-                    ['Symptoms', c.symptoms],
+                    [
+                      'Clinical signs',
+                      c.clinicalSigns.length
+                        ? c.clinicalSigns.map((x) => CLINICAL_SIGN_LABELS[x as ClinicalSign] ?? x).join(', ')
+                        : null,
+                    ],
+                    ['Other signs / history', c.symptoms],
                     ['Remarks', c.remarks],
                   ]}
                 />
@@ -1478,7 +1639,7 @@ export function CaseDetailPage() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader title="Linked incidents" />
-                <div className="px-4 py-3 text-[14.5px]">
+                <div className="px-4 py-3 text-[15px]">
                   {c.relatedCaseId && (
                     <p className="mb-2 text-slate-700">
                       Reported as a linked incident of{' '}
@@ -1497,7 +1658,7 @@ export function CaseDetailPage() {
                               {l.code}
                             </Link>{' '}
                             · {l.farmName} · {l.barangay}
-                            <div className="text-[12.5px] text-slate-500">
+                            <div className="text-[13px] text-slate-500">
                               {l.disease} · reported {fmtDate(l.reportedAt)}
                             </div>
                           </div>
@@ -1818,15 +1979,15 @@ function MonitoringCard({ c }: { c: CaseRow }) {
         <p className="px-4 py-4 text-[14px] text-slate-500">Loading…</p>
       ) : (
         <div className="grid grid-cols-3 gap-2 p-4 text-center">
-          <div className="rounded-md bg-slate-50 p-2">
+          <div className="rounded-lg bg-slate-50 p-2">
             <div className="text-[20px] font-semibold text-slate-900">{data.totals.nearby}</div>
             <div className="text-[12px] text-slate-500">nearby farms</div>
           </div>
-          <div className="rounded-md bg-amber-50 p-2">
+          <div className="rounded-lg bg-amber-50 p-2">
             <div className="text-[20px] font-semibold text-amber-800">{data.totals.notVisited}</div>
             <div className="text-[12px] text-amber-800">not yet visited</div>
           </div>
-          <div className="rounded-md bg-red-50 p-2">
+          <div className="rounded-lg bg-red-50 p-2">
             <div className="text-[20px] font-semibold text-red-700">{data.totals.sick}</div>
             <div className="text-[12px] text-red-700">sick animals found</div>
           </div>
@@ -1842,7 +2003,7 @@ function VoidAware({ r, children }: { r: VoidInfo; children: React.ReactNode }) 
   return (
     <div>
       <span className="text-slate-400 line-through">{children}</span> <Badge tone="slate">Voided</Badge>
-      <div className="text-[12.5px] text-slate-500">
+      <div className="text-[13px] text-slate-500">
         {r.voidReason}
         {r.voidedBy ? ` — ${r.voidedBy}` : ''}
       </div>
@@ -1877,11 +2038,11 @@ function AsfSteps({ detail, onLog }: { detail: CaseDetail; onLog?: (type?: Respo
                 ? 'PLANNED'
                 : null;
           return (
-            <li key={s.type} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-[14.5px]">
+            <li key={s.type} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-[15px]">
               <span
                 className={cn(
                   'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold',
-                  state === 'COMPLETED' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600',
+                  state === 'COMPLETED' ? 'bg-brand-strong text-white' : 'bg-slate-100 text-slate-600',
                 )}
               >
                 {state === 'COMPLETED' ? <Check className="h-3.5 w-3.5" /> : i + 1}
@@ -1947,7 +2108,7 @@ function CaseCell({ r }: { r: WorkCase }) {
   return (
     <div>
       <div className="font-medium text-slate-900">{r.caseCode}</div>
-      <div className="text-[12.5px] text-slate-500">
+      <div className="text-[13px] text-slate-500">
         {r.disease} · {r.farmName}, {r.barangay}
       </div>
     </div>

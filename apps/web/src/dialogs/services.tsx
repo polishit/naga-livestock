@@ -8,6 +8,10 @@ import {
   SERVICE_SPECIES_ORDER,
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
+  LARGE_RUMINANT_SERVICES,
+  PD_RESULTS,
+  PD_RESULT_LABELS,
+  isLargeRuminant,
   VISIT_FINDINGS,
   VISIT_FINDING_LABELS,
   VISIT_PURPOSES,
@@ -70,12 +74,12 @@ export function BreakdownEditor({
   const classified = sumOf(value);
   const ok = classified === 0 || classified === total;
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3">
+    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {list.map((c) => (
           <label key={c.code} htmlFor={`${idPrefix}-${c.code}`} className="block">
-            <span className="block text-[12.5px] font-medium text-slate-700">{c.label}</span>
-            <span className="block text-[11.5px] text-slate-400">
+            <span className="block text-[13px] font-medium text-slate-700">{c.label}</span>
+            <span className="block text-[12px] text-slate-400">
               {c.sex} · {c.age}
             </span>
             <Input
@@ -115,6 +119,8 @@ const PRODUCT_LABEL: Record<ServiceType, string> = {
   DEWORMING: 'Dewormer used',
   VACCINATION: 'Vaccine used *',
   CHECKUP: 'Medicine / vitamins given',
+  PREGNANCY_DIAGNOSIS: 'Method (e.g. rectal palpation)',
+  INSEMINATION: 'Semen / bull used',
   TREATMENT: 'Medicine given',
   OTHER: 'Product / material used',
 };
@@ -122,6 +128,8 @@ const COUNT_LABEL: Record<ServiceType, string> = {
   DEWORMING: 'No. of heads dewormed *',
   VACCINATION: 'No. of heads vaccinated *',
   CHECKUP: 'No. of heads checked *',
+  PREGNANCY_DIAGNOSIS: 'No. of heads examined *',
+  INSEMINATION: 'No. of heads inseminated *',
   TREATMENT: 'No. of heads treated *',
   OTHER: 'No. of heads served *',
 };
@@ -131,10 +139,18 @@ const speciesRank = (s: string) => {
 };
 
 /** Buttons to pick a service type (easier to tap than a dropdown). */
-function ServiceTypePicker({ value, onChange }: { value: ServiceType; onChange: (t: ServiceType) => void }) {
+function ServiceTypePicker({
+  value,
+  onChange,
+  allowed = SERVICE_TYPES,
+}: {
+  value: ServiceType;
+  onChange: (t: ServiceType) => void;
+  allowed?: readonly ServiceType[];
+}) {
   return (
     <div role="radiogroup" aria-label="Service" className="flex flex-wrap gap-2">
-      {SERVICE_TYPES.map((t) => (
+      {allowed.map((t) => (
         <button
           key={t}
           type="button"
@@ -142,7 +158,7 @@ function ServiceTypePicker({ value, onChange }: { value: ServiceType; onChange: 
           aria-checked={value === t}
           onClick={() => onChange(t)}
           className={cn(
-            'rounded-md border px-3 py-1.5 text-[14px] font-medium',
+            'rounded-lg border px-3 py-1.5 text-[14px] font-medium',
             value === t
               ? 'border-brand bg-brand text-white'
               : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
@@ -174,6 +190,7 @@ export function ServiceDialog({
     animalId: '',
     count: '1',
     vaccine: '',
+    result: '',
     date: isoDate(),
     nextDate: '',
     doseNumber: '1',
@@ -195,10 +212,14 @@ export function ServiceDialog({
   const e = form.formState.errors;
   const fId = Number(form.watch('farmId'));
   const target = form.watch('target');
+  // Pregnancy diagnosis and insemination are given to cattle and carabao only.
+  const ruminantOnly = LARGE_RUMINANT_SERVICES.includes(type);
   const groups = (lookups?.groups ?? [])
-    .filter((g) => g.farmId === fId)
+    .filter((g) => g.farmId === fId && (!ruminantOnly || isLargeRuminant(g.species)))
     .sort((a, b) => speciesRank(a.species) - speciesRank(b.species));
-  const animals = (lookups?.animals ?? []).filter((a) => a.farmId === fId);
+  const animals = (lookups?.animals ?? []).filter(
+    (a) => a.farmId === fId && (!ruminantOnly || isLargeRuminant(a.species)),
+  );
   const group = groups.find((g) => String(g.id) === String(form.watch('groupId')));
   const date = form.watch('date');
   const farms = (lookups?.farms ?? []).filter(
@@ -239,8 +260,18 @@ export function ServiceDialog({
         <Field label="Service *" className="sm:col-span-2">
           <ServiceTypePicker
             value={type}
-            onChange={(t) => form.setValue('serviceType', t as any, { shouldDirty: true })}
+            onChange={(t) => {
+              form.setValue('serviceType', t as any, { shouldDirty: true });
+              // A group of another species cannot get pregnancy diagnosis or insemination.
+              if (LARGE_RUMINANT_SERVICES.includes(t)) {
+                const g = (lookups?.groups ?? []).find(
+                  (x) => String(x.id) === String(form.getValues('groupId')),
+                );
+                if (g && !isLargeRuminant(g.species)) form.setValue('groupId', '' as any);
+              }
+            }}
           />
+          {ruminantOnly && <p className="mt-1.5 text-[13px] text-slate-500">For cattle and carabao only.</p>}
         </Field>
         <Field label="Farm *" error={err(e, 'farmId')} className="sm:col-span-2">
           <Input
@@ -297,7 +328,13 @@ export function ServiceDialog({
               })}
               disabled={!fId}
             >
-              <option value="">{fId ? 'Select...' : 'Select farm first'}</option>
+              <option value="">
+                {!fId
+                  ? 'Select farm first'
+                  : groups.length
+                    ? 'Select...'
+                    : 'No cattle or carabao on this farm'}
+              </option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.species}
@@ -325,6 +362,18 @@ export function ServiceDialog({
         <Field label="Date *" error={err(e, 'date')}>
           <Input type="date" min={MIN_DATE} max={isoDate()} {...form.register('date')} />
         </Field>
+        {type === 'PREGNANCY_DIAGNOSIS' && (
+          <Field label="Result *" error={err(e, 'result')}>
+            <Select {...form.register('result')} aria-invalid={!!e.result}>
+              <option value="">Select...</option>
+              {PD_RESULTS.map((r) => (
+                <option key={r} value={r}>
+                  {PD_RESULT_LABELS[r]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label={PRODUCT_LABEL[type]} error={err(e, 'vaccine')}>
           <Input {...form.register('vaccine')} list={`products-${type}`} aria-invalid={!!e.vaccine} />
         </Field>
@@ -341,6 +390,15 @@ export function ServiceDialog({
           <option value="NCD Vaccine" />
           <option value="FMD Vaccine" />
           <option value="Anti-Rabies Vaccine" />
+        </datalist>
+        <datalist id="products-PREGNANCY_DIAGNOSIS">
+          <option value="Rectal palpation" />
+          <option value="Ultrasound" />
+        </datalist>
+        <datalist id="products-INSEMINATION">
+          <option value="Frozen semen — Brahman" />
+          <option value="Frozen semen — Murrah buffalo" />
+          <option value="Frozen semen — Holstein" />
         </datalist>
         <datalist id="products-CHECKUP">
           <option value="Vitamins (B-complex)" />
@@ -378,6 +436,8 @@ export function ServiceDialog({
 export interface ServiceEditRecord {
   id: number;
   code: string;
+  species: string;
+  result?: string | null;
   serviceType: string;
   target: string;
   targetLabel: string;
@@ -401,6 +461,7 @@ export function ServiceEditDialog({
   useResetOnOpen(open, form, {
     serviceType: v?.serviceType ?? 'DEWORMING',
     vaccine: v?.vaccine ?? '',
+    result: v?.result ?? '',
     date: v?.date ?? isoDate(),
     nextDate: v?.nextDate ?? '',
     count: String(v?.count ?? 1),
@@ -436,7 +497,7 @@ export function ServiceEditDialog({
         </>
       }
     >
-      <p className="mb-4 text-[13.5px] text-slate-600">
+      <p className="mb-4 text-[14px] text-slate-600">
         Animals served: <b className="font-medium text-slate-800">{v.targetLabel}</b>. The farm and animals
         cannot be changed here; an administrator can delete a record entered by mistake.
       </p>
@@ -448,6 +509,10 @@ export function ServiceEditDialog({
             form.setError('vaccine', { type: 'manual', message: 'Enter the vaccine used' });
             return;
           }
+          if (x.serviceType === 'PREGNANCY_DIAGNOSIS' && !x.result) {
+            form.setError('result', { type: 'manual', message: 'Select the result' });
+            return;
+          }
           save.mutate(x);
         })}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
@@ -455,6 +520,9 @@ export function ServiceEditDialog({
         <Field label="Service *" className="sm:col-span-2">
           <ServiceTypePicker
             value={type}
+            allowed={SERVICE_TYPES.filter(
+              (t) => isLargeRuminant(v.species) || !LARGE_RUMINANT_SERVICES.includes(t),
+            )}
             onChange={(t) => form.setValue('serviceType', t as any, { shouldDirty: true })}
           />
         </Field>
@@ -470,6 +538,18 @@ export function ServiceEditDialog({
         <Field label="Date *" error={err(e, 'date')}>
           <Input type="date" max={isoDate()} {...form.register('date')} />
         </Field>
+        {type === 'PREGNANCY_DIAGNOSIS' && (
+          <Field label="Result *" error={err(e, 'result')}>
+            <Select {...form.register('result')} aria-invalid={!!e.result}>
+              <option value="">Select...</option>
+              {PD_RESULTS.map((r) => (
+                <option key={r} value={r}>
+                  {PD_RESULT_LABELS[r]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label={PRODUCT_LABEL[type]} error={err(e, 'vaccine')}>
           <Input {...form.register('vaccine')} />
         </Field>
@@ -852,7 +932,7 @@ export function FarmVisitDialog({
             />
           </Field>
           {v.findings === 'SICK_ANIMALS' && !editing && (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-800 sm:col-span-2 lg:col-span-4">
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[14px] text-amber-800 sm:col-span-2 lg:col-span-4">
               Sick animals found: after saving, file an incident report under Disease Surveillance so the case
               can be monitored.
             </p>
@@ -877,7 +957,7 @@ export function FarmVisitDialog({
                   const r = counts[g.id];
                   const n = Number(r?.count);
                   return (
-                    <div key={g.id} className="rounded-md border border-slate-200 p-3">
+                    <div key={g.id} className="rounded-lg border border-slate-200 p-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                         <div>
                           <div className="text-[15px] font-medium text-slate-900">
@@ -948,7 +1028,7 @@ export function FarmVisitDialog({
                   return (
                     <div
                       key={g.id}
-                      className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 p-3 sm:grid-cols-[1fr_190px_110px_1fr] sm:items-end"
+                      className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_190px_110px_1fr] sm:items-end"
                     >
                       <div className="text-[15px] font-medium text-slate-900 sm:pb-2">
                         {g.species}

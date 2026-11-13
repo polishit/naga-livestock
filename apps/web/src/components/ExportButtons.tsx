@@ -13,6 +13,9 @@ export function useLetterhead(): Letterhead {
     line2: data?.letterheadLine2 ?? 'City Government of Naga',
     office: data?.officeName ?? 'City Veterinary Office',
     city: data?.cityName ?? 'Naga City',
+    address: data?.officeAddress ?? null,
+    contact: data?.officeContact ?? null,
+    email: data?.officeEmail ?? null,
   };
 }
 

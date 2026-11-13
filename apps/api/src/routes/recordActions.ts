@@ -7,6 +7,9 @@
  */
 import { Router } from 'express';
 import {
+  LARGE_RUMINANT_SERVICES,
+  type ServiceType,
+  isLargeRuminant,
   INVESTIGATION_VISIT_LABELS,
   fmtDate,
   investigationCreateSchema,
@@ -349,6 +352,15 @@ recordActionsRouter.patch(
         fieldErrors: { count: [`Group ${v.group.code} only has ${v.group.count} head`] },
       });
     if (v.target === 'ANIMAL') count = 1;
+    const type = d.serviceType ?? v.serviceType;
+    if (LARGE_RUMINANT_SERVICES.includes(type as ServiceType) && !isLargeRuminant(v.species))
+      throw badRequest('Validation failed', {
+        fieldErrors: {
+          serviceType: ['Pregnancy diagnosis and insemination are for cattle and carabao only'],
+        },
+      });
+    if (type === 'PREGNANCY_DIAGNOSIS' && !d.result)
+      throw badRequest('Validation failed', { fieldErrors: { result: ['Select the result'] } });
     const date = d.date ?? ymd(v.date)!;
     if (d.nextDate && d.nextDate <= date)
       throw badRequest('Validation failed', {
@@ -360,6 +372,7 @@ recordActionsRouter.patch(
     };
     diff('service', v.serviceType, d.serviceType ?? v.serviceType);
     diff('product', v.vaccine, d.vaccine);
+    diff('result', v.result, d.result);
     diff('date', fmtDate(ymd(v.date)), fmtDate(date));
     diff('next dose', fmtDate(ymd(v.nextDate)), fmtDate(d.nextDate ?? null));
     diff('head', v.count, count);
@@ -370,6 +383,7 @@ recordActionsRouter.patch(
         data: {
           serviceType: d.serviceType ?? v.serviceType,
           vaccine: d.vaccine ?? null,
+          result: (d.serviceType ?? v.serviceType) === 'PREGNANCY_DIAGNOSIS' ? (d.result ?? null) : null,
           date: dateOnly(date)!,
           nextDate: dateOnly(d.nextDate) ?? null,
           count,

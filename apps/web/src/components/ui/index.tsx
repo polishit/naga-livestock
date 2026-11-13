@@ -3,6 +3,7 @@ import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { ChevronDown, Loader2, X } from 'lucide-react';
 import {
+  Children,
   Fragment,
   cloneElement,
   forwardRef,
@@ -34,7 +35,7 @@ const buttonVariants = cva(
       },
       size: {
         default: 'h-10 px-4 text-[15px] [&_svg]:h-4 [&_svg]:w-4',
-        sm: 'h-8 px-3 text-[13.5px] [&_svg]:h-3.5 [&_svg]:w-3.5',
+        sm: 'h-8 px-3 text-[14px] [&_svg]:h-3.5 [&_svg]:w-3.5',
         xs: 'h-7 px-2.5 text-[13px] [&_svg]:h-3.5 [&_svg]:w-3.5',
         icon: 'h-9 w-9 [&_svg]:h-5 [&_svg]:w-5',
       },
@@ -116,14 +117,13 @@ export function Label({
   className?: string;
 }) {
   return (
-    <label
-      htmlFor={htmlFor}
-      className={cn('mb-1.5 block text-[13.5px] font-medium text-slate-700', className)}
-    >
+    <label htmlFor={htmlFor} className={cn('mb-1.5 block text-[14px] font-medium text-slate-700', className)}>
       {children}
     </label>
   );
 }
+
+const CONTROL_TYPES = new Set<unknown>(['input', 'select', 'textarea', Input, Select, Textarea]);
 
 /** Label + control + error/hint. */
 export function Field({
@@ -142,13 +142,24 @@ export function Field({
   htmlFor?: string;
 }) {
   const autoId = useId();
-  // Associate the label with a single child control automatically (accessibility + testability).
+  // Associate the label with its control automatically (accessibility + testability): the only
+  // child, or the first child when it is an input, select or text area (e.g. an input + datalist).
+  const first = Array.isArray(children) ? children[0] : children;
   const single =
-    isValidElement(children) && children.type !== Fragment
-      ? (children as React.ReactElement<{ id?: string }>)
+    isValidElement(first) &&
+    first.type !== Fragment &&
+    (first === children || CONTROL_TYPES.has(first.type as unknown))
+      ? (first as React.ReactElement<{ id?: string }>)
       : null;
   const controlId = htmlFor ?? (single ? (single.props.id ?? autoId) : undefined);
-  const control = single && !single.props.id && !htmlFor ? cloneElement(single, { id: autoId }) : children;
+  const control =
+    single && !single.props.id && !htmlFor
+      ? first === children
+        ? cloneElement(single, { id: autoId })
+        : Children.toArray(children).map((c, i) =>
+            i === 0 && isValidElement(c) ? cloneElement(c as typeof single, { id: autoId }) : c,
+          )
+      : children;
   return (
     <div className={className}>
       {label && <Label htmlFor={controlId}>{label}</Label>}
@@ -158,7 +169,7 @@ export function Field({
           {error}
         </p>
       ) : hint ? (
-        <p className="mt-1 text-[12.5px] text-slate-400">{hint}</p>
+        <p className="mt-1 text-[13px] text-slate-400">{hint}</p>
       ) : null}
     </div>
   );
@@ -191,7 +202,7 @@ export function CardHeader({
 
 export type Tone = 'green' | 'red' | 'orange' | 'amber' | 'slate' | 'blue' | 'violet' | 'redSoft';
 const toneClass: Record<Tone, string> = {
-  green: 'bg-emerald-50 text-emerald-700',
+  green: 'bg-brand-light text-brand-dark',
   red: 'bg-red-50 text-red-600',
   redSoft: 'bg-red-50 text-red-600',
   orange: 'bg-orange-50 text-orange-600',
@@ -285,7 +296,7 @@ export function Dialog({
         >
           <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden />
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 sm:py-4">
-            <DialogPrimitive.Title className="text-[17px] font-semibold text-slate-900">
+            <DialogPrimitive.Title className="text-[18px] font-semibold text-slate-900">
               {typeof title === 'string' ? headTitle(title) : title}
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
@@ -392,7 +403,7 @@ export function Spinner({ className }: { className?: string }) {
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="px-4 py-12 text-center text-[14.5px] text-slate-500">{children}</div>;
+  return <div className="px-4 py-12 text-center text-[15px] text-slate-500">{children}</div>;
 }
 
 export function Checkbox({
@@ -408,7 +419,7 @@ export function Checkbox({
     <label className="inline-flex cursor-pointer select-none items-center gap-2 text-[15px] text-slate-700">
       <input
         type="checkbox"
-        className="h-4 w-4 rounded border-slate-300 accent-[#1d6fd8]"
+        className="h-4 w-4 rounded border-slate-300 accent-brand-strong"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />

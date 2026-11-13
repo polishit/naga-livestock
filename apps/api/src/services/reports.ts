@@ -1,4 +1,5 @@
 import {
+  PCIC_APPLICATION_LABELS,
   CASE_OUTCOME_LABELS,
   CASE_STATUS_LABELS,
   CASE_STATUSES,
@@ -48,6 +49,7 @@ import { accomplishmentReport } from './insights';
 import { getSettings } from './settings';
 import { monthlySummary } from './monthly';
 import { OVERDUE_DAYS, liveReminder } from '../routes/vaccinations';
+import { serializePcic } from '../routes/owners';
 
 export interface ReportParams {
   barangay?: string;
@@ -508,8 +510,8 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         ],
         rows: rows.map((l) => ({
           sampleId: l.sampleId,
-          case: l.case.code,
-          disease: l.case.disease,
+          case: l.case!.code,
+          disease: l.case!.disease,
           type: `${l.sampleType ?? '—'}${l.sampleCount ? ` ×${l.sampleCount}` : ''}`,
           test: l.testMethod ?? '—',
           laboratory: l.laboratory ?? '—',
@@ -1094,44 +1096,49 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         where: {
           ...(p.species ? { species: p.species } : {}),
           ...(p.barangay ? { owner: { barangay: p.barangay } } : {}),
-          // With a period chosen, the policies whose coverage overlaps it.
-          ...(p.to ? { startDate: { lte: dateOnly(p.to) } } : {}),
-          ...(p.from ? { endDate: { gte: dateOnly(p.from) } } : {}),
         },
-        include: { owner: true, animals: { select: { code: true, earTag: true }, orderBy: { id: 'asc' } } },
-        orderBy: { startDate: 'desc' },
+        include: {
+          owner: true,
+          animals: { select: { id: true, code: true, earTag: true }, orderBy: { id: 'asc' } },
+        },
+        orderBy: { applicationDate: 'desc' },
       });
-      const status = (x: (typeof pol)[number]) =>
-        x.status === 'ACTIVE' && ymd(x.endDate)! < today() ? 'EXPIRED' : x.status;
+      // With a period chosen, the applications filed in it.
+      const inPeriod = pol.filter((x) => inRange(x.applicationDate ?? x.startDate ?? x.createdAt, p));
+      const rows = inPeriod.map(serializePcic);
+      const withOwner = inPeriod.map((x, i) => ({ r: rows[i], o: x.owner }));
       return {
         ...base,
         columns: [
-          col('policy', 'Policy No.'),
+          col('date', 'Application date'),
+          col('type', 'Type'),
           col('owner', 'Owner'),
           col('barangay', 'Barangay'),
           col('species', 'Species'),
           col('heads', 'Heads'),
           col('animals', 'Insured animals (ear tags)'),
-          col('amount', 'Amount covered'),
-          col('period', 'Coverage period'),
+          col('premium', 'Premium'),
           col('status', 'Status'),
+          col('file', 'Scanned form'),
         ],
-        rows: pol.map((x) => ({
-          policy: x.policyNo,
-          owner: x.owner.fullName,
-          barangay: x.owner.barangay,
-          species: x.species,
-          heads: x.heads,
-          animals: x.animals.length ? x.animals.map((a) => a.earTag ?? a.code).join(', ') : 'Not linked',
-          amount: x.amountCovered ? `₱${Number(x.amountCovered).toLocaleString()}` : '—',
-          period: `${fmtDate(ymd(x.startDate))} – ${fmtDate(ymd(x.endDate))}`,
-          status: titleCase(status(x)),
+        rows: withOwner.map(({ r, o }) => ({
+          date: fmtDate(r.applicationDate),
+          type: PCIC_APPLICATION_LABELS[r.applicationType as 'NEW' | 'RENEWAL'] ?? r.applicationType,
+          owner: o.fullName,
+          barangay: o.barangay,
+          species: r.species,
+          heads: r.heads ?? '—',
+          animals: r.animals.length ? r.animals.map((a) => a.earTag ?? a.code).join(', ') : 'Not linked',
+          premium: r.subsidized ? `Subsidized / RSBSA${r.rsbsaRef ? ` (${r.rsbsaRef})` : ''}` : 'Regular',
+          status: titleCase(r.status),
+          file: r.fileKeys.length ? 'Attached' : 'Missing',
         })),
         summary: [
-          { label: 'Policies', value: pol.length },
-          { label: 'In force', value: pol.filter((x) => status(x) === 'ACTIVE').length },
-          { label: 'Insured heads', value: pol.reduce((a, x) => a + x.heads, 0) },
-          { label: 'Tagged animals linked', value: pol.reduce((a, x) => a + x.animals.length, 0) },
+          { label: 'Applications', value: rows.length },
+          { label: 'In force', value: rows.filter((x) => x.status === 'ACTIVE').length },
+          { label: 'Subsidized (RSBSA)', value: rows.filter((x) => x.subsidized).length },
+          { label: 'Insured heads', value: rows.reduce((a, x) => a + (x.heads ?? 0), 0) },
+          { label: 'Scanned form missing', value: rows.filter((x) => !x.fileKeys.length).length },
         ],
       };
     }

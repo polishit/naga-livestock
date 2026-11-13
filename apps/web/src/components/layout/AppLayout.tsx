@@ -53,7 +53,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
       title={collapsed ? item.label : item.hint}
       className={({ isActive }) =>
         cn(
-          'flex items-center gap-3 rounded-lg py-2 text-[14.5px] transition-colors',
+          'flex items-center gap-3 rounded-lg py-2 text-[15px] transition-colors',
           collapsed ? 'justify-center px-0' : nested ? 'pl-9 pr-2.5' : 'px-2.5',
           isActive
             ? 'bg-white font-semibold text-sidebar-active shadow-sm'
@@ -123,7 +123,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
             navigate('/login');
           }}
           className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-[14.5px] text-white/85 hover:bg-white/10 hover:text-white',
+            'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-[15px] text-white/85 hover:bg-white/10 hover:text-white',
             collapsed && 'justify-center',
           )}
         >
@@ -144,7 +144,7 @@ function BottomNav() {
   const modules = NAV.filter((s) => s.short);
   useEffect(() => setSheet(null), [location.pathname]);
   const tab =
-    'flex flex-col items-center justify-center gap-1 py-2 text-[11.5px] font-medium transition-colors';
+    'flex flex-col items-center justify-center gap-1 py-2 text-[12px] font-medium transition-colors';
   return (
     <>
       <nav
@@ -196,7 +196,7 @@ function BottomNav() {
                   <i.icon className="h-5 w-5" strokeWidth={1.9} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[15.5px] font-medium text-slate-900">{i.label}</span>
+                  <span className="block text-[16px] font-medium text-slate-900">{i.label}</span>
                   <span className="block text-[13px] text-slate-500">{i.hint}</span>
                 </span>
               </NavLink>
@@ -256,14 +256,14 @@ function GlobalSearch({
           if (e.key === 'Enter' && data?.[0]) go(data[0]);
           if (e.key === 'Escape') setOpen(false);
         }}
-        placeholder="Search owner, farm, ear tag or case..."
+        placeholder="Search owner, farm, ear tag, case, sample..."
         aria-label="Global search"
-        className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-[15px] placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+        className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-[15px] placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
       />
       {open && debounced.length >= 2 && (
-        <div className="absolute left-0 right-0 top-11 z-50 max-h-80 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+        <div className="absolute left-0 right-0 top-11 z-50 max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
           {!data?.length ? (
-            <div className="px-3 py-2 text-sm text-slate-500">No matches</div>
+            <div className="px-3 py-2 text-sm text-slate-500">No quick matches</div>
           ) : (
             data.map((h, i) => (
               <button
@@ -282,6 +282,18 @@ function GlobalSearch({
               </button>
             ))
           )}
+          <button
+            type="button"
+            onMouseDown={() => {
+              navigate(`/search?q=${encodeURIComponent(debounced)}`);
+              setQ('');
+              setOpen(false);
+              onDone?.();
+            }}
+            className="mt-1 flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2.5 text-left text-[14px] font-medium text-brand-dark hover:bg-slate-50"
+          >
+            <Search className="h-4 w-4" /> Search everything for “{debounced}”
+          </button>
         </div>
       )}
     </div>
@@ -301,12 +313,12 @@ function Notifications() {
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="relative rounded-md p-2 text-slate-600 hover:bg-slate-100"
+          className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100"
           aria-label="Notifications"
         >
           <Bell className="h-5 w-5" />
           {!!data?.count && (
-            <span className="absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-[#e7000b] px-1 text-center text-[10.5px] font-semibold leading-[18px] text-white">
+            <span className="absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-red-600 px-1 text-center text-[10.5px] font-semibold leading-[18px] text-white">
               {data.count > 99 ? '99+' : data.count}
             </span>
           )}
@@ -324,9 +336,9 @@ function Notifications() {
               <DropdownMenu.Item
                 key={i}
                 onSelect={() => navigate(n.href)}
-                className="cursor-pointer rounded-md px-3 py-2 outline-none data-[highlighted]:bg-slate-50"
+                className="cursor-pointer rounded-lg px-3 py-2 outline-none data-[highlighted]:bg-slate-50"
               >
-                <div className="text-[13.5px] text-slate-900">{n.title}</div>
+                <div className="text-[14px] text-slate-900">{n.title}</div>
                 <div className="text-xs text-slate-500">{n.sub}</div>
               </DropdownMenu.Item>
             ))
@@ -442,8 +454,8 @@ function InstallBanner() {
         style={{ bottom: 'calc(72px + env(safe-area-inset-bottom))' }}
       >
         <img src="/icons/icon-192.png" alt="" className="h-10 w-10 shrink-0 rounded-lg" />
-        <div className="min-w-0 flex-1 text-[13.5px] leading-snug text-slate-700">
-          <b className="block text-[14.5px] font-semibold text-slate-900">Install on this phone</b>
+        <div className="min-w-0 flex-1 text-[14px] leading-snug text-slate-700">
+          <b className="block text-[15px] font-semibold text-slate-900">Install on this phone</b>
           Opens like an app and keeps working offline.
         </div>
         <div className="flex shrink-0 flex-col gap-1">
@@ -452,7 +464,7 @@ function InstallBanner() {
           </Button>
           <button
             type="button"
-            className="text-[12.5px] text-slate-500 hover:underline"
+            className="text-[13px] text-slate-500 hover:underline"
             onClick={() => {
               dismissInstall();
               setHidden(true);
@@ -477,7 +489,7 @@ function UserMenu() {
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2.5 rounded-md py-1 pl-1 pr-1 hover:bg-slate-50 sm:pr-2"
+          className="flex items-center gap-2.5 rounded-lg py-1 pl-1 pr-1 hover:bg-slate-50 sm:pr-2"
         >
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-dark text-[13px] font-semibold text-white">
             {initials(user.name)}
@@ -504,21 +516,21 @@ function UserMenu() {
           {user.role === 'ADMIN' && (
             <DropdownMenu.Item
               onSelect={() => navigate('/users')}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
             >
               <UserCog className="h-4 w-4" /> User management
             </DropdownMenu.Item>
           )}
           <DropdownMenu.Item
             onSelect={() => navigate('/settings')}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
           >
             <Settings className="h-4 w-4" /> System settings
           </DropdownMenu.Item>
           {install.available && (
             <DropdownMenu.Item
               onSelect={install.run}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
             >
               <Download className="h-4 w-4" /> Install app on this device
             </DropdownMenu.Item>
@@ -529,7 +541,7 @@ function UserMenu() {
               await logout();
               navigate('/login');
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
           >
             <LogOut className="h-4 w-4" /> Sign out
           </DropdownMenu.Item>
@@ -597,7 +609,7 @@ export function AppLayout() {
           <button
             type="button"
             onClick={toggle}
-            className="rounded-md p-2 text-slate-600 hover:bg-slate-100"
+            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
             aria-label="Toggle sidebar"
           >
             <PanelLeft className="h-5 w-5" />
@@ -623,7 +635,7 @@ export function AppLayout() {
           <GlobalSearch className="hidden w-64 md:block xl:w-80" />
           <button
             type="button"
-            className="rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
             aria-label="Search"
             onClick={() => setSearchOpen(true)}
           >

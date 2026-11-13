@@ -4,6 +4,10 @@ import {
   SERVICE_TYPES,
   type ServiceType,
   vaccinationCreateSchema,
+  LARGE_RUMINANT_SERVICES,
+  PD_RESULT_LABELS,
+  isLargeRuminant,
+  type PdResult,
 } from '@livestock/shared';
 import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
@@ -155,6 +159,15 @@ vaccinationsRouter.post(
       species = a.species;
       count = 1;
     }
+    // Pregnancy diagnosis and insemination are for cattle and carabao.
+    if (LARGE_RUMINANT_SERVICES.includes(d.serviceType) && !isLargeRuminant(species))
+      throw badRequest('Validation failed', {
+        fieldErrors: {
+          [d.target === 'GROUP' ? 'groupId' : 'animalId']: [
+            `${SERVICE_TYPE_LABELS[d.serviceType]} is for cattle and carabao only`,
+          ],
+        },
+      });
     if (d.nextDate && d.date && d.nextDate <= d.date) {
       throw badRequest('Validation failed', {
         fieldErrors: { nextDate: ['Next schedule must be after the service date'] },
@@ -172,6 +185,7 @@ vaccinationsRouter.post(
           count,
           serviceType: d.serviceType,
           vaccine: d.vaccine ?? null,
+          result: d.serviceType === 'PREGNANCY_DIAGNOSIS' ? (d.result ?? null) : null,
           date: dateOnly(d.date ?? today())!,
           nextDate: dateOnly(d.nextDate) ?? null,
           doseNumber: d.doseNumber,
@@ -192,7 +206,7 @@ vaccinationsRouter.post(
         'farm',
         farm.id,
         'vaccination',
-        `${what}${vv.vaccine ? ` (${vv.vaccine})` : ''}: ${count} ${species} at ${farm.name}`,
+        `${what}${vv.vaccine ? ` (${vv.vaccine})` : ''}${vv.result ? ` — ${PD_RESULT_LABELS[vv.result as PdResult]}` : ''}: ${count} ${species} at ${farm.name}`,
         req.user?.name,
         tx,
       );
@@ -201,7 +215,7 @@ vaccinationsRouter.post(
           'animal',
           d.animalId!,
           'vaccination',
-          `${what}${vv.vaccine ? `: ${vv.vaccine}` : ''}${vv.serviceType === 'VACCINATION' ? ` (dose ${vv.doseNumber})` : ''}`,
+          `${what}${vv.vaccine ? `: ${vv.vaccine}` : ''}${vv.result ? ` — ${PD_RESULT_LABELS[vv.result as PdResult]}` : ''}${vv.serviceType === 'VACCINATION' ? ` (dose ${vv.doseNumber})` : ''}`,
           req.user?.name,
           tx,
         );

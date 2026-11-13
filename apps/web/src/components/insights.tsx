@@ -29,7 +29,7 @@ function Bar({
   tone?: 'green' | 'amber' | 'red';
   marker?: number;
 }) {
-  const color = { green: 'bg-emerald-600', amber: 'bg-amber-500', red: 'bg-red-500' }[tone];
+  const color = { green: 'bg-brand-strong', amber: 'bg-amber-500', red: 'bg-red-500' }[tone];
   return (
     <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-100">
       <div
@@ -79,7 +79,7 @@ export function CompareKpis({
       <CardHeader
         title="This period compared with the one before"
         actions={
-          <span className="text-[12.5px] text-slate-500">
+          <span className="text-[13px] text-slate-500">
             {data.current.label} vs {data.previous.label}
           </span>
         }
@@ -91,14 +91,14 @@ export function CompareKpis({
           const Icon = diff > 0 ? ArrowUpRight : diff < 0 ? ArrowDownRight : Minus;
           return (
             <div key={k.key} className="bg-white px-4 py-3">
-              <div className="text-[12.5px] leading-snug text-slate-500">{k.label}</div>
-              <div className="mt-1 text-[22px] font-semibold text-slate-900">
+              <div className="text-[13px] leading-snug text-slate-500">{k.label}</div>
+              <div className="mt-1 text-[24px] font-semibold text-slate-900">
                 {k.current.toLocaleString()}
               </div>
               <div
                 className={cn(
-                  'mt-0.5 inline-flex items-center gap-0.5 text-[12.5px] font-medium',
-                  good === null ? 'text-slate-500' : good ? 'text-emerald-700' : 'text-red-600',
+                  'mt-0.5 inline-flex items-center gap-0.5 text-[13px] font-medium',
+                  good === null ? 'text-slate-500' : good ? 'text-brand-dark' : 'text-red-600',
                 )}
                 title={`Before: ${k.previous.toLocaleString()}`}
               >
@@ -140,7 +140,7 @@ export function HotspotsCard() {
     <Card>
       <CardHeader title="Disease hotspots (last 30 days)" />
       <div className="px-4 py-3">
-        <p className="mb-3 text-[12.5px] text-slate-500">
+        <p className="mb-3 text-[13px] text-slate-500">
           A barangay is a <b className="font-medium text-red-600">hotspot</b> when it has 2 or more cases in
           the last 30 days and at least twice its usual number per month (the year before).
         </p>
@@ -153,11 +153,11 @@ export function HotspotsCard() {
                 <div className="min-w-0">
                   <Link
                     to={`/cases?barangay=${encodeURIComponent(r.barangay)}&state=all`}
-                    className="text-[14.5px] font-medium text-brand-dark hover:underline"
+                    className="text-[15px] font-medium text-brand-dark hover:underline"
                   >
                     {r.barangay}
                   </Link>
-                  <div className="truncate text-[12.5px] text-slate-500">
+                  <div className="truncate text-[13px] text-slate-500">
                     {r.recent} case{r.recent === 1 ? '' : 's'} (usual {r.baseline}/month) ·{' '}
                     {r.diseases.join(', ')}
                   </div>
@@ -182,7 +182,7 @@ export function HotspotBanner() {
       role="alert"
       className="mb-4 flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="flex items-start gap-2 text-[14.5px]">
+      <div className="flex items-start gap-2 text-[15px]">
         <Flame className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
           <b className="font-semibold">Disease hotspot:</b>{' '}
@@ -219,14 +219,14 @@ export function DataQualityCard({ barangay }: { barangay?: string }) {
         }
       />
       <div className="px-4 py-3">
-        <p className="mb-3 text-[12.5px] text-slate-500">
+        <p className="mb-3 text-[13px] text-slate-500">
           Complete records make the maps, radius checks and reports trustworthy. Select <b>Fix</b> to open the
           records that need details.
         </p>
         <ul className="space-y-3">
           {data?.items.map((i) => (
             <li key={i.key}>
-              <div className="mb-1 flex items-center justify-between gap-3 text-[13.5px]">
+              <div className="mb-1 flex items-center justify-between gap-3 text-[14px]">
                 <span className="text-slate-700">
                   {i.label}: <b className="font-semibold">{i.missing}</b>
                   <span className="text-slate-400"> of {i.total}</span>
@@ -239,7 +239,7 @@ export function DataQualityCard({ barangay }: { barangay?: string }) {
                     Fix
                   </Link>
                 ) : (
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-strong" />
                 )}
               </div>
               <Bar
@@ -277,7 +277,7 @@ export function TargetsCard() {
               aria-label="Target year"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              className="h-8 w-24 text-[13.5px]"
+              className="h-8 w-24 text-[14px]"
             >
               {[year - 1, year, year + 1].map((y) => (
                 <option key={y}>{y}</option>
@@ -301,14 +301,14 @@ export function TargetsCard() {
           </p>
         ) : (
           <>
-            <p className="mb-3 text-[12.5px] text-slate-500">
+            <p className="mb-3 text-[13px] text-slate-500">
               Doses given in {data.year} against the yearly target. The grey line marks how much of the year
               has passed ({data.yearElapsedPct}%).
             </p>
             <ul className="space-y-3">
               {data.rows.map((r) => (
                 <li key={`${r.vaccine}|${r.species}`}>
-                  <div className="mb-1 flex items-center justify-between gap-3 text-[13.5px]">
+                  <div className="mb-1 flex items-center justify-between gap-3 text-[14px]">
                     <span className="text-slate-700">
                       {r.vaccine} <span className="text-slate-400">· {r.species}</span>
                     </span>
@@ -401,7 +401,7 @@ function TargetsDialog({
         </>
       }
     >
-      <p className="mb-3 text-[13.5px] text-slate-600">
+      <p className="mb-3 text-[14px] text-slate-600">
         Enter the number of doses the office plans to give this year. Use the same vaccine name as in the
         vaccination records (for example &quot;Hog Cholera Vaccine&quot;).
       </p>
@@ -512,9 +512,7 @@ export function MyTasksCard() {
           </span>
         }
         actions={
-          data?.overdue ? (
-            <span className="text-[12.5px] text-red-600">{data.overdue} overdue</span>
-          ) : undefined
+          data?.overdue ? <span className="text-[13px] text-red-600">{data.overdue} overdue</span> : undefined
         }
       />
       <div className="flex flex-wrap gap-1.5 border-b border-slate-100 px-4 py-2.5">
@@ -540,7 +538,7 @@ export function MyTasksCard() {
                 <span className="truncate">{t.title}</span>
                 {t.overdue && <Badge tone="red">Overdue</Badge>}
               </div>
-              <div className="truncate text-[12.5px] text-slate-500">
+              <div className="truncate text-[13px] text-slate-500">
                 {t.due ? `Due ${fmtDate(t.due)} · ` : ''}
                 {t.sub}
               </div>
@@ -562,7 +560,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'rounded-full border px-2.5 py-0.5 text-[12.5px]',
+        'rounded-full border px-2.5 py-0.5 text-[13px]',
         active
           ? 'border-brand-strong bg-brand-strong text-white'
           : 'border-slate-200 text-slate-600 hover:bg-slate-50',
@@ -614,8 +612,8 @@ export function WelcomeCard() {
     <Card className="mb-4 border-brand/30 bg-brand-light/40">
       <div className="flex items-start justify-between gap-3 px-4 pt-4">
         <div>
-          <h2 className="text-[16px] font-semibold text-slate-900">How the system works</h2>
-          <p className="text-[13.5px] text-slate-600">
+          <h2 className="card-title">How the system works</h2>
+          <p className="text-[14px] text-slate-600">
             Follow these steps in order. &quot;My tasks&quot; below always shows what to do next, and the{' '}
             <b>?</b> button at the top of every page explains that page.
           </p>

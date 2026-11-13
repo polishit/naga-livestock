@@ -88,7 +88,10 @@ export const SPECIES_ID_LETTER: Record<Species, string> = {
 /** Farm scale. What the farm raises (piggery, cattle-only…) is worked out from its population. */
 export const FARM_TYPES = ['backyard', 'commercial'] as const;
 export type FarmType = (typeof FARM_TYPES)[number];
-export const FARM_TYPE_LABELS: Record<FarmType, string> = { backyard: 'Backyard', commercial: 'Commercial' };
+export const FARM_TYPE_LABELS: Record<FarmType, string> = {
+  backyard: 'Backyard (BY)',
+  commercial: 'Commercial (CM)',
+};
 
 /** Type of livestock raised, worked out from the species on the farm. */
 export const LIVESTOCK_RAISED = [
@@ -227,14 +230,59 @@ export function breakdownText(species: string, b: Breakdown | null | undefined) 
 }
 
 /** Veterinary services recorded on the Deworming & Veterinary Services page (deworming is the main one). */
-export const SERVICE_TYPES = ['DEWORMING', 'VACCINATION', 'CHECKUP', 'TREATMENT', 'OTHER'] as const;
+export const SERVICE_TYPES = [
+  'DEWORMING',
+  'VACCINATION',
+  'CHECKUP',
+  'PREGNANCY_DIAGNOSIS',
+  'INSEMINATION',
+  'TREATMENT',
+  'OTHER',
+] as const;
 export type ServiceType = (typeof SERVICE_TYPES)[number];
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   DEWORMING: 'Deworming',
   VACCINATION: 'Vaccination',
   CHECKUP: 'Veterinary Check-up',
+  PREGNANCY_DIAGNOSIS: 'Pregnancy Diagnosis',
+  INSEMINATION: 'Artificial Insemination',
   TREATMENT: 'Treatment',
   OTHER: 'Other Field Service',
+};
+/** Cattle and carabao (large ruminants): pregnancy diagnosis, insemination, purpose and the ownership certificate. */
+export const LARGE_RUMINANTS = ['Cattle', 'Carabao'] as const;
+export const isLargeRuminant = (species: string) => (LARGE_RUMINANTS as readonly string[]).includes(species);
+/** Services given to cattle and carabao only. */
+export const LARGE_RUMINANT_SERVICES: ServiceType[] = ['PREGNANCY_DIAGNOSIS', 'INSEMINATION'];
+/** The services counted per species in the monthly report. */
+export const MONTHLY_SERVICES: ServiceType[] = [
+  'DEWORMING',
+  'PREGNANCY_DIAGNOSIS',
+  'INSEMINATION',
+  'CHECKUP',
+];
+export const PD_RESULTS = ['PREGNANT', 'NOT_PREGNANT'] as const;
+export type PdResult = (typeof PD_RESULTS)[number];
+export const PD_RESULT_LABELS: Record<PdResult, string> = {
+  PREGNANT: 'Pregnant',
+  NOT_PREGNANT: 'Not pregnant',
+};
+
+/** Purpose of cattle and carabao (as on the PCIC application). */
+export const ANIMAL_PURPOSES = ['DRAFT', 'DAIRY', 'FATTENING', 'BREEDING'] as const;
+export type AnimalPurpose = (typeof ANIMAL_PURPOSES)[number];
+export const ANIMAL_PURPOSE_LABELS: Record<AnimalPurpose, string> = {
+  DRAFT: 'Draft',
+  DAIRY: 'Dairy',
+  FATTENING: 'Fattening',
+  BREEDING: 'Breeding',
+};
+
+/** PCIC livestock mortality insurance application. */
+export const PCIC_APPLICATION_TYPES = ['NEW', 'RENEWAL'] as const;
+export const PCIC_APPLICATION_LABELS: Record<(typeof PCIC_APPLICATION_TYPES)[number], string> = {
+  NEW: 'New application',
+  RENEWAL: 'Renewal',
 };
 /** Species listed first in service forms (the office deworms goats and cattle most). */
 export const SERVICE_SPECIES_ORDER = [
@@ -371,6 +419,8 @@ export type LabResult = (typeof LAB_RESULTS)[number];
 export const RESPONSE_TYPES = [
   'OWNER_NOTIFICATION',
   'BARANGAY_COORDINATION',
+  'FARMER_EDUCATION',
+  'DA_COORDINATION',
   'QUARANTINE',
   'MOVEMENT_RESTRICTION',
   'CULLING_DEPOPULATION',
@@ -383,6 +433,8 @@ export type ResponseType = (typeof RESPONSE_TYPES)[number];
 export const RESPONSE_TYPE_LABELS: Record<ResponseType, string> = {
   OWNER_NOTIFICATION: 'Owner Notification',
   BARANGAY_COORDINATION: 'Barangay Coordination',
+  FARMER_EDUCATION: 'Farmer Education',
+  DA_COORDINATION: 'DA Representative (Documentation)',
   QUARANTINE: 'Quarantine',
   MOVEMENT_RESTRICTION: 'Movement Restriction',
   CULLING_DEPOPULATION: 'Culling / Depopulation',
@@ -395,9 +447,11 @@ export const RESPONSE_TYPE_LABELS: Record<ResponseType, string> = {
 /** The City Veterinary Office's response steps for an African Swine Fever case, in order. */
 export const ASF_RESPONSE_STEPS: { type: ResponseType; label: string }[] = [
   { type: 'OWNER_NOTIFICATION', label: 'Inform the owner' },
+  { type: 'FARMER_EDUCATION', label: 'Educate the farmer (biosecurity, cleaning)' },
+  { type: 'DA_COORDINATION', label: 'Write to the DA for a representative (documentation)' },
   { type: 'BARANGAY_COORDINATION', label: 'Coordinate with barangay officials' },
-  { type: 'CULLING_DEPOPULATION', label: 'Depopulate affected animals' },
-  { type: 'DISINFECTION', label: 'Decontaminate the premises' },
+  { type: 'CULLING_DEPOPULATION', label: 'Euthanize the remaining pigs and bury them on the farm' },
+  { type: 'DISINFECTION', label: 'Clean and disinfect the premises' },
   { type: 'ASF_CHECKPOINT', label: 'Activate checkpoints' },
 ];
 /** A case is treated as ASF when its disease name says so. */
@@ -420,6 +474,7 @@ export const RESPONSE_TYPES_WITH_END: ResponseType[] = [
 /** Response types done at a specific place (checkpoint location, disinfection site…). */
 export const RESPONSE_TYPES_WITH_LOCATION: ResponseType[] = [
   'BARANGAY_COORDINATION',
+  'FARMER_EDUCATION',
   'ASF_CHECKPOINT',
   'DISINFECTION',
   'MOVEMENT_RESTRICTION',
@@ -441,6 +496,7 @@ export function measureOpen(
 }
 
 export const DISPOSAL_METHODS = [
+  'Burial on the farm',
   'Burial',
   'Burning / incineration',
   'Rendering',
@@ -457,14 +513,123 @@ export const INVESTIGATION_VISIT_LABELS: Record<InvestigationVisitType, string> 
   FINAL: 'Final inspection',
 };
 
-/** Suggested laboratory test methods (free text is also accepted). */
+/** Suggested laboratory tests, as listed on the RADDL Analysis Request Form (free text is also accepted). */
 export const LAB_TEST_METHODS = [
-  'PCR',
-  'ELISA',
+  'PCR – African Swine Fever (ASF)',
+  'ELISA – African Swine Fever Virus (ASFV)',
+  'ELISA – Classical Swine Fever Virus (CSFV)',
+  'ELISA – Porcine Reproductive and Respiratory Syndrome (PRRSV)',
+  'PCR – Avian Influenza A',
+  'HI – Newcastle Disease',
+  'ELISA – Brucellosis',
+  'Rapid Plate Test – Brucella spp.',
+  'Fecalysis',
+  'Blood parasite examination',
+  'Gross examination / Necropsy',
+  'Bacterial isolation & identification',
   'Rapid antigen test',
-  'Bacterial culture',
-  'Necropsy',
 ] as const;
+export const DEFAULT_LAB_TEST = LAB_TEST_METHODS[0];
+export const DEFAULT_LABORATORY = 'RADDL Region V, San Agustin, Pili, Camarines Sur';
+
+/** Specimen types on the Analysis Request and Sample Collection forms. */
+export const SPECIMEN_TYPES = [
+  'Blood',
+  'Serum',
+  'Tissue / Organs',
+  'Swab',
+  'Feces',
+  'Blood smear',
+  'Whole animal',
+  'Other',
+] as const;
+/** Organs taken from a dead animal (ASF: spleen, lymph node, liver). */
+export const SAMPLE_ORGANS = ['Spleen', 'Lymph node', 'Liver', 'Kidney', 'Lung', 'Tonsil'] as const;
+/** The specimen usually taken: blood from a live animal, organs from a dead one. */
+export const specimenFor = (condition?: string | null) =>
+  condition === 'DEAD' ? 'Tissue / Organs' : 'Blood';
+export const ANIMAL_CONDITIONS = ['LIVE', 'DEAD'] as const;
+export const ANIMAL_CONDITION_LABELS: Record<(typeof ANIMAL_CONDITIONS)[number], string> = {
+  LIVE: 'Live',
+  DEAD: 'Dead',
+};
+/** How a laboratory result reached the office (negative results usually come by email). */
+export const RESULT_RECEIVED_VIA = ['EMAIL', 'HARD_COPY', 'PHONE', 'OTHER'] as const;
+export const RESULT_RECEIVED_LABELS: Record<(typeof RESULT_RECEIVED_VIA)[number], string> = {
+  EMAIL: 'Email',
+  HARD_COPY: 'Hard copy',
+  PHONE: 'Phone / text',
+  OTHER: 'Other',
+};
+/** Why samples are sent (Analysis Request Form "Purpose"). */
+export const LAB_PURPOSES = [
+  'SURVEILLANCE',
+  'DISEASE_INVESTIGATION',
+  'DIAGNOSTICS',
+  'LOCAL_SHIPMENT',
+  'REGULATORY',
+  'FARM_ACCREDITATION',
+  'OTHER',
+] as const;
+export type LabPurpose = (typeof LAB_PURPOSES)[number];
+export const LAB_PURPOSE_LABELS: Record<LabPurpose, string> = {
+  SURVEILLANCE: 'Surveillance',
+  DISEASE_INVESTIGATION: 'Disease Investigation',
+  DIAGNOSTICS: 'Diagnostics',
+  LOCAL_SHIPMENT: 'Local Shipment',
+  REGULATORY: 'Regulatory',
+  FARM_ACCREDITATION: 'Farm Accreditation',
+  OTHER: 'Others',
+};
+
+/** Clinical signs asked about when a disease is reported (ASF signs first). */
+export const CLINICAL_SIGNS = [
+  'FEVER',
+  'NO_APPETITE',
+  'WEAKNESS',
+  'SKIN_REDNESS',
+  'VOMITING',
+  'DIARRHEA',
+  'BREATHING',
+  'DISCHARGE',
+  'ABORTION',
+  'SUDDEN_DEATH',
+] as const;
+export type ClinicalSign = (typeof CLINICAL_SIGNS)[number];
+export const CLINICAL_SIGN_LABELS: Record<ClinicalSign, string> = {
+  FEVER: 'High fever',
+  NO_APPETITE: 'Loss of appetite',
+  WEAKNESS: 'Weakness / lying down',
+  SKIN_REDNESS: 'Red or purple skin (ears, belly, legs)',
+  VOMITING: 'Vomiting',
+  DIARRHEA: 'Diarrhea (may be bloody)',
+  BREATHING: 'Coughing / hard breathing',
+  DISCHARGE: 'Nose or eye discharge',
+  ABORTION: 'Abortion',
+  SUDDEN_DEATH: 'Sudden death',
+};
+
+/**
+ * How the office classifies a case (its own words), worked out from the records:
+ * Reported (not visited yet) → Suspected (visited, not confirmed) → Active (positive) → Closed;
+ * a negative result that is not closed yet is shown as Negative.
+ */
+export const CASE_CLASSES = ['REPORTED', 'SUSPECTED', 'ACTIVE', 'NEGATIVE', 'CLOSED'] as const;
+export type CaseClass = (typeof CASE_CLASSES)[number];
+export const CASE_CLASS_LABELS: Record<CaseClass, string> = {
+  REPORTED: 'Reported',
+  SUSPECTED: 'Suspected',
+  ACTIVE: 'Active',
+  NEGATIVE: 'Negative',
+  CLOSED: 'Closed',
+};
+export function caseClass(c: { status: string; closed: boolean; visited: boolean }): CaseClass {
+  if (c.closed) return 'CLOSED';
+  if (c.status === 'POSITIVE') return 'ACTIVE';
+  if (c.status === 'NEGATIVE') return 'NEGATIVE';
+  // A sample already taken means someone was at the farm.
+  return c.visited || c.status !== 'SUSPECTED' ? 'SUSPECTED' : 'REPORTED';
+}
 
 /** How a closed case ended. */
 export const CASE_OUTCOMES = ['RESOLVED', 'CONTAINED', 'DEPOPULATED', 'NOT_CONFIRMED', 'OTHER'] as const;

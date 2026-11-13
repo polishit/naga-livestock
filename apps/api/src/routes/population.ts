@@ -5,9 +5,13 @@ import {
   groupUpdateSchema,
   isoMonth,
   populationUpdateSchema,
+  isLargeRuminant,
+  SERVICE_TYPE_LABELS,
+  type ServiceType,
 } from '@livestock/shared';
 import { Prisma, prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
+import { ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { loadFarms, populationTotals } from '../services/metrics';
 
@@ -70,6 +74,8 @@ populationRouter.get(
           breakdown: (g.breakdown as Record<string, number> | null) ?? null,
           tagged: g.animals.length,
           healthStatus: g.healthStatus,
+          purpose: g.purpose,
+          farmType: f.type,
           lastVerified: g.lastVerified,
         })),
       )
@@ -110,6 +116,7 @@ populationRouter.post(
           count: d.count,
           ...(d.breakdown && Object.keys(d.breakdown).length ? { breakdown: d.breakdown } : {}),
           healthStatus: d.healthStatus,
+          purpose: isLargeRuminant(d.species) ? (d.purpose ?? null) : null,
           remarks: d.remarks ?? null,
           lastVerified: month,
         },
@@ -253,6 +260,74 @@ populationRouter.post(
   }),
 );
 
+/**
+ * Activity log of one livestock group: head count changes, services given (deworming, pregnancy
+ * diagnosis…) to the group or its tagged animals, and edits to its details, newest first.
+ */
+populationRouter.get(
+  '/groups/:id/activity',
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const g = await prisma.populationGroup.findUnique({
+      where: { id },
+      include: { animals: { select: { id: true } } },
+    });
+    if (!g) throw notFound('Group');
+    const [updates, services, logs] = await Promise.all([
+      prisma.populationUpdate.findMany({ where: { groupId: id, superseded: false } }),
+      prisma.vaccination.findMany({
+        where: { voidedAt: null, OR: [{ groupId: id }, { animalId: { in: g.animals.map((a) => a.id) } }] },
+        include: { animal: true },
+      }),
+      prisma.activityLog.findMany({ where: { entity: 'group', entityId: id } }),
+    ]);
+    const items = [
+      ...updates.map((u) => ({
+        key: `u${u.id}`,
+        at: u.createdAt.toISOString(),
+        date: u.month,
+        kind: 'count',
+        title:
+          u.previous == null
+            ? `Head count ${u.count}`
+            : `Head count ${u.previous} → ${u.count} (${u.change >= 0 ? '+' : ''}${u.change})`,
+        detail: [
+          u.kind === 'VERIFIED' ? `Monthly count for ${fmtMonth(u.month)}` : 'Automatic change',
+          u.reason,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        by: u.createdBy,
+      })),
+      ...services.map((v) => ({
+        key: `s${v.id}`,
+        at: `${ymd(v.date)}T12:00:00.000Z`,
+        date: ymd(v.date),
+        kind: 'service',
+        title: `${SERVICE_TYPE_LABELS[v.serviceType as ServiceType] ?? v.serviceType} · ${v.animal ? (v.animal.earTag ?? v.animal.code) : `${v.count} head`}`,
+        detail: [
+          v.vaccine,
+          v.result === 'PREGNANT' ? 'Pregnant' : v.result === 'NOT_PREGNANT' ? 'Not pregnant' : null,
+          v.remarks,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        by: v.administeredBy,
+      })),
+      ...logs.map((l) => ({
+        key: `l${l.id}`,
+        at: l.createdAt.toISOString(),
+        date: ymd(l.createdAt),
+        kind: 'edit',
+        title: l.summary,
+        detail: null,
+        by: l.byName,
+      })),
+    ].sort((a, b) => b.at.localeCompare(a.at));
+    res.json(items);
+  }),
+);
+
 populationRouter.patch(
   '/groups/:id',
   ah(async (req, res) => {
@@ -267,9 +342,30 @@ populationRouter.patch(
         sex: d.sex,
         lifeStage: d.lifeStage,
         healthStatus: d.healthStatus,
+        purpose: isLargeRuminant(g.species) ? (d.purpose ?? null) : null,
         remarks: d.remarks ?? null,
       },
     });
+    const show = (v: unknown) => (v == null || v === '' ? '—' : String(v));
+    const changes = (
+      [
+        ['breed', 'breed'],
+        ['sex', 'sex'],
+        ['lifeStage', 'stage'],
+        ['healthStatus', 'health'],
+        ['purpose', 'purpose'],
+        ['remarks', 'remarks'],
+      ] as const
+    )
+      .filter(([k]) => show(g[k]) !== show(updated[k]))
+      .map(([k, label]) => `${label} ${show(g[k])} → ${show(updated[k])}`);
+    await logActivity(
+      'group',
+      id,
+      'updated',
+      `Group ${g.code} details updated${changes.length ? `: ${changes.join('; ')}` : ''}`,
+      req.user?.name,
+    );
     await logActivity('farm', g.farmId, 'group-updated', `Group ${g.code} details updated`, req.user?.name);
     res.json(updated);
   }),

@@ -1,11 +1,13 @@
 import { MapPinOff } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
+  CASE_CLASS_LABELS,
   CASE_MARKER_COLORS,
   CASE_STATUS_LABELS,
   SPECIES_COLORS,
   caseMarkerKind,
   titleCase,
+  type CaseClass,
   type CaseStatus,
   type Species,
 } from '@livestock/shared';
@@ -52,6 +54,13 @@ export function ActiveBadge({ status }: { status: string }) {
   return <Badge tone={tone}>{titleCase(status)}</Badge>;
 }
 
+/** The office's classification of a case: Reported → Suspected → Active → Negative / Closed. */
+export function CaseClassBadge({ value }: { value: CaseClass }) {
+  const tone: Tone =
+    value === 'ACTIVE' ? 'red' : value === 'SUSPECTED' ? 'amber' : value === 'REPORTED' ? 'blue' : 'slate';
+  return <Badge tone={tone}>{CASE_CLASS_LABELS[value]}</Badge>;
+}
+
 export function LabResultBadge({ result }: { result: string }) {
   const tone: Tone =
     result === 'POSITIVE'
@@ -71,7 +80,7 @@ export function StrayStatusBadge({ status }: { status: string }) {
 
 export function SpeciesChip({ species, count }: { species: string; count?: number }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-700/70 px-1.5 py-[1px] text-[12px] text-slate-700">
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-700/70 px-1.5 py-[1px] text-[12px] text-slate-700">
       <span
         className="h-2 w-2 rounded-full"
         style={{ background: SPECIES_COLORS[species as Species] ?? '#9ca3af' }}
@@ -89,11 +98,11 @@ export function MapLegend({ children, className }: { children: ReactNode; classN
       role="group"
       aria-label="Map legend"
       className={cn(
-        'mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-[12.5px] text-slate-600',
+        'mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-600',
         className,
       )}
     >
-      <span className="text-[11.5px] font-semibold uppercase tracking-wide text-slate-500">Legend</span>
+      <span className="text-[12px] font-semibold uppercase tracking-wide text-slate-500">Legend</span>
       {children}
     </div>
   );

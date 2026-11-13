@@ -246,24 +246,34 @@ test('a failed address lookup tells the user to type it', async ({ page }) => {
   await expect(dialog(page).getByLabel('Latitude', { exact: true })).not.toHaveValue('');
 });
 
-test('record a PCIC policy, then mark it claimed', async ({ page }) => {
+test('attach a PCIC insurance application, then mark it claimed', async ({ page }) => {
   await page.goto('/owners/2');
-  await page.getByRole('button', { name: 'Add Policy' }).click();
+  await page.getByRole('button', { name: 'Attach Application' }).click();
   const d = dialog(page);
-  await d.getByLabel('Policy number').fill('PCIC-E2E-77');
-  await d.getByLabel('Insured heads').fill('4');
-  await d.getByLabel('Coverage start').fill('2026-01-01');
-  await d.getByLabel('Coverage end').fill('2026-12-31');
+  await d.getByLabel('Attach scanned form').setInputFiles({
+    name: 'pcic-application.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n%e2e\n'),
+  });
+  await expect(d.getByText('pcic-application.pdf')).toBeVisible();
+  await d.getByLabel('Date of application *').fill('2026-01-05');
+  await d.getByLabel('Application type').selectOption('RENEWAL');
+  await d.getByLabel('Premium subsidized through RSBSA').check();
+  await d.getByLabel('RSBSA reference no.').fill('RSBSA-E2E-9');
   await d.getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Insurance policy recorded.');
-  const row = page.getByRole('group', { name: /PCIC-E2E-77/ });
-  await expect(row.getByText('Active')).toBeVisible();
+  await expectToast(page, 'Insurance application attached.');
+  const row = page.getByRole('group', { name: 'Insurance application Jan 5, 2026' });
+  await expect(row.getByText(/Renewal/)).toBeVisible();
+  await expect(row.getByText(/RSBSA subsidized \(RSBSA-E2E-9\)/)).toBeVisible();
+  await expect(
+    row.getByRole('link', { name: /pcic-application|Scanned form|Document/i }).first(),
+  ).toBeVisible();
   await row.getByRole('button', { name: 'Update' }).click();
-  await expect(dialog(page).getByLabel('Policy number')).toHaveValue('PCIC-E2E-77');
+  await expect(dialog(page).getByLabel('Date of application *')).toHaveValue('2026-01-05');
   await dialog(page).getByLabel('Status').selectOption('CLAIMED');
   await dialog(page).getByLabel('Remarks').fill('Claim paid for 2 heads');
   await dialog(page).getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Insurance policy updated.');
+  await expectToast(page, 'Insurance record updated.');
   await expect(row.getByText('Claimed')).toBeVisible();
   await expect(row.getByText('Claim paid for 2 heads')).toBeVisible();
 });
