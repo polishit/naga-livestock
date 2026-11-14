@@ -139,5 +139,6 @@ test('reports open on the monthly report; analytics compares periods and links t
   await page.goto('/analytics');
   const byBarangay = page.locator('.card').filter({ hasText: 'Population by barangay' });
   await byBarangay.locator('.recharts-bar-rectangle').first().click();
-  await expect(page).toHaveURL(/\/farms\?barangay=/);
+  await expect(page).toHaveURL(/\/population\?tab=farms&barangay=/);
+  await expect(page.getByRole('tab', { name: 'By Farm' })).toHaveAttribute('aria-selected', 'true');
 });

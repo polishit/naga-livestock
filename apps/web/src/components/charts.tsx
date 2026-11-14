@@ -34,6 +34,34 @@ const pick = <T,>(onSelect: OnSelect<T>) =>
       }
     : {};
 
+/**
+ * Click anywhere in a bar's column (or on a month of a line chart) to open its records: easier than
+ * hitting a thin bar or a small dot.
+ */
+const chartPick = <T,>(onSelect: OnSelect<T>) =>
+  onSelect
+    ? {
+        style: { cursor: 'pointer' },
+        onClick: (state: unknown) => {
+          const row = (state as { activePayload?: { payload?: T }[] } | null)?.activePayload?.[0]?.payload;
+          if (row) onSelect(row);
+        },
+      }
+    : {};
+
+/** A pie's legend items open the same records as its slices. */
+const legendPick = <T,>(data: T[], key: keyof T, onSelect: OnSelect<T>) =>
+  onSelect
+    ? {
+        wrapperStyle: { fontSize: 12, cursor: 'pointer' },
+        onClick: (e: unknown) => {
+          const value = (e as { value?: unknown })?.value;
+          const row = data.find((d) => d[key] === value);
+          if (row) onSelect(row);
+        },
+      }
+    : { wrapperStyle: { fontSize: 12 } };
+
 export function ChartCard({
   title,
   children,
@@ -94,7 +122,7 @@ export function SpeciesDonut({
         <Legend
           iconType="square"
           iconSize={10}
-          wrapperStyle={{ fontSize: 12 }}
+          {...legendPick(sorted, 'species', onSelect)}
           formatter={(v) => <span style={{ color: SPECIES_COLORS[v as Species] ?? '#475569' }}>{v}</span>}
         />
       </PieChart>
@@ -123,10 +151,16 @@ export function TrendBars({
   );
 }
 
-export function CasesLine({ data }: { data: { label: string; reported: number; positive: number }[] }) {
+export function CasesLine<T extends { label: string; reported: number; positive: number }>({
+  data,
+  onSelect,
+}: {
+  data: T[];
+  onSelect?: (row: T) => void;
+}) {
   return (
     <ResponsiveContainer>
-      <LineChart data={data} margin={{ left: -16, right: 12, top: 6 }}>
+      <LineChart data={data} margin={{ left: -16, right: 12, top: 6 }} {...chartPick(onSelect)}>
         {GRID}
         <XAxis dataKey="label" tick={AXIS} tickLine={false} />
         <YAxis allowDecimals={false} tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
@@ -162,7 +196,7 @@ export function BarangayBars({
 }) {
   return (
     <ResponsiveContainer>
-      <BarChart data={data} margin={{ left: -8, right: 8, top: 6, bottom: 26 }}>
+      <BarChart data={data} margin={{ left: -8, right: 8, top: 6, bottom: 26 }} {...chartPick(onSelect)}>
         {GRID}
         <XAxis
           dataKey="barangay"
@@ -174,22 +208,25 @@ export function BarangayBars({
         />
         <YAxis tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
         <Tooltip formatter={(v: number) => v.toLocaleString()} />
-        <Bar dataKey="count" name="Head" fill="#16a34a" radius={[2, 2, 0, 0]} {...pick(onSelect)} />
+        <Bar dataKey="count" name="Head" fill="#16a34a" radius={[2, 2, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
-export function CoverageBars({
+export function CoverageBars<T extends { species: string; estimatedPct: number; exactPct: number | null }>({
   data,
+  onSelect,
 }: {
-  data: { species: string; estimatedPct: number; exactPct: number | null }[];
+  data: T[];
+  onSelect?: (row: T) => void;
 }) {
   return (
     <ResponsiveContainer>
       <BarChart
         data={data.map((d) => ({ ...d, exactPct: d.exactPct ?? 0 }))}
         margin={{ left: -8, right: 8, top: 6 }}
+        {...chartPick(onSelect)}
       >
         {GRID}
         <XAxis dataKey="species" tick={{ ...AXIS, fontSize: 9.5 }} tickLine={false} interval={0} />
@@ -227,7 +264,7 @@ export function StatusPie<T extends { label: string; count: number }>({
           ))}
         </Pie>
         <Tooltip />
-        <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+        <Legend iconType="square" iconSize={10} {...legendPick(data, 'label', onSelect)} />
       </PieChart>
     </ResponsiveContainer>
   );
@@ -242,7 +279,7 @@ export function DiseaseBars({
 }) {
   return (
     <ResponsiveContainer>
-      <BarChart data={data} layout="vertical" margin={{ left: 10, right: 16 }}>
+      <BarChart data={data} layout="vertical" margin={{ left: 10, right: 16 }} {...chartPick(onSelect)}>
         <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" horizontal={false} />
         <XAxis type="number" allowDecimals={false} tick={AXIS} tickLine={false} />
         <YAxis
@@ -253,7 +290,7 @@ export function DiseaseBars({
           tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 21)}…` : v)}
         />
         <Tooltip />
-        <Bar dataKey="count" name="Cases" fill="#dc2626" barSize={18} {...pick(onSelect)} />
+        <Bar dataKey="count" name="Cases" fill="#dc2626" barSize={18} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -325,7 +362,7 @@ export function FarmTypeDonut({
           ))}
         </Pie>
         <Tooltip formatter={(v: number, n: string) => [v, titleCase(n)]} />
-        <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+        <Legend iconType="square" iconSize={10} {...legendPick(data, 'type', onSelect)} />
       </PieChart>
     </ResponsiveContainer>
   );
@@ -340,7 +377,7 @@ export function LargestFarmsBars<T extends { name: string; total: number }>({
 }) {
   return (
     <ResponsiveContainer>
-      <BarChart data={data} margin={{ left: -8, right: 8, top: 6, bottom: 30 }}>
+      <BarChart data={data} margin={{ left: -8, right: 8, top: 6, bottom: 30 }} {...chartPick(onSelect)}>
         {GRID}
         <XAxis
           dataKey="name"
@@ -353,7 +390,7 @@ export function LargestFarmsBars<T extends { name: string; total: number }>({
         />
         <YAxis tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
         <Tooltip />
-        <Bar dataKey="total" name="Head" fill="#166534" {...pick(onSelect)} />
+        <Bar dataKey="total" name="Head" fill="#166534" />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -366,16 +403,20 @@ const FIELD_BARS = {
   vaccinated: { name: 'Heads vaccinated', fill: '#a855f7' },
   visits: { name: 'Farm visits', fill: '#f59e0b' },
 } as const;
-export function ServiceTrendBars({
+export function ServiceTrendBars<
+  T extends { label: string } & Partial<Record<keyof typeof FIELD_BARS, number>>,
+>({
   data,
   bars = ['dewormed', 'checkups', 'visits'],
+  onSelect,
 }: {
-  data: ({ label: string } & Partial<Record<keyof typeof FIELD_BARS, number>>)[];
+  data: T[];
   bars?: (keyof typeof FIELD_BARS)[];
+  onSelect?: (row: T) => void;
 }) {
   return (
     <ResponsiveContainer>
-      <BarChart data={data} margin={{ left: -8, right: 12, top: 6 }}>
+      <BarChart data={data} margin={{ left: -8, right: 12, top: 6 }} {...chartPick(onSelect)}>
         {GRID}
         <XAxis dataKey="label" tick={AXIS} tickLine={false} />
         <YAxis allowDecimals={false} tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
@@ -396,11 +437,17 @@ export function ServiceTrendBars({
 }
 
 /** Disease reports per month (with confirmed positives when given). */
-export function ReportTrendLine({ data }: { data: { label: string; reports: number; positive?: number }[] }) {
+export function ReportTrendLine<T extends { label: string; reports: number; positive?: number }>({
+  data,
+  onSelect,
+}: {
+  data: T[];
+  onSelect?: (row: T) => void;
+}) {
   const hasPositive = data.some((d) => d.positive != null);
   return (
     <ResponsiveContainer>
-      <LineChart data={data} margin={{ left: -8, right: 12, top: 6 }}>
+      <LineChart data={data} margin={{ left: -8, right: 12, top: 6 }} {...chartPick(onSelect)}>
         {GRID}
         <XAxis dataKey="label" tick={AXIS} tickLine={false} />
         <YAxis allowDecimals={false} tick={AXIS} tickLine={false} axisLine={{ stroke: '#334155' }} />
@@ -431,16 +478,18 @@ export function ReportTrendLine({ data }: { data: { label: string; reports: numb
 }
 
 /** Heads per species (e.g. dewormed this month), coloured by species. */
-export function SpeciesHeadBars({
+export function SpeciesHeadBars<T extends { species: string; head: number }>({
   data,
   name = 'Heads',
+  onSelect,
 }: {
-  data: { species: string; head: number }[];
+  data: T[];
   name?: string;
+  onSelect?: (row: T) => void;
 }) {
   return (
     <ResponsiveContainer>
-      <BarChart data={data} layout="vertical" margin={{ left: 4, right: 16 }}>
+      <BarChart data={data} layout="vertical" margin={{ left: 4, right: 16 }} {...chartPick(onSelect)}>
         <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" horizontal={false} />
         <XAxis type="number" allowDecimals={false} tick={AXIS} tickLine={false} />
         <YAxis type="category" dataKey="species" width={90} tick={AXIS} />

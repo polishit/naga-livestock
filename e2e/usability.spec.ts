@@ -156,7 +156,9 @@ test('ASF case lists the response steps and logs a missing one', async ({ page }
   await d.getByLabel('Personnel').fill('Brgy. Captain and kagawads');
   await d.getByRole('button', { name: 'Save' }).click();
   await expectToast(page, 'Response activity logged.');
-  await expect(step.getByText(/^Done/)).toBeVisible();
+  // The logged measure is shown once, under its step.
+  await expect(step.getByText('Completed')).toBeVisible();
+  await expect(step.getByText('Not yet logged')).toHaveCount(0);
   await shot(page, 'asf-steps');
 });
 

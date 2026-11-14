@@ -26,7 +26,7 @@ import {
   type ClinicalSign,
   CASE_OUTCOME_LABELS,
   CASE_STATUSES,
-  ASF_RESPONSE_STEPS,
+  responseStepsFor,
   CASE_STATUS_LABELS,
   MONITORED_DISEASES,
   RESPONSE_TYPES_WITH_END,
@@ -61,7 +61,7 @@ import { MapView } from '@/components/MapView';
 import { MoreMenu } from '@/components/MoreMenu';
 import { ActivityTimeline, DiseasePicker } from '@/components/livestock';
 import type { VisitRecord } from '@/dialogs/services';
-import { ErrorBox, FilterSelect, KV, Loading, PageHeader, StatCard, Timeline } from '@/components/page';
+import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
 import { ChartCard, DiseaseBars, ReportTrendLine } from '@/components/charts';
 import {
   CaseClassBadge,
@@ -119,22 +119,99 @@ export function CasesPage() {
       { replace: true },
     );
   const setView = (v: 'table' | 'board') => setParam('view', v === 'board' ? v : '');
-  // Filters can come from a link (a chart on Analytics, a hotspot, Record completeness).
-  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
-  const [location, setLocation] = useState(params.get('location') ?? '');
-  const [state, setState] = useState(params.get('state') === 'all' ? '' : (params.get('state') ?? 'open'));
+  // Filters can come from a link (a chart on Analytics, a hotspot, Record completeness). They live in
+  // the address bar, so Back returns to the list as it was.
+  const barangay = params.get('barangay') ?? '';
+  const setBarangay = (v: string) => setParam('barangay', v);
+  const location = params.get('location') ?? '';
+  const setLocation = (v: string) => setParam('location', v);
+  const state = params.get('state') === 'all' ? '' : (params.get('state') ?? 'open');
+  const setState = (v: string) => setParam('state', v === 'open' ? '' : v || 'all');
   const status = params.get('status') ?? '';
   const disease = params.get('disease') ?? '';
   const klass = params.get('class') ?? '';
-  const [showTrends, setShowTrends] = useState(true);
-  const { data, isLoading, error } = useApi<CaseRow[]>(
-    `/api/cases${qs({ barangay, location, state, status, disease })}`,
-  );
-  // All reports (any state) for the trend graphs; follows the barangay and disease filters.
-  const { data: all } = useApi<CaseRow[]>(showTrends ? `/api/cases${qs({ barangay, disease })}` : null);
+  // ?month=YYYY-MM (from a "per month" chart) lists the reports of that month.
+  const month = params.get('month') ?? '';
+  const inMonth = (r: CaseRow) => !month || r.reportedAt.startsWith(month);
+  const [showTrends, setShowTrends] = useState(false);
+  const {
+    data: listed,
+    isLoading,
+    error,
+  } = useApi<CaseRow[]>(`/api/cases${qs({ barangay, location, state, status, disease })}`);
+  const data = listed?.filter(inMonth);
+  // All reports (any state) for the quick views and the trend graphs; follows the barangay and disease.
+  const { data: allReports } = useApi<CaseRow[]>(`/api/cases${qs({ barangay, disease })}`);
+  const all = allReports?.filter(inMonth);
   const diseases = [...new Set([...MONITORED_DISEASES, ...(all ?? []).map((c) => c.disease)])];
+  // Quick views: one click lists the cases at that point of the work.
+  const openCases = (all ?? []).filter((c) => !c.closed);
+  const quick: { key: string; label: string; count: number; params: Record<string, string>; tone: string }[] =
+    [
+      { key: 'open', label: 'Open cases', count: openCases.length, params: {}, tone: 'text-slate-900' },
+      ...CASE_STATUSES.map((st) => ({
+        key: st,
+        label: CASE_STATUS_LABELS[st],
+        count: openCases.filter((c) => c.status === st).length,
+        params: { status: st },
+        tone: st === 'POSITIVE' ? 'text-red-700' : st === 'SENT_TO_LAB' ? 'text-blue-700' : 'text-slate-900',
+      })),
+      {
+        key: 'unmapped',
+        label: 'Awaiting geotagging',
+        count: openCases.filter((c) => !c.mapped).length,
+        params: { location: 'unmapped' },
+        tone: 'text-amber-700',
+      },
+      {
+        key: 'closed',
+        label: 'Closed',
+        count: (all ?? []).filter((c) => c.closed).length,
+        params: { state: 'closed' },
+        tone: 'text-slate-900',
+      },
+      {
+        key: 'all',
+        label: 'All cases',
+        count: (all ?? []).length,
+        params: { state: 'all' },
+        tone: 'text-slate-900',
+      },
+    ];
+  const activeQuick =
+    state === 'closed'
+      ? 'closed'
+      : !state
+        ? 'all'
+        : location === 'unmapped' && !status
+          ? 'unmapped'
+          : status || (location ? '' : 'open');
+  const pickQuick = (q: (typeof quick)[number]) =>
+    setParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        ['state', 'status', 'location'].forEach((k) => n.delete(k));
+        Object.entries(q.params).forEach(([k, v]) => n.set(k, v));
+        return n;
+      },
+      { replace: false },
+    );
+  const rows = klass ? data?.filter((r) => r.classification === klass) : data;
+  // Remember the list order so the case page can step to the previous / next case.
+  useEffect(() => {
+    if (!rows) return;
+    const ids = [...rows].sort((x, y) => y.reportedAt.localeCompare(x.reportedAt)).map((r) => r.id);
+    const label = quick.find((q) => q.key === activeQuick)?.label ?? 'this list';
+    try {
+      sessionStorage.setItem('caseNav', JSON.stringify({ ids, label, search: params.toString() }));
+    } catch {
+      /* storage unavailable: the case page simply shows no previous / next */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, activeQuick]);
   const filters = (
     <>
+      {month && <LinkFilter label={`Reported in ${fmtMonth(month)}`} onClear={() => setParam('month', '')} />}
       {status && (
         <LinkFilter
           label={`Stage: ${CASE_STATUS_LABELS[status as CaseStatus] ?? status}`}
@@ -226,12 +303,27 @@ export function CasesPage() {
           </>
         }
       />
-      <div className="mb-3 flex justify-end">
-        <button type="button" className="link text-[14px]" onClick={() => setShowTrends((v) => !v)}>
-          {showTrends ? 'Hide graphs' : 'Show graphs'}
-        </button>
+      <div
+        className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-9"
+        role="group"
+        aria-label="Quick views"
+      >
+        {quick.map((q) => (
+          <button
+            key={q.key}
+            type="button"
+            aria-pressed={activeQuick === q.key}
+            onClick={() => pickQuick(q)}
+            className={cn(
+              'flex flex-col justify-start rounded-lg border bg-white px-3 py-2 text-left transition-colors hover:border-brand',
+              activeQuick === q.key ? 'border-brand ring-2 ring-brand/30' : 'border-slate-200',
+            )}
+          >
+            <div className={cn('text-[20px] font-semibold leading-tight', q.tone)}>{all ? q.count : '–'}</div>
+            <div className="text-[12px] leading-snug text-slate-600">{q.label}</div>
+          </button>
+        ))}
       </div>
-      {showTrends && all && <SurveillanceTrends cases={all} />}
       {error ? (
         <ErrorBox error={error} />
       ) : view === 'board' ? (
@@ -242,7 +334,7 @@ export function CasesPage() {
       ) : (
         <Card>
           <DataTable
-            rows={klass ? data?.filter((r) => r.classification === klass) : data}
+            rows={rows}
             empty="No cases found. Clear the filters, or select “Report incident” when sick or dead animals are reported."
             loading={isLoading}
             rowKey={(r) => r.id}
@@ -288,6 +380,21 @@ export function CasesPage() {
           />
         </Card>
       )}
+      <div className="mt-4">
+        <button
+          type="button"
+          className="link text-[14px]"
+          aria-expanded={showTrends}
+          onClick={() => setShowTrends((v) => !v)}
+        >
+          {showTrends ? 'Hide trends and graphs' : 'Show trends and graphs'}
+        </button>
+        {showTrends && allReports && (
+          <div className="mt-3">
+            <SurveillanceTrends cases={allReports} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -299,6 +406,7 @@ function SurveillanceTrends({ cases }: { cases: CaseRow[] }) {
   const perMonth = months.map((m) => {
     const xs = cases.filter((c) => c.reportedAt.startsWith(m));
     return {
+      month: m,
       label: fmtMonth(m).replace(/ (\d{2})(\d{2})$/, ' ’$2'),
       reports: xs.length,
       positive: xs.filter((c) => c.status === 'POSITIVE').length,
@@ -308,31 +416,11 @@ function SurveillanceTrends({ cases }: { cases: CaseRow[] }) {
     .map((d) => ({ disease: d, count: cases.filter((c) => c.disease === d).length }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
-  const open = cases.filter((c) => !c.closed);
-  const year = String(new Date().getFullYear());
   return (
     <div className="mb-4 space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Open reports" value={open.length} tone="orange" />
-        <StatCard
-          label="Awaiting lab result"
-          value={open.filter((c) => c.status === 'SENT_TO_LAB').length}
-          tone="blue"
-        />
-        <StatCard
-          label="Confirmed positive (open)"
-          value={open.filter((c) => c.status === 'POSITIVE').length}
-          tone="red"
-        />
-        <StatCard
-          label={`ASF reports in ${year}`}
-          value={cases.filter((c) => isAsfDisease(c.disease) && c.reportedAt.startsWith(year)).length}
-          tone="red"
-        />
-      </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title="Disease Reports per Month">
-          <ReportTrendLine data={perMonth} />
+        <ChartCard title="Disease Reports per Month" clickable>
+          <ReportTrendLine data={perMonth} onSelect={(r) => navigate(`/cases?state=all&month=${r.month}`)} />
         </ChartCard>
         <ChartCard title="Reports by Disease" clickable>
           <DiseaseBars
@@ -924,7 +1012,56 @@ const OLD_TAB_STEP: Record<string, string> = {
   response: 'step-response',
 };
 
+/** The case page, started fresh for each case (so stepping to the next case resets its forms). */
 export function CaseDetailPage() {
+  const { id } = useParams();
+  return <CaseDetail key={id} />;
+}
+
+/** Previous / next case in the list the user came from, and the way back to it. */
+function readCaseNav(id: number) {
+  try {
+    const nav = JSON.parse(sessionStorage.getItem('caseNav') ?? 'null') as {
+      ids: number[];
+      label: string;
+      search: string;
+    } | null;
+    return nav && nav.ids.includes(id) ? nav : null;
+  } catch {
+    return null;
+  }
+}
+function CaseNav({ id }: { id: number }) {
+  const navigate = useNavigate();
+  const nav = readCaseNav(id);
+  if (!nav) return null;
+  const i = nav.ids.indexOf(id);
+  const prev = nav.ids[i - 1];
+  const next = nav.ids[i + 1];
+  return (
+    <nav
+      aria-label="Case navigation"
+      className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[14px]"
+    >
+      <Link to={`/cases${nav.search ? `?${nav.search}` : ''}`} className="link">
+        ← Back to {nav.label.toLowerCase()}
+      </Link>
+      <span className="text-slate-500">
+        Case {i + 1} of {nav.ids.length}
+      </span>
+      <span className="flex gap-2">
+        <Button size="xs" variant="outline" disabled={!prev} onClick={() => navigate(`/cases/${prev}`)}>
+          ‹ Previous case
+        </Button>
+        <Button size="xs" variant="outline" disabled={!next} onClick={() => navigate(`/cases/${next}`)}>
+          Next case ›
+        </Button>
+      </span>
+    </nav>
+  );
+}
+
+function CaseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { canEdit: canWrite, isAdmin, user } = useAuth();
@@ -1001,8 +1138,11 @@ export function CaseDetailPage() {
   const openMeasures = responses.filter((r) => measureOpen(r, today));
   const isAsf = isAsfDisease(c.disease);
   const positive = c.status === 'POSITIVE';
-  const asfMissing =
-    isAsf && positive ? ASF_RESPONSE_STEPS.filter((st) => !responses.some((r) => r.type === st.type)) : [];
+  // The response steps for this disease (ASF steps, or the general steps for other diseases). They are
+  // required once the case is positive; for suspected ASF they are shown so the office can start early.
+  const steps = responseStepsFor(c.disease);
+  const showSteps = positive || isAsf;
+  const stepsMissing = positive ? steps.filter((st) => !responses.some((r) => r.type === st.type)) : [];
   const removed = c.deaths + c.culled;
   const blockers = caseCloseBlockers({ labs, responses, pendingPopulation: pending }, today);
 
@@ -1010,7 +1150,7 @@ export function CaseDetailPage() {
     visit: visitCount > 0,
     samples: final,
     response: positive
-      ? responses.length > 0 && !openMeasures.length && !asfMissing.length
+      ? responses.length > 0 && !openMeasures.length && !stepsMissing.length
       : !openMeasures.length,
     head: pending === 0,
     close: c.closed,
@@ -1079,7 +1219,9 @@ export function CaseDetailPage() {
 
   return (
     <div>
+      <CaseNav id={c.id} />
       <PageHeader
+        back={readCaseNav(c.id) ? false : undefined}
         title={`${c.code} · ${c.disease}`}
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-2">
@@ -1423,69 +1565,26 @@ export function CaseDetailPage() {
                     : 'Needed only when the result is positive (quarantine, disinfection, culling…).'
                   : openMeasures.length
                     ? `${openMeasures.length} measure(s) still planned, ongoing or in force. When they are done, mark them completed or enter the date lifted.`
-                    : asfMissing.length
-                      ? `Confirmed ASF: log each response step as it is done (${ASF_RESPONSE_STEPS.length - asfMissing.length} of ${ASF_RESPONSE_STEPS.length} logged).`
+                    : stepsMissing.length
+                      ? `Confirmed ${isAsf ? 'ASF' : 'positive'}: log each response step as it is done (${steps.length - stepsMissing.length} of ${steps.length} logged).`
                       : positive && !responses.length
                         ? 'Confirmed positive: log the quarantine or movement restriction, then disinfection or culling as needed.'
                         : `${responses.length} measure(s) logged, all completed or lifted.`
               }
             >
-              {isAsf && <AsfSteps detail={data} onLog={canEdit ? (t) => openResponse(t) : undefined} />}
-              {data.responses.length > 0 && (
-                <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200">
-                  {data.responses.map((r) => (
-                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                      <div className="min-w-0 text-[14px]">
-                        <VoidAware r={r}>
-                          <span className="font-medium text-slate-900">{r.typeLabel}</span>
-                          <span className="text-slate-500">
-                            {' '}
-                            · {fmtDate(r.date)}
-                            {r.endDate ? ` – ${fmtDate(r.endDate)}` : ''}
-                            {r.heads ? ` · ${r.heads} culled` : ''}
-                            {r.location ? ` · ${r.location}` : ''}
-                          </span>
-                        </VoidAware>
-                      </div>
-                      {!r.voided && (
-                        <span className="flex items-center gap-1.5">
-                          <Badge
-                            tone={
-                              measureOpen(r, today) ? (r.status === 'PLANNED' ? 'blue' : 'amber') : 'green'
-                            }
-                          >
-                            {measureOpen(r, today)
-                              ? r.status === 'PLANNED'
-                                ? 'Planned'
-                                : 'In force'
-                              : r.endDate && r.endDate <= today
-                                ? 'Lifted'
-                                : 'Completed'}
-                          </Badge>
-                          {canEdit && (
-                            <Button
-                              size="xs"
-                              variant={measureOpen(r, today) ? 'default' : 'ghost'}
-                              onClick={() => openResponse(undefined, r)}
-                            >
-                              {measureOpen(r, today) ? 'Update' : 'Edit'}
-                            </Button>
-                          )}
-                          {isAdmin && !c.closed && (
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              onClick={() => voidIt(`/api/responses/${r.id}/void`, `${r.typeLabel} record`)}
-                            >
-                              Void
-                            </Button>
-                          )}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <ResponseSteps
+                responses={data.responses}
+                steps={showSteps ? steps : []}
+                title={isAsf ? 'ASF response steps' : 'Response steps'}
+                today={today}
+                onLog={canEdit ? (t) => openResponse(t) : undefined}
+                onEdit={canEdit ? (r) => openResponse(undefined, r) : undefined}
+                onVoid={
+                  isAdmin && !c.closed
+                    ? (r) => voidIt(`/api/responses/${r.id}/void`, `${r.typeLabel} record`)
+                    : undefined
+                }
+              />
               {canEdit && (
                 <StepActions>
                   <Button
@@ -1493,13 +1592,13 @@ export function CaseDetailPage() {
                     variant={current === 'response' && !openMeasures.length ? 'default' : 'outline'}
                     onClick={() =>
                       openResponse(
-                        asfMissing[0]?.type ?? (positive && !responses.length ? 'QUARANTINE' : undefined),
+                        stepsMissing[0]?.type ?? (positive && !responses.length ? 'QUARANTINE' : undefined),
                       )
                     }
                   >
                     <Plus />{' '}
-                    {asfMissing[0]
-                      ? `Log: ${asfMissing[0].label}`
+                    {stepsMissing[0]
+                      ? `Log: ${stepsMissing[0].label}`
                       : positive && !responses.length
                         ? 'Log quarantine'
                         : responseSkipped
@@ -2012,59 +2111,162 @@ function VoidAware({ r, children }: { r: VoidInfo; children: React.ReactNode }) 
 }
 
 /** The office's ASF response steps, ticked off from the activities logged on the case. */
-function AsfSteps({ detail, onLog }: { detail: CaseDetail; onLog?: (type?: ResponseType) => void }) {
-  const logged = detail.responses.filter((r) => !r.voided);
-  const done = ASF_RESPONSE_STEPS.filter((s) =>
-    logged.some((r) => r.type === s.type && r.status === 'COMPLETED'),
+type ResponseRow = CaseDetail['responses'][number];
+
+/** One logged measure: type, dates, place, status and its actions. */
+function MeasureRow({
+  r,
+  today,
+  showType,
+  onEdit,
+  onVoid,
+}: {
+  r: ResponseRow;
+  today: string;
+  showType: boolean;
+  onEdit?: (r: ResponseRow) => void;
+  onVoid?: (r: ResponseRow) => void;
+}) {
+  const open = measureOpen(r, today);
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+      <div className="min-w-0 text-[14px]">
+        <VoidAware r={r}>
+          {showType && <span className="font-medium text-slate-900">{r.typeLabel} · </span>}
+          <span className="text-slate-600">
+            {fmtDate(r.date)}
+            {r.endDate ? ` – ${fmtDate(r.endDate)}` : ''}
+            {r.heads ? ` · ${r.heads} culled` : ''}
+            {r.location ? ` · ${r.location}` : ''}
+          </span>
+        </VoidAware>
+      </div>
+      {!r.voided && (
+        <span className="flex items-center gap-1.5">
+          <Badge tone={open ? (r.status === 'PLANNED' ? 'blue' : 'amber') : 'green'}>
+            {open
+              ? r.status === 'PLANNED'
+                ? 'Planned'
+                : 'In force'
+              : r.endDate && r.endDate <= today
+                ? 'Lifted'
+                : 'Completed'}
+          </Badge>
+          {onEdit && (
+            <Button size="xs" variant={open ? 'default' : 'ghost'} onClick={() => onEdit(r)}>
+              {open ? 'Update' : 'Edit'}
+            </Button>
+          )}
+          {onVoid && (
+            <Button size="xs" variant="ghost" onClick={() => onVoid(r)}>
+              Void
+            </Button>
+          )}
+        </span>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The response of a case in one list: each step with the measure(s) logged for it underneath, then
+ * any other measures. A measure is shown once, under its step.
+ */
+function ResponseSteps({
+  responses,
+  steps,
+  title,
+  today,
+  onLog,
+  onEdit,
+  onVoid,
+}: {
+  responses: ResponseRow[];
+  steps: { type: ResponseType; label: string }[];
+  title: string;
+  today: string;
+  onLog?: (type?: ResponseType) => void;
+  onEdit?: (r: ResponseRow) => void;
+  onVoid?: (r: ResponseRow) => void;
+}) {
+  const stepTypes = new Set<string>(steps.map((s) => s.type));
+  const others = responses.filter((r) => !stepTypes.has(r.type));
+  const done = steps.filter((s) =>
+    responses.some((r) => !r.voided && r.type === s.type && !measureOpen(r, today)),
   ).length;
+  if (!steps.length && !responses.length) return null;
   return (
     <Card>
-      <CardHeader
-        title="ASF response steps"
-        actions={
-          <span className="text-[13px] text-slate-500">
-            {done} of {ASF_RESPONSE_STEPS.length} completed
-          </span>
-        }
-      />
-      <ol className="divide-y divide-slate-100">
-        {ASF_RESPONSE_STEPS.map((s, i) => {
-          const rows = logged.filter((r) => r.type === s.type);
-          const state = rows.some((r) => r.status === 'COMPLETED')
-            ? 'COMPLETED'
-            : rows.some((r) => r.status === 'ONGOING')
-              ? 'ONGOING'
-              : rows.length
-                ? 'PLANNED'
-                : null;
-          return (
-            <li key={s.type} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-[15px]">
-              <span
-                className={cn(
-                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold',
-                  state === 'COMPLETED' ? 'bg-brand-strong text-white' : 'bg-slate-100 text-slate-600',
-                )}
-              >
-                {state === 'COMPLETED' ? <Check className="h-3.5 w-3.5" /> : i + 1}
+      {steps.length > 0 && (
+        <>
+          <CardHeader
+            title={title}
+            actions={
+              <span className="text-[13px] text-slate-500">
+                {done} of {steps.length} completed
               </span>
-              <span className="min-w-0 flex-1 text-slate-800">{s.label}</span>
-              {state ? (
-                <Badge tone={state === 'COMPLETED' ? 'green' : state === 'ONGOING' ? 'amber' : 'blue'}>
-                  {state === 'COMPLETED' ? 'Done' : state === 'ONGOING' ? 'Ongoing' : 'Planned'}
-                  {rows[0] ? ` · ${fmtDate(rows[0].date)}` : ''}
-                </Badge>
-              ) : (
-                <span className="text-[13px] text-slate-400">Not yet logged</span>
-              )}
-              {onLog && !state && (
-                <Button size="xs" variant="outline" onClick={() => onLog(s.type)}>
-                  <Plus /> Log
-                </Button>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+            }
+          />
+          <ol className="divide-y divide-slate-100">
+            {steps.map((s, i) => {
+              const rows = responses.filter((r) => r.type === s.type);
+              const live = rows.filter((r) => !r.voided);
+              const state = live.length
+                ? live.some((r) => !measureOpen(r, today))
+                  ? 'done'
+                  : live.some((r) => r.status === 'PLANNED')
+                    ? 'planned'
+                    : 'ongoing'
+                : null;
+              return (
+                <li key={s.type} className="px-4 py-2.5">
+                  <div className="flex flex-wrap items-center gap-3 text-[15px]">
+                    <span
+                      className={cn(
+                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold',
+                        state === 'done' ? 'bg-brand-strong text-white' : 'bg-slate-100 text-slate-600',
+                      )}
+                    >
+                      {state === 'done' ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 font-medium text-slate-800">{s.label}</span>
+                    {!state && <span className="text-[13px] text-slate-400">Not yet logged</span>}
+                    {onLog && !state && (
+                      <Button size="xs" variant="outline" onClick={() => onLog(s.type)}>
+                        <Plus /> Log
+                      </Button>
+                    )}
+                  </div>
+                  {rows.length > 0 && (
+                    <ul className="ml-9 mt-1">
+                      {rows.map((r) => (
+                        <MeasureRow
+                          key={r.id}
+                          r={r}
+                          today={today}
+                          showType={false}
+                          onEdit={onEdit}
+                          onVoid={onVoid}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </>
+      )}
+      {others.length > 0 && (
+        <>
+          <CardHeader title={steps.length ? 'Other measures' : 'Measures logged'} />
+          <ul className="divide-y divide-slate-100 px-4 pb-2">
+            {others.map((r) => (
+              <MeasureRow key={r.id} r={r} today={today} showType onEdit={onEdit} onVoid={onVoid} />
+            ))}
+          </ul>
+        </>
+      )}
     </Card>
   );
 }

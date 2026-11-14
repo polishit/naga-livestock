@@ -5,6 +5,7 @@ import {
   MAX_HEAD,
   MIN_DATE,
   SERVICE_SPECIES_ORDER,
+  VACCINE_PRODUCTS,
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
   LARGE_RUMINANT_SERVICES,
@@ -102,7 +103,6 @@ export function ServiceDialog({
 }: DialogProps & { farmId?: number; defaultType?: ServiceType }) {
   const { data: lookups } = useLookups();
   const { user } = useAuth();
-  const [farmQ, setFarmQ] = useState('');
   const form = useZodForm(vaccinationCreateSchema, {});
   useResetOnOpen(open, form, {
     serviceType: defaultType,
@@ -120,9 +120,6 @@ export function ServiceDialog({
     administeredBy: user?.name ?? '',
     remarks: '',
   } as any);
-  useEffect(() => {
-    if (open) setFarmQ('');
-  }, [open]);
   const type = (form.watch('serviceType') ?? 'DEWORMING') as ServiceType;
   const save = useSave<any>('POST', '/api/vaccinations', {
     success: `${SERVICE_TYPE_LABELS[type]} recorded.`,
@@ -144,12 +141,7 @@ export function ServiceDialog({
   );
   const group = groups.find((g) => String(g.id) === String(form.watch('groupId')));
   const date = form.watch('date');
-  const farms = (lookups?.farms ?? []).filter(
-    (f) =>
-      String(f.id) === String(form.watch('farmId')) ||
-      !farmQ ||
-      `${f.code} ${f.name} ${f.barangay}`.toLowerCase().includes(farmQ.toLowerCase()),
-  );
+  const farms = lookups?.farms ?? [];
   const isVax = type === 'VACCINATION';
   return (
     <Dialog
@@ -196,13 +188,6 @@ export function ServiceDialog({
           {ruminantOnly && <p className="mt-1.5 text-[13px] text-slate-500">For cattle and carabao only.</p>}
         </Field>
         <Field label="Farm *" error={err(e, 'farmId')} className="sm:col-span-2">
-          <Input
-            value={farmQ}
-            onChange={(ev) => setFarmQ(ev.target.value)}
-            placeholder="Search farm, owner or barangay..."
-            className="mb-1.5"
-            aria-label="Search farm"
-          />
           <Select
             {...form.register('farmId', {
               onChange: () => {
@@ -307,11 +292,9 @@ export function ServiceDialog({
           <option value="Closantel" />
         </datalist>
         <datalist id="products-VACCINATION">
-          <option value="Hog Cholera Vaccine" />
-          <option value="Hemosep Vaccine" />
-          <option value="NCD Vaccine" />
-          <option value="FMD Vaccine" />
-          <option value="Anti-Rabies Vaccine" />
+          {VACCINE_PRODUCTS.map((v) => (
+            <option key={v} value={v} />
+          ))}
         </datalist>
         <datalist id="products-PREGNANCY_DIAGNOSIS">
           <option value="Rectal palpation" />

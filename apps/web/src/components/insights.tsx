@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { SPECIES, fmtDate } from '@livestock/shared';
+import { SPECIES, VACCINE_PRODUCTS, fmtDate } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
 import { useApi, useSave } from '@/lib/hooks';
 import { cn, qs } from '@/lib/utils';
@@ -309,9 +309,20 @@ export function TargetsCard() {
               {data.rows.map((r) => (
                 <li key={`${r.vaccine}|${r.species}`}>
                   <div className="mb-1 flex items-center justify-between gap-3 text-[14px]">
-                    <span className="text-slate-700">
+                    {/* The doses come from the vaccination records: open them. */}
+                    <Link
+                      className="link"
+                      to={`/services${qs({
+                        tab: 'records',
+                        type: 'VACCINATION',
+                        species: r.species,
+                        vaccine: r.vaccine,
+                        from: `${data.year}-01-01`,
+                        to: `${data.year}-12-31`,
+                      })}`}
+                    >
                       {r.vaccine} <span className="text-slate-400">· {r.species}</span>
-                    </span>
+                    </Link>
                     <span className="shrink-0 text-slate-600">
                       {r.given.toLocaleString()} / {r.target.toLocaleString()} ({r.pct}%)
                     </span>
@@ -350,6 +361,16 @@ function TargetsDialog({
 }) {
   const [rows, setRows] = useState<TargetRow[]>([]);
   const [error, setError] = useState('');
+  // Offer the vaccine names used in the records, so a target counts the doses recorded under that name.
+  const { data: recorded } = useApi<{ vaccine: string | null; voided?: boolean }[]>(
+    open ? '/api/vaccinations?type=VACCINATION' : null,
+  );
+  const vaccines = [
+    ...new Set([
+      ...(recorded ?? []).filter((v) => !v.voided && v.vaccine).map((v) => v.vaccine!.trim()),
+      ...VACCINE_PRODUCTS,
+    ]),
+  ].sort();
   useEffect(() => {
     if (open) {
       setRows(
@@ -402,15 +423,21 @@ function TargetsDialog({
       }
     >
       <p className="mb-3 text-[14px] text-slate-600">
-        Enter the number of doses the office plans to give this year. Use the same vaccine name as in the
-        vaccination records (for example &quot;Hog Cholera Vaccine&quot;).
+        Enter the number of doses the office plans to give this year. Choose the vaccine from the list: the
+        progress counts the vaccination records with that vaccine name and species.
       </p>
+      <datalist id="target-vaccines">
+        {vaccines.map((v) => (
+          <option key={v} value={v} />
+        ))}
+      </datalist>
       <div className="space-y-2">
         {rows.map((r, i) => (
           <div key={i} className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_150px_120px_auto]">
             <Input
               aria-label={`Vaccine ${i + 1}`}
               placeholder="Vaccine"
+              list="target-vaccines"
               value={r.vaccine}
               onChange={(e) => set(i, 'vaccine', e.target.value)}
               className="col-span-2 sm:col-span-1"

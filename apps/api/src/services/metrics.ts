@@ -134,8 +134,11 @@ export function populationTotals(farms: LoadedFarm[]) {
       farms: 0,
       population: 0,
     };
-    b.owners.add(farm.ownerId);
-    b.farms += 1;
+    // Only farms (and owners) with livestock of the selection count as raising it.
+    if (farm.groups.some((g) => g.count > 0)) {
+      b.owners.add(farm.ownerId);
+      b.farms += 1;
+    }
     for (const g of farm.groups) {
       b.population += g.count;
       total += g.count;

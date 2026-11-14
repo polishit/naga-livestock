@@ -11,7 +11,7 @@ import {
   type ReportResult,
 } from '@livestock/shared';
 import { useApi } from '@/lib/hooks';
-import { qs } from '@/lib/utils';
+import { casesLink, populationLink, qs, servicesLink } from '@/lib/utils';
 import {
   BarangayBars,
   CasesLine,
@@ -100,43 +100,54 @@ export function AnalyticsPage() {
             <ChartCard title="Livestock by species" clickable>
               <SpeciesDonut
                 data={data.bySpecies}
-                onSelect={(r) => navigate(`/population${qs({ species: r.species, barangay })}`)}
+                onSelect={(r) => navigate(populationLink({ species: r.species, barangay }))}
               />
             </ChartCard>
             <ChartCard title="Population by barangay" clickable>
               <BarangayBars
                 data={data.byBarangay}
-                onSelect={(r) => navigate(`/farms${qs({ barangay: r.barangay })}`)}
+                onSelect={(r) => navigate(populationLink({ barangay: r.barangay, species }))}
               />
             </ChartCard>
-            <ChartCard title="Disease cases per month">
-              <CasesLine data={data.casesPerMonth} />
+            <ChartCard title="Disease cases per month" clickable>
+              <CasesLine
+                data={data.casesPerMonth}
+                onSelect={(r) => navigate(casesLink({ month: r.month, barangay, state: 'all' }))}
+              />
             </ChartCard>
             <ChartCard title="Cases by status" clickable>
               <StatusPie
                 data={data.casesByStatus}
-                onSelect={(r) => navigate(`/cases${qs({ status: r.status, barangay, state: 'all' })}`)}
+                onSelect={(r) => navigate(casesLink({ status: r.status, barangay, state: 'all' }))}
               />
             </ChartCard>
             <ChartCard title="Cases by suspected disease" clickable>
               <DiseaseBars
                 data={data.casesByDisease}
-                onSelect={(r) => navigate(`/cases${qs({ disease: r.disease, barangay, state: 'all' })}`)}
+                onSelect={(r) => navigate(casesLink({ disease: r.disease, barangay, state: 'all' }))}
               />
             </ChartCard>
             <ChartCard
+              clickable
               title="Vaccination coverage by species"
               note="Estimated coverage is based on aggregate events; exact applies to tagged animals only."
             >
-              <CoverageBars data={data.coverage} />
+              <CoverageBars
+                data={data.coverage}
+                onSelect={(r) =>
+                  navigate(servicesLink({ type: 'VACCINATION', species: r.species, barangay }))
+                }
+              />
             </ChartCard>
             <ChartCard
+              clickable
               title="Deworming and veterinary services"
               note="Heads served per month (raw totals; the same animal can be served more than once)."
             >
               <ServiceTrendBars
                 data={data.vaccinationActivity}
                 bars={['dewormed', 'checkups', 'vaccinated']}
+                onSelect={(r) => navigate(servicesLink({ month: r.month, barangay, species }))}
               />
             </ChartCard>
             <ChartCard title="Farms by livestock raised" clickable>

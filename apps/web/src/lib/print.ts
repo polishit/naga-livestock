@@ -320,6 +320,7 @@ export interface MonthlyReportData {
     inconclusive: number;
   };
   trend: {
+    month: string;
     label: string;
     diseaseReports: number;
     dewormed: number;

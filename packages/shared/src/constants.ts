@@ -174,6 +174,15 @@ export const PCIC_APPLICATION_LABELS: Record<(typeof PCIC_APPLICATION_TYPES)[num
   NEW: 'New application',
   RENEWAL: 'Renewal',
 };
+/** Vaccines suggested in the service form and the vaccination targets (any other name may be typed). */
+export const VACCINE_PRODUCTS = [
+  'Hog Cholera Vaccine',
+  'Hemosep Vaccine',
+  'NCD Vaccine',
+  'FMD Vaccine',
+  'Anti-Rabies Vaccine',
+] as const;
+
 /** Species listed first in service forms (the office deworms goats and cattle most). */
 export const SERVICE_SPECIES_ORDER = [
   'Goat',
@@ -344,6 +353,20 @@ export const ASF_RESPONSE_STEPS: { type: ResponseType; label: string }[] = [
 ];
 /** A case is treated as ASF when its disease name says so. */
 export const isAsfDisease = (disease: string) => /\basf\b|african swine fever/i.test(disease);
+/**
+ * General response steps for a confirmed case of any other disease (FMD, hog cholera, avian influenza,
+ * Newcastle disease, anthrax…). The farms around the case are checked through Farms to Monitor.
+ */
+export const GENERAL_RESPONSE_STEPS: { type: ResponseType; label: string }[] = [
+  { type: 'OWNER_NOTIFICATION', label: 'Inform the owner' },
+  { type: 'FARMER_EDUCATION', label: 'Educate the farmer (isolate sick animals, biosecurity)' },
+  { type: 'BARANGAY_COORDINATION', label: 'Coordinate with barangay officials' },
+  { type: 'QUARANTINE', label: 'Quarantine the farm' },
+  { type: 'DISINFECTION', label: 'Clean and disinfect the premises' },
+];
+/** The response steps for a case: the ASF steps for ASF, the general steps for any other disease. */
+export const responseStepsFor = (disease: string) =>
+  isAsfDisease(disease) ? ASF_RESPONSE_STEPS : GENERAL_RESPONSE_STEPS;
 
 /** Status of a response activity (a planned activity may have a future date). */
 export const RESPONSE_STATUSES = ['PLANNED', 'ONGOING', 'COMPLETED'] as const;

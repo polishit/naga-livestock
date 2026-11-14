@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { isoMonth } from '@livestock/shared';
+import { isoDate, isoMonth } from '@livestock/shared';
 import { createApp } from '../src/app';
 import { prisma } from '../src/db';
 
@@ -303,7 +303,7 @@ describe('logic fixes: disease cases', () => {
   });
 
   it('the status follows the laboratory samples; there is no manual status change', async () => {
-    const t = new Date().toISOString().slice(0, 10);
+    const t = isoDate();
     const c = await admin
       .post('/api/cases')
       .send({ ownerId: 1, farmId: 1, species: 'Pig', disease: 'ASF', affected: 2, deaths: 0 });
@@ -355,7 +355,7 @@ describe('logic fixes: disease cases', () => {
   });
 
   it('a site visit updates the deaths; a linked farm visit counts as the site visit', async () => {
-    const t = new Date().toISOString().slice(0, 10);
+    const t = isoDate();
     const c = await admin
       .post('/api/cases')
       .send({ ownerId: 1, farmId: 1, species: 'Pig', disease: 'ASF', affected: 2, deaths: 0 });
@@ -647,7 +647,7 @@ describe('richer records, date rules and record keeping', () => {
   it('planned responses may be future-dated, get completed, and must be done before closing', async () => {
     const future = new Date();
     future.setDate(future.getDate() + 5);
-    const fd = future.toISOString().slice(0, 10);
+    const fd = isoDate(future);
     const notPlanned = await admin.post('/api/cases/1/responses').send({ type: 'QUARANTINE', date: fd });
     expect(notPlanned.body.fieldErrors.date[0]).toMatch(/planned/);
     const planned = await admin
@@ -810,7 +810,7 @@ describe('logic audit: corrections, reminders and record integrity', () => {
       count: 1,
       vaccine: 'HS Audit',
       doseNumber: 1,
-      nextDate: soon.toISOString().slice(0, 10),
+      nextDate: isoDate(soon),
     });
     expect(v.status).toBe(201);
     const listed = async () =>
@@ -960,7 +960,7 @@ describe('usability additions', () => {
 });
 
 describe('survey follow-up: strays, ASF steps, pasture, records and insurance', () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoDate();
 
   /** A new owner with one farm, and tagged animals per species (independent of earlier tests). */
   async function freshHerd(name: string, species: Record<string, number>) {
@@ -1138,7 +1138,7 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
   });
 
   it('keeps missed vaccination doses on the schedule as overdue', async () => {
-    const day = (n: number) => new Date(Date.now() + n * 86400_000).toISOString().slice(0, 10);
+    const day = (n: number) => isoDate(new Date(Date.now() + n * 86400_000));
     const herd = await freshHerd('Vaccine Owner', { Goat: 1 });
     const v = await admin.post('/api/vaccinations').send({
       farmId: herd.farmId,
@@ -1195,8 +1195,8 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
 });
 
 describe('farm edits reach open cases; work lists across open cases', () => {
-  const today = new Date().toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const today = isoDate();
+  const tomorrow = isoDate(new Date(Date.now() + 86_400_000));
 
   it('open cases follow the farm pin, barangay and owner; closed ones keep theirs', async () => {
     const o = await admin.post('/api/owners').send({ fullName: 'Sync Owner', barangay: 'Pacol' });
@@ -1297,7 +1297,7 @@ describe('farm edits reach open cases; work lists across open cases', () => {
 });
 
 describe('reports & analytics insights and the task list', () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoDate();
   const year = Number(today.slice(0, 4));
 
   it('builds an accomplishment report for a period', async () => {
@@ -1389,7 +1389,7 @@ describe('reports & analytics insights and the task list', () => {
 });
 
 describe('removing and correcting records', () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoDate();
 
   it('deletes an owner entered by mistake, but not one with records', async () => {
     const o = await admin.post('/api/owners').send({ fullName: 'Typo Owner', barangay: 'Pacol' });
@@ -1474,7 +1474,8 @@ describe('removing and correcting records', () => {
         species: 'Goat',
         barangay: 'Pacol',
         location: 'Road',
-        discoveredAt: `${today}T08:00`,
+        // Yesterday morning: never in the future, whatever the time of the test.
+        discoveredAt: `${isoDate(new Date(Date.now() - 86_400_000))}T08:00`,
       });
     const s1 = await mk();
     expect((await admin.delete(`/api/strays/${s1.body.id}`)).status).toBe(200);
@@ -1580,7 +1581,7 @@ describe('CVO revisions: masterlist, deworming, farm visits, monthly report', ()
   });
 
   it('records deworming without a product and requires a vaccine only for vaccinations', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = isoDate();
     const dw = await admin
       .post('/api/vaccinations')
       .send({ serviceType: 'DEWORMING', farmId: 13, target: 'GROUP', groupId: 29, count: 12, date: today });
@@ -1599,7 +1600,7 @@ describe('CVO revisions: masterlist, deworming, farm visits, monthly report', ()
   it('logs farm visits, shows them on the farm and marks monitored farms near a case', async () => {
     const v = await admin.post('/api/farm-visits').send({
       farmId: 13,
-      date: new Date().toISOString().slice(0, 10),
+      date: isoDate(),
       purpose: 'CHECKUP',
       remarks: 'All healthy',
     });
@@ -1639,7 +1640,7 @@ describe('CVO revisions: masterlist, deworming, farm visits, monthly report', ()
 });
 
 describe('CVO forms: laboratory submissions, cattle and carabao services, search', () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoDate();
   const batch = (samples: object[], extra: object = {}) =>
     admin.post('/api/lab-submissions').send({
       purpose: 'SURVEILLANCE',

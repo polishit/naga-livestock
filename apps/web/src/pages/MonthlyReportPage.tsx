@@ -1,11 +1,11 @@
 import { Printer, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BARANGAYS, MIN_DATE, fmtDate, fmtNumber, isoMonth, type ReportResult } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
 import { useApi } from '@/lib/hooks';
 import { printMonthlyReport, type MonthlyReportData } from '@/lib/print';
-import { qs } from '@/lib/utils';
+import { casesLink, populationLink, qs, servicesLink } from '@/lib/utils';
 import {
   ChartCard,
   DiseaseBars,
@@ -22,6 +22,7 @@ import type { CaseStatus } from '@livestock/shared';
 /** Monthly summary for the office, with graphs that refresh on their own and a printable report. */
 export default function MonthlyReportPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const lh = useLetterhead();
   const [month, setMonth] = useState(isoMonth());
   const [barangay, setBarangay] = useState('');
@@ -119,26 +120,37 @@ export default function MonthlyReportPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ChartCard title="Disease Reports, Last 6 Months">
-              <ReportTrendLine data={m.trend.map((t) => ({ label: t.label, reports: t.diseaseReports }))} />
+            <ChartCard title="Disease Reports, Last 6 Months" clickable>
+              <ReportTrendLine
+                data={m.trend.map((t) => ({ month: t.month, label: t.label, reports: t.diseaseReports }))}
+                onSelect={(r) => navigate(casesLink({ month: r.month, barangay, state: 'all' }))}
+              />
             </ChartCard>
-            <ChartCard title="Deworming, Check-ups and Farm Visits">
-              <ServiceTrendBars data={m.trend} />
+            <ChartCard title="Deworming, Check-ups and Farm Visits" clickable>
+              <ServiceTrendBars
+                data={m.trend}
+                onSelect={(r) => navigate(servicesLink({ month: r.month, barangay }))}
+              />
             </ChartCard>
-            <ChartCard title="Livestock Population by Species">
+            <ChartCard title="Livestock Population by Species" clickable>
               <SpeciesHeadBars
                 name="Heads"
                 data={m.population.bySpecies
                   .filter((s) => s.population > 0)
                   .sort((a, b) => b.population - a.population)
                   .map((s) => ({ species: s.species, head: s.population }))}
+                onSelect={(r) => navigate(populationLink({ species: r.species, barangay }))}
               />
             </ChartCard>
             <ChartCard
               title={`Disease Reports by Disease · ${m.label}`}
               note={m.diseases.reported ? undefined : 'No disease reports this month.'}
+              clickable
             >
-              <DiseaseBars data={m.diseases.byDisease.map((d) => ({ disease: d.name, count: d.count }))} />
+              <DiseaseBars
+                data={m.diseases.byDisease.map((d) => ({ disease: d.name, count: d.count }))}
+                onSelect={(r) => navigate(casesLink({ disease: r.disease, month, barangay, state: 'all' }))}
+              />
             </ChartCard>
           </div>
 

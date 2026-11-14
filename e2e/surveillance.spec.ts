@@ -66,21 +66,26 @@ test('report a disease incident and move it through the surveillance stages', as
   await dialog(page).getByRole('button', { name: 'Save' }).click();
   await expectToast(page, 'Sample added. The case is now: Sample Collected.');
   await samples.getByRole('button', { name: 'Enter date sent' }).click();
-  await dialog(page).getByLabel('Date sent').fill(new Date().toISOString().slice(0, 10));
+  await dialog(page).getByLabel('Date sent').fill(new Date().toLocaleDateString('en-CA'));
   await dialog(page).getByRole('button', { name: 'Save' }).click();
   await expectToast(page, 'Sample updated. The case is now: Sent to Laboratory.');
   await expect(samples).toContainText('Waiting for the result of RADDL-CASE-0014');
   await samples.getByRole('button', { name: 'Enter result' }).click();
   await dialog(page).getByLabel('Result', { exact: true }).selectOption('POSITIVE');
-  await dialog(page).getByLabel('Result date').fill(new Date().toISOString().slice(0, 10));
+  await dialog(page).getByLabel('Result date').fill(new Date().toLocaleDateString('en-CA'));
   await dialog(page).getByRole('button', { name: 'Save' }).click();
   await expectToast(page, 'Sample updated. The case is now: Positive.');
   await expect(samples).toContainText('Done');
 
-  // 4. Response: positive, so the quarantine is suggested.
+  // 4. Response: positive, so the response steps for the disease are listed (the first one suggested).
   const response = step(4, 'Response');
   await expect(response).toContainText('Do this now');
-  await response.getByRole('button', { name: 'Log quarantine' }).click();
+  await expect(response.getByRole('button', { name: 'Log: Inform the owner' })).toBeVisible();
+  await response
+    .getByRole('listitem')
+    .filter({ hasText: 'Quarantine the farm' })
+    .getByRole('button', { name: 'Log' })
+    .click();
   await expect(dialog(page).getByLabel('Activity type')).toHaveValue('QUARANTINE');
   await dialog(page).getByLabel('Personnel involved').fill('City Vet Team B');
   await dialog(page).getByLabel('Remarks').fill('Farm placed under quarantine.');

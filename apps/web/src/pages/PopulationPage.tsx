@@ -64,21 +64,35 @@ export default function PopulationPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const farmParam = params.get('farm') ?? '';
-  const [tab, setTab] = useState<PopTab>((params.get('tab') as PopTab) || 'summary');
-  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
-  const [species, setSpecies] = useState(params.get('species') ?? '');
-  // Search the population records: farm, owner, barangay, species, breed or group code.
-  const [q, setQ] = useState(params.get('q') ?? '');
-  const onSearch = (v: string) => {
-    setQ(v);
-    // The search lists matching farms, so it opens the "By Farm" tab.
-    if (v.trim() && tab !== 'farms') setTab('farms');
+  // The filters live in the address bar, so Back undoes them and a link can open a filtered view.
+  const setParam = (patch: Record<string, string>, push = false) => {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) p.set(k, v);
+      else p.delete(k);
+    }
+    setParams(p, { replace: !push });
   };
+  const tab = (params.get('tab') as PopTab) || 'summary';
+  const setTab = (v: PopTab) => setParam({ tab: v === 'summary' ? '' : v }, true);
+  const barangay = params.get('barangay') ?? '';
+  const setBarangay = (v: string) => setParam({ barangay: v });
+  const species = params.get('species') ?? '';
+  const setSpecies = (v: string) => setParam({ species: v });
+  // Search the population records: farm, owner, barangay, species, breed or group code.
+  const q = params.get('q') ?? '';
+  // The search lists matching farms, so it opens the "By Farm" tab.
+  const onSearch = (v: string) =>
+    setParam({ q: v, ...(v.trim() && tab !== 'farms' ? { tab: 'farms' } : {}) });
   // More filters for the farm list: farm type, purpose, health and when it was last counted.
-  const [farmType, setFarmType] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [health, setHealth] = useState('');
-  const [counted, setCounted] = useState('');
+  const farmType = params.get('type') ?? '';
+  const setFarmType = (v: string) => setParam({ type: v });
+  const purpose = params.get('purpose') ?? '';
+  const setPurpose = (v: string) => setParam({ purpose: v });
+  const health = params.get('health') ?? '';
+  const setHealth = (v: string) => setParam({ health: v });
+  const counted = params.get('counted') ?? '';
+  const setCounted = (v: string) => setParam({ counted: v });
   const [dlg, setDlg] = useState<null | 'group' | 'update'>(null);
   const lh = useLetterhead();
   const { data: lookups } = useLookups();
@@ -101,6 +115,8 @@ export default function PopulationPage() {
   const needle = q.trim().toLowerCase();
   const rows = groups.data?.filter(
     (r) =>
+      // A species the farm no longer has (0 head) is not "raised" there.
+      r.count > 0 &&
       (!needle ||
         `${r.code} ${r.farmCode} ${r.farmName} ${r.ownerName} ${r.barangay} ${r.species} ${r.breed ?? ''}`
           .toLowerCase()
@@ -354,10 +370,7 @@ export default function PopulationPage() {
                       <button
                         type="button"
                         className="link mt-3 text-[14px]"
-                        onClick={() => {
-                          setSpecies(s.species);
-                          setTab('farms');
-                        }}
+                        onClick={() => setParam({ species: s.species, tab: 'farms' }, true)}
                       >
                         See farms raising {s.species.toLowerCase()}
                       </button>

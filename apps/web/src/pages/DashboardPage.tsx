@@ -9,7 +9,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   BARANGAYS,
   CASE_STATUSES,
@@ -21,7 +21,7 @@ import {
 } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
 import { useApi } from '@/lib/hooks';
-import { qs } from '@/lib/utils';
+import { casesLink, populationLink, qs, servicesLink } from '@/lib/utils';
 import {
   BarangayBars,
   CasesLine,
@@ -40,6 +40,7 @@ import type { Overview } from './types';
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [barangay, setBarangay] = useState('');
   const [species, setSpecies] = useState('');
   const [caseStatus, setCaseStatus] = useState('');
@@ -219,8 +220,11 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <ChartCard title="Livestock by species">
-              <SpeciesDonut data={data.bySpecies} />
+            <ChartCard title="Livestock by species" clickable>
+              <SpeciesDonut
+                data={data.bySpecies}
+                onSelect={(r) => navigate(populationLink({ species: r.species, barangay }))}
+              />
             </ChartCard>
             <ChartCard
               title="Monthly population trend"
@@ -228,14 +232,27 @@ export default function DashboardPage() {
             >
               <TrendBars data={data.trend} />
             </ChartCard>
-            <ChartCard title="Disease reports per month">
-              <CasesLine data={data.casesPerMonth} />
+            <ChartCard title="Disease reports per month" clickable>
+              <CasesLine
+                data={data.casesPerMonth}
+                onSelect={(r) => navigate(casesLink({ month: r.month, barangay, state: 'all' }))}
+              />
             </ChartCard>
-            <ChartCard title="Population by barangay">
-              <BarangayBars data={data.byBarangay} />
+            <ChartCard title="Population by barangay" clickable>
+              <BarangayBars
+                data={data.byBarangay}
+                onSelect={(r) => navigate(populationLink({ barangay: r.barangay, species }))}
+              />
             </ChartCard>
-            <ChartCard title="Deworming, check-ups and farm visits">
-              {month ? <ServiceTrendBars data={month.trend} /> : <Loading />}
+            <ChartCard title="Deworming, check-ups and farm visits" clickable>
+              {month ? (
+                <ServiceTrendBars
+                  data={month.trend}
+                  onSelect={(r) => navigate(servicesLink({ month: r.month, barangay }))}
+                />
+              ) : (
+                <Loading />
+              )}
             </ChartCard>
           </div>
         </>

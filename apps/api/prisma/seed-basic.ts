@@ -1,15 +1,21 @@
 /**
- * BASIC demo data: ONE complete example for each page and process, nothing extra.
+ * BASIC demo data: ONE example for each function, nothing repeated.
  *
- *   Owners .............. 3 (Juan Dela Cruz, Ramon Mendoza, Elena Ramos)
- *   Farms ............... 3 (a backyard piggery, a cattle & carabao farm with pasture, a commercial piggery)
- *   Population .......... 5 groups, each with 3 months of head counts
+ *   Owners .............. 4 (Juan Dela Cruz, Ramon Mendoza, Elena Ramos, Pedro Santos)
+ *   Farms ............... 4 (a backyard piggery = ASF ground zero, a cattle & carabao farm with pasture and
+ *                            chickens, a commercial piggery 540 m away, a backyard piggery 680 m away)
+ *   Population .......... 7 species groups, each with 3 months of head counts
  *   Tagged animals ...... 2 (a cow and a carabao: ear tag, cowlick, purpose, ownership certificate)
  *   Ownership record .... 1 (the carabao sold from Juan to Ramon)
- *   Stray / violation ... 1 (the carabao on the road: impounded, released to the owner, closed)
- *   Disease case ........ 1 (ASF, Active: report, site visit, 2 lab samples, positive, all 7 ASF steps,
- *                            head count updated, monitoring of the farm within 1 km) — next step: close it
- *   Lab submission ...... 1 (surveillance batch of 3 samples from the farm within 1 km, negative by email)
+ *   Stray / violation ... 1 (the carabao on the road, closed)
+ *   Disease cases ....... 2
+ *     CASE-0001  ASF, OPEN — the outbreak to monitor. Reported, site visit, 2 samples positive, pigs culled
+ *                and head count updated, 5 of the 7 ASF steps logged (disinfection and the checkpoint are
+ *                still to be logged). Farms to monitor within 1 km: Ramos Commercial Piggery (visited, no
+ *                signs, samples at the lab) and Santos Backyard Piggery (NOT yet visited).
+ *     CASE-0002  Newcastle Disease, CLOSED — sample negative, closed as "Disease not confirmed".
+ *   Lab submission ...... 1 (surveillance batch of 3 samples from the Ramos piggery, result PENDING:
+ *                            enter it with "Enter results")
  *   Services ............ 6 (one each: vaccination, deworming, check-up, treatment, insemination,
  *                            pregnancy diagnosis)
  *   Farm visits ......... 2 (a deworming visit and a disease-monitoring visit)
@@ -52,7 +58,8 @@ const CASE_REPORTED = Math.max(8, Math.min(14, new Date().getDate() - 1)); // re
 const CASE_SENT = CASE_REPORTED - 1; // samples sent to RADDL
 const CASE_RESULT = CASE_REPORTED - 3; // positive result by email (1–2 days after arriving)
 const CASE_CULL = CASE_REPORTED - 4; // remaining pigs euthanized and buried on the farm
-const MONITOR = CASE_REPORTED - 5; // visit to the farm within 1 km + surveillance samples
+const MONITOR = CASE_REPORTED - 5; // visit to the Ramos piggery (540 m away) + surveillance samples
+const NCD = 40; // the Newcastle Disease report on Ramon's chickens (closed, negative)
 const TRANSFER = 45; // carabao sold from Juan to Ramon
 const STRAY = 25; // the carabao found on the road
 /** Deworming visit: a few days ago but inside this month, so it counts on the dashboard and monthly report. */
@@ -172,6 +179,19 @@ async function main() {
       registeredAt: registered,
     },
   });
+  const pedro = await prisma.owner.create({
+    data: {
+      code: code('OWN', 4),
+      fullName: 'Pedro Santos',
+      barangay: 'Cararayan',
+      zone: 'Zone 4',
+      street: '3 Sampaguita St.',
+      contact: '0917-555-1102',
+      source: 'BARANGAY',
+      remarks: 'Referred by the barangay; no RSBSA registration yet',
+      registeredAt: registered,
+    },
+  });
 
   /* ---------------- farms ---------------- */
   const farmData = (o: typeof juan) => ({
@@ -187,11 +207,11 @@ async function main() {
       code: code('FRM', 1),
       name: 'Dela Cruz Backyard Piggery',
       type: 'backyard',
-      lat: 13.638,
-      lng: 123.238,
+      lat: 13.633,
+      lng: 123.236,
       source: 'DA_LIST',
       remarks:
-        'ASF confirmed (CASE-0001). Pigs euthanized and buried on the farm. No restocking until cleared.',
+        'ASF ground zero (CASE-0001). Pigs euthanized and buried on the farm. No restocking until cleared.',
     },
   });
   const ramonFarm = await prisma.farm.create({
@@ -215,10 +235,22 @@ async function main() {
       code: code('FRM', 3),
       name: 'Ramos Commercial Piggery',
       type: 'commercial',
-      lat: 13.642,
-      lng: 123.241,
+      lat: 13.6365,
+      lng: 123.2395,
       source: 'FARM_VISIT',
-      remarks: 'About 550 m from the ASF case: inside the 1 km monitoring radius.',
+      remarks: 'About 540 m from the ASF case: inside the 1 km monitoring radius.',
+    },
+  });
+  const pedroFarm = await prisma.farm.create({
+    data: {
+      ...farmData(pedro),
+      code: code('FRM', 4),
+      name: 'Santos Backyard Piggery',
+      type: 'backyard',
+      lat: 13.63,
+      lng: 123.2415,
+      source: 'BARANGAY',
+      remarks: 'About 680 m from the ASF case: inside the 1 km monitoring radius, not yet visited.',
     },
   });
 
@@ -329,8 +361,20 @@ async function main() {
     species: 'Pig',
     breed: 'Large White',
     start: 52,
-    remarks: 'Inside the 1 km radius of CASE-0001: checked and sampled, all negative',
+    remarks: 'Inside the 1 km radius of CASE-0001: checked, no signs; samples at the laboratory',
     changes: [{ on: `${months[1]}-20`, delta: 8, reason: 'births +8 (one sow farrowed)' }],
+  });
+  await group(pedroFarm.id, {
+    species: 'Pig',
+    breed: 'Native',
+    start: 15,
+    remarks: 'Inside the 1 km radius of CASE-0001: to be visited',
+  });
+  const ramonChickens = await group(ramonFarm.id, {
+    species: 'Chicken',
+    breed: 'Native',
+    start: 30,
+    changes: [{ on: inRange(ago(NCD)), delta: -1, reason: 'deaths −1 (CASE-0002, not Newcastle Disease)' }],
   });
 
   /* ---------------- tagged animals ---------------- */
@@ -425,11 +469,7 @@ async function main() {
       status: 'CLOSED',
       violations: 1,
       violationType: 'Animal on a public road or highway',
-      impoundedAt: D(ago(STRAY)),
-      impoundPlace: 'City Vet impounding area, Carolina',
-      releasedAt: D(ago(STRAY - 1)),
-      releasedTo: 'Ramon Mendoza (owner)',
-      remarks: 'First offense. Owner warned, got the carabao back and replaced the rope.',
+      remarks: 'First offense. Owner warned in writing, got the carabao back and replaced the rope.',
       createdBy: JOY,
       createdAt: DT(`${ago(STRAY)}T07:00:00`),
     },
@@ -462,7 +502,8 @@ async function main() {
       lng: juanFarm.lng,
       locationSource: 'Farm Coordinates',
       status: 'POSITIVE',
-      remarks: 'All response steps done. Next: close the case after the 40-day quarantine.',
+      remarks:
+        'Outbreak response under way: log the disinfection and the checkpoint, and visit the farms within 1 km.',
       createdAt: day(CASE_REPORTED, '08:30'),
     },
   });
@@ -553,7 +594,7 @@ async function main() {
     ],
   });
 
-  // The 7 ASF response steps, all done.
+  // 5 of the 7 ASF response steps done; disinfection and the checkpoint are left for the demo.
   const response = (r: {
     type: string;
     on: number;
@@ -614,21 +655,6 @@ async function main() {
     remarks:
       'The 9 remaining pigs were euthanized and buried on the farm. Owner gave written consent; DA documented.',
   });
-  await response({
-    type: 'DISINFECTION',
-    on: CASE_CULL,
-    location: 'Pens, feeding area and access path',
-    remarks: 'Lime and disinfectant applied; to be repeated after 7 days.',
-  });
-  await response({
-    type: 'ASF_CHECKPOINT',
-    on: CASE_CULL,
-    end: -30,
-    status: 'ONGOING',
-    location: 'Cararayan–Pacol road junction',
-    personnel: 'City Vet team, PNP Cararayan',
-    remarks: 'Checks pigs and pork leaving the 1 km zone.',
-  });
 
   /* ---------------- farm visits ---------------- */
   const visit = async (
@@ -686,7 +712,7 @@ async function main() {
       notedBy: LIZA,
       requestId: 'CVO-REQ-2026-031',
       accessionNo: 'RADDL-2026-4137',
-      remarks: 'Surveillance of pigs within 1 km of CASE-0001.',
+      remarks: 'Surveillance of pigs within 1 km of CASE-0001. Results pending.',
       createdBy: MARK,
       createdAt: DT(`${ago(MONITOR - 1)}T16:00:00`),
     },
@@ -712,9 +738,7 @@ async function main() {
       submittedBy: MARK,
       collectedAt: D(ago(MONITOR)),
       sentAt: D(ago(MONITOR - 1)),
-      result: 'NEGATIVE' as const,
-      resultDate: D(ago(MONITOR - 3)),
-      receivedVia: 'EMAIL',
+      result: 'PENDING' as const,
     })),
   });
   await log(
@@ -725,6 +749,99 @@ async function main() {
     MARK,
     `${ago(MONITOR - 1)}T16:00:00`,
   );
+
+  /* ---------------- a closed case: Newcastle Disease suspected, laboratory negative ---------------- */
+  const ncd = await prisma.diseaseCase.create({
+    data: {
+      code: code('CASE', 2),
+      ownerId: ramon.id,
+      farmId: ramonFarm.id,
+      barangay: ramonFarm.barangay,
+      zone: ramonFarm.zone,
+      species: 'Chicken',
+      disease: 'Newcastle Disease',
+      affected: 3,
+      deaths: 1,
+      populationReconciled: 1,
+      symptomsDate: D(ago(NCD + 1)),
+      reportedAt: D(ago(NCD)),
+      symptoms: 'Three chickens drooping and coughing; one died overnight.',
+      clinicalSigns: ['BREATHING', 'WEAKNESS', 'SUDDEN_DEATH'],
+      reportedBy: 'Ramon Mendoza (owner)',
+      assignedToId: users[2].id,
+      lat: ramonFarm.lat,
+      lng: ramonFarm.lng,
+      locationSource: 'Farm Coordinates',
+      status: 'NEGATIVE',
+      closedAt: day(NCD - 9, '15:00'),
+      closedBy: JOY,
+      closureOutcome: 'NOT_CONFIRMED',
+      closureNote: 'Laboratory negative for Newcastle Disease. The other chickens recovered after treatment.',
+      createdAt: day(NCD, '10:00'),
+    },
+  });
+  for (const [status, note, by, at] of [
+    ['SUSPECTED', 'Case reported', JOY, day(NCD, '10:00')],
+    ['SAMPLE_COLLECTED', 'Sample collected during the site visit', JOY, day(NCD, '14:00')],
+    ['SENT_TO_LAB', 'Sample sent to RADDL', JOY, day(NCD - 1, '09:00')],
+    ['NEGATIVE', 'Laboratory result: negative', JOY, day(NCD - 6, '16:00')],
+    ['NEGATIVE', 'Case closed: Disease not confirmed', JOY, day(NCD - 9, '15:00')],
+  ] as const)
+    await prisma.caseStatusHistory.create({ data: { caseId: ncd.id, status, note, byName: by, at } });
+  await prisma.investigation.create({
+    data: {
+      caseId: ncd.id,
+      date: D(ago(NCD)),
+      investigator: JOY,
+      visitType: 'INITIAL',
+      animalsExamined: 30,
+      sickCount: 3,
+      deadCount: 1,
+      clinicalSigns: 'Drooping, coughing, no twisted necks.',
+      biosecurity: 'Free-range; mixes with neighbours’ chickens.',
+      actionsTaken: 'Sick chickens separated; tracheal swab taken from the dead chicken.',
+      samplesCollected: true,
+      notes: 'Owner had bought 5 chickens at the market a week before.',
+    },
+  });
+  await prisma.labRecord.create({
+    data: {
+      caseId: ncd.id,
+      farmId: ramonFarm.id,
+      species: 'Chicken',
+      sampleId: 'NCV-26-0790',
+      sampleType: 'Swab',
+      condition: 'DEAD',
+      hoursSinceDeath: 6,
+      sampleCount: 1,
+      testMethod: 'PCR – Newcastle Disease',
+      laboratory: LAB,
+      submittedBy: JOY,
+      collectedAt: D(ago(NCD)),
+      sentAt: D(ago(NCD - 1)),
+      labReference: 'R5-26-0788',
+      result: 'NEGATIVE',
+      resultDate: D(ago(NCD - 6)),
+      receivedVia: 'EMAIL',
+    },
+  });
+  await log(
+    'case',
+    ncd.id,
+    'reported',
+    'Disease case CASE-0002 reported (Newcastle Disease)',
+    JOY,
+    `${ago(NCD)}T10:00:00`,
+  );
+  await log(
+    'case',
+    ncd.id,
+    'closed',
+    'CASE-0002 closed: Disease not confirmed',
+    JOY,
+    `${ago(NCD - 9)}T15:00:00`,
+  );
+  void ramonChickens;
 
   /* ---------------- services: one of each ---------------- */
   let srv = 0;
@@ -880,8 +997,8 @@ async function main() {
     await prisma.setting.create({ data: { key, value: JSON.stringify(value) } });
 
   console.log(
-    'Done: 3 owners, 3 farms, 5 groups, 2 animals, 1 ownership record, 1 stray, 1 ASF case, ' +
-      '1 lab submission, 6 services, 2 farm visits, 1 insurance application.',
+    'Done: 4 owners, 4 farms, 7 groups, 2 animals, 1 ownership record, 1 stray, 2 disease cases ' +
+      '(ASF open, Newcastle closed), 1 lab submission, 6 services, 2 farm visits, 1 insurance application.',
   );
   console.log('Sign in with admin@nagacityvet.gov.ph / Livestock@2026');
 }

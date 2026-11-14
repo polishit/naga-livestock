@@ -9,7 +9,6 @@ import {
   RESPONSE_TYPES_WITH_END,
   addMonths,
   fmtDate,
-  fmtMonth,
   isoMonth,
   lastMonths,
   type ReportResult,
@@ -433,12 +432,24 @@ export async function accomplishmentReport(
   const add = (section: string, indicator: string, value: string | number) =>
     rows.push({ section, indicator, value });
 
-  add('Livestock registry', `Recorded population, end of ${fmtMonth(startMonth)}`, popStart.toLocaleString());
-  add('Livestock registry', `Recorded population, end of ${fmtMonth(endMonth)}`, popEnd.toLocaleString());
+  // The latest figure first, then the figure it is compared with, then the change between them.
+  const endDay = to < today() ? to : today();
+  const startDay = monthEnd(startMonth);
+  const change = popEnd - popStart;
   add(
     'Livestock registry',
-    'Change in recorded population',
-    `${popEnd - popStart >= 0 ? '+' : ''}${(popEnd - popStart).toLocaleString()}`,
+    `Recorded population as of ${fmtDate(endDay)} (end of period)`,
+    popEnd.toLocaleString(),
+  );
+  add(
+    'Livestock registry',
+    `Recorded population as of ${fmtDate(startDay)} (start of period)`,
+    popStart.toLocaleString(),
+  );
+  add(
+    'Livestock registry',
+    'Change in recorded population during the period',
+    `${change > 0 ? '+' : ''}${change.toLocaleString()} (${popStart.toLocaleString()} → ${popEnd.toLocaleString()})`,
   );
   add('Livestock registry', 'New livestock owners registered', c.newOwners);
   add('Livestock registry', 'New farms registered', c.newFarms);

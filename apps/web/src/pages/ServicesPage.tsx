@@ -18,7 +18,7 @@ import {
 import { useAuth } from '@/lib/auth';
 import { useApi } from '@/lib/hooks';
 import { printReport } from '@/lib/export';
-import { qs } from '@/lib/utils';
+import { monthDays, qs } from '@/lib/utils';
 import { ChartCard, ServiceTrendBars, SpeciesHeadBars } from '@/components/charts';
 import { DataTable, type Column } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
@@ -75,11 +75,14 @@ export default function ServicesPage() {
   const tab = (params.get('tab') as Tab) || 'overview';
   const setTab = (t: Tab) => setParams(t === 'overview' ? {} : { tab: t }, { replace: true });
   const [month, setMonth] = useState(isoMonth());
-  const [barangay, setBarangay] = useState('');
+  // Links from charts can open the records already filtered (?type, species, from, to, barangay).
+  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
   const [type, setType] = useState<string>(params.get('type') ?? '');
-  const [species, setSpecies] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [species, setSpecies] = useState(params.get('species') ?? '');
+  const [from, setFrom] = useState(params.get('from') ?? '');
+  const [to, setTo] = useState(params.get('to') ?? '');
+  // ?vaccine= (from a vaccination target) lists the records of that vaccine.
+  const [vaccine, setVaccine] = useState(params.get('vaccine') ?? '');
   const [purpose, setPurpose] = useState('');
   // ?new=1 (from the "+ New" menu) opens the service form straight away.
   const [open, setOpen] = useState(false);
@@ -125,7 +128,11 @@ export default function ServicesPage() {
 
   const rows = (records.data ?? []).filter(
     (r) =>
-      !r.voided && (!species || r.species === species) && (!from || r.date >= from) && (!to || r.date <= to),
+      !r.voided &&
+      (!species || r.species === species) &&
+      (!from || r.date >= from) &&
+      (!to || r.date <= to) &&
+      (!vaccine || (r.vaccine ?? '').trim().toLowerCase() === vaccine.trim().toLowerCase()),
   );
 
   const columns: Column<VaccinationRow>[] = [
@@ -285,6 +292,19 @@ export default function ServicesPage() {
             className="w-[calc(50%-4px)] sm:w-48"
           />
         )}
+        {tab === 'records' && vaccine && (
+          <span className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-brand/40 bg-brand-light/50 pl-3 pr-1.5 text-[14px] text-slate-800">
+            Vaccine: {vaccine}
+            <button
+              type="button"
+              aria-label={`Remove filter Vaccine: ${vaccine}`}
+              onClick={() => setVaccine('')}
+              className="rounded px-1.5 text-slate-500 hover:bg-white hover:text-slate-800"
+            >
+              ×
+            </button>
+          </span>
+        )}
         {tab === 'records' && (
           <FilterSelect
             label="Species"
@@ -367,18 +387,37 @@ export default function ServicesPage() {
                 />
               </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-                <ChartCard title="Field Work, Last 6 Months">
-                  <ServiceTrendBars data={s.trend} />
+                <ChartCard title="Field Work, Last 6 Months" clickable>
+                  <ServiceTrendBars
+                    data={s.trend}
+                    onSelect={(r) => {
+                      const d = monthDays(r.month);
+                      setFrom(d.from);
+                      setTo(d.to);
+                      setSpecies('');
+                      setType('');
+                      setTab('records');
+                    }}
+                  />
                 </ChartCard>
                 <ChartCard
                   title={`Deworming by Species · ${s.label}`}
                   note={deworm?.head ? undefined : 'No deworming recorded for this month.'}
+                  clickable
                 >
                   <SpeciesHeadBars
                     name="Heads dewormed"
                     data={[...(deworm?.bySpecies ?? [])].sort(
                       (a, b) => speciesRank(a.species) - speciesRank(b.species),
                     )}
+                    onSelect={(r) => {
+                      const d = monthDays(month);
+                      setFrom(d.from);
+                      setTo(d.to);
+                      setSpecies(r.species);
+                      setType('DEWORMING');
+                      setTab('records');
+                    }}
                   />
                 </ChartCard>
               </div>

@@ -15,6 +15,35 @@ export function qs(params: Record<string, string | number | undefined | null | b
   return s ? `?${s}` : '';
 }
 
+/** First and last day of a month (YYYY-MM) as YYYY-MM-DD. */
+export function monthDays(month: string) {
+  const [y, m] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` };
+}
+
+type LinkParams = Record<string, string | undefined | null>;
+const linkQuery = (p: LinkParams) => {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(p)) if (v) u.set(k, v);
+  const s = u.toString();
+  return s ? `?${s}` : '';
+};
+/** Link to the disease reports (keeps state=all, which qs() leaves out). */
+export const casesLink = (p: LinkParams) => `/cases${linkQuery(p)}`;
+/** Link to the farms raising livestock in Population Monitoring (By Farm). */
+export const populationLink = (p: LinkParams) => `/population${linkQuery({ tab: 'farms', ...p })}`;
+/** Link to the service records, optionally for one month. */
+export const servicesLink = (p: LinkParams & { month?: string | null }) => {
+  const { month, ...rest } = p;
+  return `/services${linkQuery({ tab: 'records', ...rest, ...(month ? monthDays(month) : {}) })}`;
+};
+/** Link to the farm visits, optionally for one month. */
+export const visitsLink = (p: LinkParams & { month?: string | null }) => {
+  const { month, ...rest } = p;
+  return `/services${linkQuery({ tab: 'visits', ...rest, ...(month ? monthDays(month) : {}) })}`;
+};
+
 export function fileUrl(key: string | null | undefined) {
   return key ? `/api/files/${key}` : null;
 }
