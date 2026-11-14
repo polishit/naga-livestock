@@ -1,13 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  CLASSIFICATIONS,
   MONITORED_DISEASES,
   RECORD_SOURCE_LABELS,
   SPECIES_COLORS,
   VISIT_PURPOSE_LABELS,
   fmtDate,
-  summarizeBreakdown,
-  type Breakdown,
   type RecordSource,
   type Species,
   type VisitPurpose,
@@ -49,79 +46,17 @@ export function LastVisit({ at, purpose }: { at: string | null; purpose?: string
   );
 }
 
-/** Horizontal bars of head per classification (age, sex, production stage) for one species. */
-export function BreakdownBars({
-  species,
-  total,
-  breakdown,
-  compact,
-}: {
-  species: string;
-  total: number;
-  breakdown: Breakdown | null | undefined;
-  compact?: boolean;
-}) {
-  const list = CLASSIFICATIONS[species as Species] ?? CLASSIFICATIONS.Other;
-  const s = summarizeBreakdown(species, breakdown);
-  const color = SPECIES_COLORS[species as Species] ?? '#64748b';
-  if (!s.total) return <p className="text-[13px] text-slate-500">Not classified yet (age, sex and stage).</p>;
-  const max = Math.max(...s.byStage.map((x) => x.count), 1);
-  return (
-    <div>
-      <ul className={cn('space-y-1.5', compact && 'space-y-1')}>
-        {list.map((c) => {
-          const n = breakdown?.[c.code] ?? 0;
-          if (compact && !n) return null;
-          return (
-            <li key={c.code} className="grid grid-cols-[110px_1fr_40px] items-center gap-2 text-[13px]">
-              <span className="truncate text-slate-600" title={`${c.sex} · ${c.age}`}>
-                {c.label}
-              </span>
-              <span className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                <span
-                  className="block h-full rounded-full"
-                  style={{ width: `${(n / max) * 100}%`, background: color }}
-                />
-              </span>
-              <span className="text-right font-medium text-slate-800">{n}</span>
-            </li>
-          );
-        })}
-      </ul>
-      <div className="mt-2 flex flex-wrap gap-1.5 text-[12px]">
-        {Object.entries(s.bySex).map(([k, n]) => (
-          <span key={k} className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">
-            {k} {n}
-          </span>
-        ))}
-        {Object.entries(s.byAge).map(([k, n]) => (
-          <span key={k} className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">
-            {k} {n}
-          </span>
-        ))}
-        {s.total !== total && (
-          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
-            {total > s.total ? `${total - s.total} not classified` : 'Classification needs updating'}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** A card for one species on a farm: head count, classification bars and actions. */
+/** A card for one species on a farm: head count and actions. */
 export function SpeciesCard({
   species,
   count,
   breed,
-  breakdown,
   meta,
   actions,
 }: {
   species: string;
   count: number;
   breed?: string | null;
-  breakdown?: Breakdown | null;
   meta?: ReactNode;
   actions?: ReactNode;
 }) {
@@ -141,10 +76,7 @@ export function SpeciesCard({
           <div className="text-[12px] text-slate-500">head</div>
         </div>
       </div>
-      <div className="mt-3 flex-1">
-        <BreakdownBars species={species} total={count} breakdown={breakdown} />
-      </div>
-      {meta && <div className="mt-3 text-[13px] text-slate-500">{meta}</div>}
+      {meta && <div className="mt-3 flex-1 text-[13px] text-slate-500">{meta}</div>}
       {actions && <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">{actions}</div>}
     </div>
   );

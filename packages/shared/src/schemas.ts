@@ -290,40 +290,22 @@ export const farmReassignSchema = z.object({ ownerId: idField('Select an owner')
 
 /* ---------- population ---------- */
 
-/** Head count per classification code; every value is a whole number of head. */
-export const breakdownField = z
-  .record(z.string().max(30), z.number().int().min(0).max(MAX_HEAD))
-  .nullable()
-  .optional();
-const sumOf = (b?: Record<string, number> | null) => Object.values(b ?? {}).reduce((a, n) => a + n, 0);
-/** A breakdown, when given, must add up to the head count. */
-export const breakdownMatches = (count: number, b?: Record<string, number> | null) =>
-  !b || !Object.keys(b).length || sumOf(b) === count;
-
-export const groupCreateSchema = z
-  .object({
-    farmId: idField('Select a farm'),
-    species: z.enum(SPECIES),
-    breed: optText(80),
-    sex: z.string().default('Mixed'),
-    lifeStage: z.string().default('Mixed'),
-    reportingMonth: optMonth,
-    count: intField(0, undefined, MAX_HEAD),
-    breakdown: breakdownField,
-    healthStatus: z.string().default('Healthy'),
-    purpose: optEnum(ANIMAL_PURPOSES),
-    remarks: optText(500),
-  })
-  .refine((v) => breakdownMatches(v.count, v.breakdown), {
-    path: ['breakdown'],
-    message: 'The classification counts must add up to the head count',
-  });
+export const groupCreateSchema = z.object({
+  farmId: idField('Select a farm'),
+  species: z.enum(SPECIES),
+  breed: optText(80),
+  sex: z.string().default('Mixed'),
+  reportingMonth: optMonth,
+  count: intField(0, undefined, MAX_HEAD),
+  healthStatus: z.string().default('Healthy'),
+  purpose: optEnum(ANIMAL_PURPOSES),
+  remarks: optText(500),
+});
 export type GroupCreateInput = z.infer<typeof groupCreateSchema>;
 /** Species and counts are not edited here: counts change through monthly updates. */
 export const groupUpdateSchema = z.object({
   breed: optText(80),
   sex: z.string().min(1).max(20),
-  lifeStage: z.string().min(1).max(30),
   healthStatus: z.string().min(1).max(40),
   purpose: optEnum(ANIMAL_PURPOSES),
   remarks: optText(500),
@@ -334,17 +316,11 @@ export const populationUpdateSchema = z.object({
   month: monthField,
   entries: z
     .array(
-      z
-        .object({
-          groupId: idField(),
-          count: intField(0, undefined, MAX_HEAD),
-          breakdown: breakdownField,
-          reason: optText(200),
-        })
-        .refine((v) => breakdownMatches(v.count, v.breakdown), {
-          path: ['breakdown'],
-          message: 'The classification counts must add up to the head count',
-        }),
+      z.object({
+        groupId: idField(),
+        count: intField(0, undefined, MAX_HEAD),
+        reason: optText(200),
+      }),
     )
     .min(1, 'No groups to update'),
 });
@@ -415,47 +391,7 @@ export const strayUpdateSchema = z.object({
   violationType: optText(80),
   ownerId: optId,
   remarks: optText(1000),
-  fineAmount: nullableNumber(0, 1_000_000),
-  finePaid: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()).optional(),
-  orNumber: optText(40),
-  paidAt: pastDate(),
 });
-
-/** The stray incident as it will be saved (current record merged with the changes). */
-export interface StrayState {
-  status: string;
-  /** Day the animal was found (local YYYY-MM-DD). */
-  foundOn?: string | null;
-  fineAmount?: number | null;
-  finePaid?: boolean | null;
-  orNumber?: string | null;
-  paidAt?: string | null;
-}
-
-/**
- * Penalty rules shared by the form and the API:
- * - a paid fine needs the amount and the official receipt number;
- * - the payment cannot be before the animal was found.
- */
-export function strayErrors(v: StrayState): Record<string, string> {
-  const e: Record<string, string> = {};
-  const found = v.foundOn ?? null;
-  if (v.finePaid) {
-    if (!v.fineAmount) e.fineAmount = 'Enter the fine amount';
-    if (!v.orNumber) e.orNumber = 'Enter the official receipt (OR) number';
-  }
-  if (found && v.paidAt && v.paidAt < found) e.paidAt = 'Cannot be before the animal was found';
-  if (v.paidAt && !v.finePaid) e.finePaid = 'Tick "Fine paid" when a payment date is entered';
-  return e;
-}
-
-/** The incident form: field rules plus the penalty rules, given when it was found. */
-export const strayFormSchema = (foundOn?: string | null) =>
-  strayUpdateSchema.superRefine((v, ctx) => {
-    const errors = strayErrors({ ...v, status: v.status ?? 'REPORTED', foundOn });
-    for (const [path, message] of Object.entries(errors))
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
-  });
 
 /* ---------- disease surveillance ---------- */
 

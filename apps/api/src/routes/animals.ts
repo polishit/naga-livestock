@@ -6,9 +6,7 @@ import {
   isLargeRuminant,
   type AnimalPurpose,
   fmtDate,
-  isoDate,
   isoMonth,
-  strayErrors,
   animalCreateSchema,
   animalMoveSchema,
   animalUpdateSchema,
@@ -552,10 +550,6 @@ function serializeStray(s: any) {
     violations: s.violations,
     violationType: s.violationType,
     remarks: s.remarks,
-    fineAmount: s.fineAmount != null ? Number(s.fineAmount) : null,
-    finePaid: s.finePaid,
-    orNumber: s.orNumber,
-    paidAt: ymd(s.paidAt),
     voided: s.voidedAt != null,
     voidedBy: s.voidedBy ?? null,
     voidReason: s.voidReason ?? null,
@@ -597,17 +591,12 @@ straysRouter.get(
         discoveredAt: true,
         violations: true,
         status: true,
-        fineAmount: true,
-        finePaid: true,
       },
     });
-    const unpaid = rows.filter((r) => r.fineAmount != null && Number(r.fineAmount) > 0 && !r.finePaid);
     res.json({
       incidents: rows.length,
       violations: rows.reduce((a, r) => a + r.violations, 0),
       open: rows.filter((r) => r.status === 'REPORTED').length,
-      unpaidFines: unpaid.length,
-      unpaidAmount: unpaid.reduce((a, r) => a + Number(r.fineAmount), 0),
       last: rows[0] ? { code: rows[0].code, discoveredAt: rows[0].discoveredAt } : null,
     });
   }),
@@ -693,7 +682,6 @@ straysRouter.patch(
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(strayUpdateSchema, req.body);
-    assertNotFuture({ paidAt: d.paidAt });
     const before = await prisma.strayIncident.findUnique({
       where: { id },
       include: { owner: true },
@@ -704,12 +692,7 @@ straysRouter.patch(
     const changes = {
       ...(d.status ? { status: d.status } : {}),
       ...(d.violations !== undefined ? { violations: d.violations } : {}),
-      ...(d.finePaid !== undefined ? { finePaid: d.finePaid } : {}),
-      ...sent(req.body, d, ['ownerId', 'remarks', 'violationType', 'fineAmount', 'orNumber'] as const),
-      ...(['paidAt'] as const).reduce(
-        (o, k) => (k in (req.body ?? {}) ? { ...o, [k]: dateOnly(d[k]) ?? null } : o),
-        {} as Record<string, Date | null>,
-      ),
+      ...sent(req.body, d, ['ownerId', 'remarks', 'violationType'] as const),
     };
     // A registered ear tag identifies the animal, so its owner is known.
     if (changes.ownerId !== undefined && before.animalId) {
@@ -723,19 +706,6 @@ straysRouter.patch(
           },
         });
     }
-    const after = { ...before, ...changes };
-    const errors = strayErrors({
-      status: after.status,
-      foundOn: isoDate(before.discoveredAt),
-      fineAmount: after.fineAmount != null ? Number(after.fineAmount) : null,
-      finePaid: after.finePaid,
-      orNumber: after.orNumber,
-      paidAt: ymd(after.paidAt),
-    });
-    if (Object.keys(errors).length)
-      throw badRequest('Validation failed', {
-        fieldErrors: Object.fromEntries(Object.entries(errors).map(([k, m]) => [k, [m]])),
-      });
     const s = await prisma.strayIncident.update({
       where: { id },
       data: changes,
@@ -743,9 +713,6 @@ straysRouter.patch(
     });
     const bits = [
       before.status !== s.status ? `${before.status.toLowerCase()} → ${s.status.toLowerCase()}` : null,
-      !before.finePaid && s.finePaid
-        ? `fine ₱${Number(s.fineAmount).toLocaleString()} paid, OR ${s.orNumber}`
-        : null,
     ].filter(Boolean);
     await logActivity(
       'stray',

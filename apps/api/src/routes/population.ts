@@ -69,9 +69,7 @@ populationRouter.get(
           species: g.species,
           breed: g.breed,
           sex: g.sex,
-          lifeStage: g.lifeStage,
           count: g.count,
-          breakdown: (g.breakdown as Record<string, number> | null) ?? null,
           tagged: g.animals.length,
           healthStatus: g.healthStatus,
           purpose: g.purpose,
@@ -112,9 +110,7 @@ populationRouter.post(
           species: d.species,
           breed: d.breed ?? null,
           sex: d.sex,
-          lifeStage: d.lifeStage,
           count: d.count,
-          ...(d.breakdown && Object.keys(d.breakdown).length ? { breakdown: d.breakdown } : {}),
           healthStatus: d.healthStatus,
           purpose: isLargeRuminant(d.species) ? (d.purpose ?? null) : null,
           remarks: d.remarks ?? null,
@@ -232,15 +228,6 @@ populationRouter.post(
             data: {
               count: Math.max(g.animals.length, running),
               lastVerified: !g.lastVerified || d.month > g.lastVerified ? d.month : g.lastVerified,
-              // The classification counts recorded with this head count (age, sex, production stage).
-              // Without one, an older classification that no longer adds up to the count is cleared.
-              ...(e.breakdown && Object.keys(e.breakdown).length
-                ? { breakdown: e.breakdown }
-                : g.breakdown &&
-                    Object.values(g.breakdown as Record<string, number>).reduce((a, n) => a + n, 0) !==
-                      Math.max(g.animals.length, running)
-                  ? { breakdown: Prisma.DbNull }
-                  : {}),
             },
           });
         out.push(u);
@@ -340,7 +327,6 @@ populationRouter.patch(
       data: {
         breed: d.breed ?? null,
         sex: d.sex,
-        lifeStage: d.lifeStage,
         healthStatus: d.healthStatus,
         purpose: isLargeRuminant(g.species) ? (d.purpose ?? null) : null,
         remarks: d.remarks ?? null,
@@ -351,7 +337,6 @@ populationRouter.patch(
       [
         ['breed', 'breed'],
         ['sex', 'sex'],
-        ['lifeStage', 'stage'],
         ['healthStatus', 'health'],
         ['purpose', 'purpose'],
         ['remarks', 'remarks'],

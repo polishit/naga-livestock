@@ -95,7 +95,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.238,
     status: 'verified',
     groups: [
-      ['Swine', 40, LW],
+      ['Pig', 40, LW],
       ['Chicken', 148, NAT],
     ],
   },
@@ -107,7 +107,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.238665,
     status: 'overdue',
     groups: [
-      ['Swine', 40, LW],
+      ['Pig', 40, LW],
       ['Chicken', 87, NAT],
     ],
   },
@@ -119,7 +119,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.241503,
     status: 'overdue',
     groups: [
-      ['Swine', 31, LW],
+      ['Pig', 31, LW],
       ['Chicken', 100, NAT],
     ],
   },
@@ -131,7 +131,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2389,
     status: 'verified',
     groups: [
-      ['Swine', 26, LW],
+      ['Pig', 26, LW],
       ['Chicken', 107, NAT],
     ],
   },
@@ -143,7 +143,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.23215,
     status: 'verified',
     groups: [
-      ['Swine', 21, LW],
+      ['Pig', 21, LW],
       ['Chicken', 185, NAT],
     ],
   },
@@ -155,7 +155,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.230707,
     status: 'overdue',
     groups: [
-      ['Swine', 32, LW],
+      ['Pig', 32, LW],
       ['Chicken', 171, NAT],
     ],
   },
@@ -180,7 +180,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2441,
     status: 'overdue',
     groups: [
-      ['Swine', 27, LW],
+      ['Pig', 27, LW],
       ['Chicken', 158, NAT],
     ],
   },
@@ -192,7 +192,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2268,
     status: 'verified',
     groups: [
-      ['Swine', 17, LW],
+      ['Pig', 17, LW],
       ['Chicken', 133, NAT],
       ['Cattle', 10, 'Brahman'],
     ],
@@ -218,7 +218,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2841,
     status: 'verified',
     groups: [
-      ['Swine', 38, LW],
+      ['Pig', 38, LW],
       ['Chicken', 94, NAT],
       ['Cattle', 9, 'Brahman'],
     ],
@@ -231,7 +231,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2693,
     status: 'verified',
     groups: [
-      ['Swine', 31, LW],
+      ['Pig', 31, LW],
       ['Chicken', 167, NAT],
     ],
   },
@@ -256,7 +256,7 @@ const FARMS: FarmSeed[] = [
     status: 'overdue',
     groups: [
       ['Chicken', 158, NAT],
-      ['Other Poultry', 26, 'Muscovy'],
+      ['Ducks', 26, 'Muscovy'],
     ],
   },
   {
@@ -276,7 +276,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2742,
     status: 'verified',
     groups: [
-      ['Swine', 40, LW],
+      ['Pig', 40, LW],
       ['Chicken', 180, NAT],
     ],
   },
@@ -300,7 +300,7 @@ const FARMS: FarmSeed[] = [
     lat: 13.6702,
     lng: 123.2965,
     status: 'overdue',
-    groups: [['Other Poultry', 23, 'Muscovy']],
+    groups: [['Ducks', 23, 'Muscovy']],
   },
   {
     name: 'San Felipe Piggery',
@@ -310,7 +310,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2063,
     status: 'verified',
     groups: [
-      ['Swine', 40, LW],
+      ['Pig', 40, LW],
       ['Chicken', 141, NAT],
     ],
   },
@@ -330,7 +330,7 @@ const FARMS: FarmSeed[] = [
     lat: 13.6437,
     lng: 123.2088,
     status: 'verified',
-    groups: [['Duck', 179, 'Pateros']],
+    groups: [['Ducks', 179, 'Pateros']],
   },
   {
     name: 'Del Rosario Poultry',
@@ -341,7 +341,7 @@ const FARMS: FarmSeed[] = [
     status: 'overdue',
     groups: [
       ['Chicken', 176, NAT],
-      ['Other Poultry', 35, 'Muscovy'],
+      ['Ducks', 35, 'Muscovy'],
     ],
   },
   {
@@ -352,7 +352,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2228,
     status: 'verified',
     groups: [
-      ['Swine', 25, LW],
+      ['Pig', 25, LW],
       ['Goat', 14, NAT],
       ['Cattle', 12, 'Brahman'],
       ['Sheep', 7, NAT],
@@ -366,7 +366,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2061,
     status: 'verified',
     groups: [
-      ['Swine', 24, LW],
+      ['Pig', 24, LW],
       ['Chicken', 134, NAT],
     ],
   },
@@ -378,7 +378,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.1982,
     status: 'overdue',
     groups: [
-      ['Swine', 22, LW],
+      ['Pig', 22, LW],
       ['Chicken', 106, NAT],
     ],
   },
@@ -399,7 +399,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2553,
     status: 'verified',
     groups: [
-      ['Swine', 22, LW],
+      ['Pig', 22, LW],
       ['Chicken', 54, NAT],
       ['Goat', 24, NAT],
     ],
@@ -795,10 +795,10 @@ async function main() {
   for (const [name, remarks] of FARM_REMARKS)
     await prisma.farm.update({ where: { id: farmByName(name).id }, data: { remarks } });
   const HERD_HEALTH: [string, string, string, string][] = [
-    ['Ground Zero Piggery', 'Swine', 'Quarantined', 'Under quarantine since the ASF case'],
+    ['Ground Zero Piggery', 'Pig', 'Quarantined', 'Under quarantine since the ASF case'],
     [
       'Bagong Buhay Backyard',
-      'Swine',
+      'Pig',
       'Quarantined',
       'Precautionary quarantine while waiting for the ASF result',
     ],
@@ -814,7 +814,7 @@ async function main() {
   // Hillside goats: a breeding herd of does.
   await prisma.populationGroup.update({
     where: { id: groupOf('Hillside Ranch', 'Goat').id },
-    data: { sex: 'Female', lifeStage: 'breeder' },
+    data: { sex: 'Female' },
   });
 
   // A farm that stopped operating: archived (with its emptied group), kept for the records.
@@ -839,7 +839,7 @@ async function main() {
     data: {
       code: code('GRP', groupId),
       farmId: closedFarm.id,
-      species: 'Swine',
+      species: 'Pig',
       breed: LW,
       count: 0,
       lastVerified: '2026-06',
@@ -957,7 +957,7 @@ async function main() {
     });
   }
 
-  /* stray incidents: open and closed, with fine details where they apply */
+  /* stray incidents: open and closed */
   type StraySeed = {
     at: string;
     species: string;
@@ -972,10 +972,6 @@ async function main() {
     status: 'REPORTED' | 'CLOSED';
     violations?: number;
     violationType?: string;
-    fineAmount?: number;
-    finePaid?: boolean;
-    orNumber?: string;
-    paidAt?: string;
     remarks?: string;
     voided?: { at: string; reason: string };
   };
@@ -995,9 +991,7 @@ async function main() {
       status: 'REPORTED',
       violations: 1,
       violationType: 'Animal on a public road or highway',
-      fineAmount: 500,
-      finePaid: false,
-      remarks: 'Owner informed by phone; to pay the fine.',
+      remarks: 'Owner informed by phone; to pick up the carabao.',
     },
     {
       at: '2026-09-24T09:36:00',
@@ -1021,14 +1015,10 @@ async function main() {
       status: 'CLOSED',
       violations: 1,
       violationType: 'Damage to crops or property',
-      fineAmount: 1000,
-      finePaid: true,
-      orNumber: 'OR-7712345',
-      paidAt: '2026-10-01',
     },
     {
       at: '2026-10-02T09:36:00',
-      species: 'Swine',
+      species: 'Pig',
       ownerId: 12,
       barangay: 'Cararayan',
       location: 'Cararayan public market',
@@ -1038,10 +1028,6 @@ async function main() {
       status: 'CLOSED',
       violations: 2,
       violationType: 'Repeat offense',
-      fineAmount: 1500,
-      finePaid: true,
-      orNumber: 'OR-7712398',
-      paidAt: '2026-10-03',
       remarks: 'Owner warned in writing; pen fence repaired. Case closed.',
     },
     {
@@ -1085,10 +1071,6 @@ async function main() {
         status: s.status,
         violations: s.violations ?? 0,
         violationType: s.violationType ?? null,
-        fineAmount: s.fineAmount ?? null,
-        finePaid: s.finePaid ?? false,
-        orNumber: s.orNumber ?? null,
-        paidAt: s.paidAt ? D(s.paidAt) : null,
         remarks: s.remarks ?? null,
         voidedAt: s.voided ? DT(s.voided.at) : null,
         voidedBy: s.voided ? LIZA : null,
@@ -1164,7 +1146,7 @@ async function main() {
       // CASE-0001: confirmed ASF with every ASF response step done.
       farm: 'Ground Zero Piggery',
       disease: 'African Swine Fever (ASF)',
-      species: 'Swine',
+      species: 'Pig',
       affected: 10,
       deaths: 1,
       reported: '2026-08-31',
@@ -1276,7 +1258,7 @@ async function main() {
       // CASE-0002: lab result negative.
       farm: 'Carolina Backyard',
       disease: 'Hog Cholera',
-      species: 'Swine',
+      species: 'Pig',
       affected: 12,
       deaths: 1,
       reported: '2026-09-04',
@@ -1317,7 +1299,7 @@ async function main() {
       // CASE-0003: waiting for the lab; linked to CASE-0001 (same feed supplier, 500 m away).
       farm: 'Bagong Buhay Backyard',
       disease: 'African Swine Fever (ASF)',
-      species: 'Swine',
+      species: 'Pig',
       affected: 8,
       deaths: 2,
       reported: '2026-09-08',
@@ -1373,7 +1355,7 @@ async function main() {
       // CASE-0004: sample sent, result pending.
       farm: 'San Felipe Piggery',
       disease: 'Porcine Reproductive & Respiratory Syndrome',
-      species: 'Swine',
+      species: 'Pig',
       affected: 9,
       deaths: 2,
       reported: '2026-09-12',
@@ -1548,7 +1530,7 @@ async function main() {
       // CASE-0008: suspected, no visit yet.
       farm: 'San Isidro Ranch',
       disease: 'Swine Erysipelas',
-      species: 'Swine',
+      species: 'Pig',
       affected: 10,
       deaths: 1,
       reported: '2026-09-28',
@@ -1637,7 +1619,7 @@ async function main() {
       // CASE-0011: just reported, not assigned yet, no visit yet.
       farm: 'Belmonte Mixed Farm',
       disease: 'Hog Cholera',
-      species: 'Swine',
+      species: 'Pig',
       affected: 4,
       deaths: 1,
       reported: ago(4),
@@ -1728,7 +1710,7 @@ async function main() {
       // CASE-0013: the same report entered twice — voided, kept for the record, not counted.
       farm: 'Belmonte Mixed Farm',
       disease: 'Hog Cholera',
-      species: 'Swine',
+      species: 'Pig',
       affected: 4,
       deaths: 1,
       reported: ago(4),
@@ -1929,20 +1911,20 @@ async function main() {
   const NCD = 'NCD Vaccine';
   const HS = 'Hemosep Vaccine';
   const VAX: V[] = [
-    ['2026-08-10', HC, 'Ground Zero Piggery', 'G', 'Swine', 28, 1, '2026-09-12'],
-    ['2026-09-12', HC, 'Ground Zero Piggery', 'G', 'Swine', 26, 2, null],
+    ['2026-08-10', HC, 'Ground Zero Piggery', 'G', 'Pig', 28, 1, '2026-09-12'],
+    ['2026-09-12', HC, 'Ground Zero Piggery', 'G', 'Pig', 26, 2, null],
     ['2026-08-11', NCD, 'Ground Zero Piggery', 'G', 'Chicken', 104, 1, null],
-    ['2026-08-12', HC, 'Cararayan Hog Farm', 'G', 'Swine', 28, 1, null],
+    ['2026-08-12', HC, 'Cararayan Hog Farm', 'G', 'Pig', 28, 1, null],
     ['2026-08-13', NCD, 'Cararayan Hog Farm', 'G', 'Chicken', 61, 1, ago(6)], // overdue
-    ['2026-08-14', HC, 'Bagong Buhay Backyard', 'G', 'Swine', 22, 1, null],
-    ['2026-09-12', HC, 'Bagong Buhay Backyard', 'G', 'Swine', 20, 2, null],
+    ['2026-08-14', HC, 'Bagong Buhay Backyard', 'G', 'Pig', 22, 1, null],
+    ['2026-09-12', HC, 'Bagong Buhay Backyard', 'G', 'Pig', 20, 2, null],
     ['2026-08-15', NCD, 'Bagong Buhay Backyard', 'G', 'Chicken', 70, 1, null],
-    ['2026-08-16', HC, 'Riverside Swine', 'G', 'Swine', 18, 1, ago(2)], // overdue
+    ['2026-08-16', HC, 'Riverside Swine', 'G', 'Pig', 18, 1, ago(2)], // overdue
     ['2026-08-17', NCD, 'Riverside Swine', 'G', 'Chicken', 75, 1, null],
-    ['2026-08-18', HC, 'Mabuhay Farm', 'G', 'Swine', 15, 1, null],
-    ['2026-09-12', HC, 'Mabuhay Farm', 'G', 'Swine', 13, 2, null],
+    ['2026-08-18', HC, 'Mabuhay Farm', 'G', 'Pig', 15, 1, null],
+    ['2026-09-12', HC, 'Mabuhay Farm', 'G', 'Pig', 13, 2, null],
     ['2026-08-10', NCD, 'Mabuhay Farm', 'G', 'Chicken', 130, 1, '2026-10-24'],
-    ['2026-08-11', HC, 'Sunrise Livestock', 'G', 'Swine', 22, 1, null],
+    ['2026-08-11', HC, 'Sunrise Livestock', 'G', 'Pig', 22, 1, null],
     ['2026-08-12', NCD, 'Sunrise Livestock', 'G', 'Chicken', 120, 1, null],
     ['2026-08-13', HS, 'Hillside Ranch', 'G', 'Cattle', 8, 1, '2026-10-27'],
     ['2026-09-12', HS, 'Hillside Ranch', 'G', 'Cattle', 6, 2, null],
@@ -1957,7 +1939,7 @@ async function main() {
     ['2026-08-08', HS, 'Lakeside Poultry & Swine', 'A', 'NC-C-0006', 1, 1, null],
     ['2026-09-08', HS, 'Lakeside Poultry & Swine', 'A', 'NC-C-0006', 1, 2, null],
     [ago(40), HS, 'Isarog Foothill Farm', 'G', 'Cattle', 9, 1, null, 'Whole herd, after CASE-0012'],
-    [ago(25), HC, 'Concepcion Backyard', 'G', 'Swine', 20, 1, ahead(10)],
+    [ago(25), HC, 'Concepcion Backyard', 'G', 'Pig', 20, 1, ahead(10)],
     [ago(20), HS, 'Carolina Cattle Range', 'A', 'NC-C-0007', 1, 1, ahead(5), 'Insured animal (PCIC)'],
     [
       ago(18),
@@ -2029,7 +2011,7 @@ async function main() {
       {
         ownerId: 1,
         policyNo: 'PCIC-LV-2026-00118',
-        species: 'Swine',
+        species: 'Pig',
         heads: 40,
         amountCovered: 400000,
         startDate: D('2026-05-15'),
@@ -2063,7 +2045,7 @@ async function main() {
       {
         ownerId: 4,
         policyNo: 'PCIC-LV-2025-00977',
-        species: 'Swine',
+        species: 'Pig',
         heads: 20,
         amountCovered: 180000,
         startDate: D('2025-07-01'),
@@ -2103,7 +2085,7 @@ async function main() {
     data: {
       key: `vaccinationTargets:${year}`,
       value: JSON.stringify([
-        { vaccine: HC, species: 'Swine', target: 240 },
+        { vaccine: HC, species: 'Pig', target: 240 },
         { vaccine: NCD, species: 'Chicken', target: 800 },
         { vaccine: HS, species: 'Cattle', target: 40 },
         { vaccine: HS, species: 'Carabao', target: 12 },

@@ -86,7 +86,7 @@ test('add owner: owner, farm and livestock with Back and Next, then one success 
   await d.getByRole('button', { name: 'Next' }).click();
 
   d = dialog(page);
-  await d.getByLabel('Species').selectOption('Swine');
+  await d.getByLabel('Species').selectOption('Pig');
   await d.getByLabel('Head count').fill('6');
   await d.getByRole('button', { name: 'Save' }).click();
   // One success message at the end; no summary screen.
@@ -118,7 +118,7 @@ test('reports open on the monthly report; analytics compares periods and links t
   await page.getByRole('button', { name: 'Set targets' }).click();
   const d = dialog(page);
   await d.getByLabel('Vaccine 1').fill('Hog Cholera Vaccine');
-  await d.getByLabel('Species 1').selectOption('Swine');
+  await d.getByLabel('Species 1').selectOption('Pig');
   await d.getByLabel('Target doses 1').fill('500');
   await d.getByRole('button', { name: 'Save targets' }).click();
   await expectToast(page, /Vaccination targets for \d{4} saved/);
@@ -129,7 +129,7 @@ test('reports open on the monthly report; analytics compares periods and links t
     .locator('.card')
     .filter({ hasText: 'Record completeness' })
     .getByRole('listitem')
-    .filter({ hasText: 'Owners without an RSBSA number' })
+    .filter({ hasText: 'Owners without an RSBSA Control Number' })
     .getByRole('link', { name: 'Fix' })
     .click();
   await expect(page).toHaveURL(/\/owners\?rsbsa=no/);

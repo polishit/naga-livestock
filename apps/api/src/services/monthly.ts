@@ -165,8 +165,6 @@ export async function monthlySummary(month = isoMonth(), barangay?: string) {
         species: s.species,
         population: s.population,
         farms: s.farms,
-        breakdown: s.breakdown,
-        classified: sum(Object.values(s.breakdown)),
       })),
       byBarangay: pop.byBarangay,
     },

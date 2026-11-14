@@ -181,13 +181,10 @@ model PopulationGroup {
   species      String             @db.VarChar(40)
   breed        String?            @db.VarChar(80)
   sex          String             @default("Mixed") @db.VarChar(20)
-  lifeStage    String             @default("Mixed") @db.VarChar(30)
   count        Int                @default(0)
   healthStatus String             @default("Healthy") @db.VarChar(40)
   /// Cattle and carabao: DRAFT, DAIRY, FATTENING, BREEDING (as on the PCIC application)
   purpose      String?            @db.VarChar(20)
-  /// Head count per classification code (e.g. {"sow": 4, "piglet": 20}); adds up to count when set
-  breakdown    Json?
   remarks      String?            @db.VarChar(500)
   lastVerified String?            @db.VarChar(7) // YYYY-MM of the latest verified update
   archived     Boolean            @default(false)
@@ -290,11 +287,6 @@ model StrayIncident {
   status        StrayStatus @default(REPORTED)
   violations    Int         @default(0)
   violationType String?     @db.VarChar(80)
-  /// Penalty: fine and its official receipt
-  fineAmount    Decimal?    @db.Decimal(10, 2)
-  finePaid      Boolean     @default(false)
-  orNumber      String?     @db.VarChar(40)
-  paidAt        DateTime?   @db.Date
   /// Impoundment and release (no longer used; kept so older records are not lost)
   impoundedAt   DateTime?   @db.Date
   impoundPlace  String?     @db.VarChar(200)

@@ -143,11 +143,12 @@ export function GisMapPage() {
 
   const selCase = selected?.kind === 'case' ? (cases ?? []).find((c) => c.id === selected.id) : undefined;
   const selFarm = selected?.kind === 'farm' ? (farms ?? []).find((f) => f.id === selected.id) : undefined;
-  // Farms within the radius of the selected case (straight-line distance), nearest first.
+  // Farms to monitor around the selected case (straight-line distance), nearest first.
+  // The ground-zero farm (the case's own farm) is the outbreak itself, so it is not in this list.
   const nearSel = useMemo(() => {
     if (!selCase?.mapped) return [];
     return (farms ?? [])
-      .filter((f) => f.mapped)
+      .filter((f) => f.mapped && f.id !== selCase.farmId)
       .map((f) => ({ f, d: Math.round(distanceMeters(selCase.lat!, selCase.lng!, f.lat!, f.lng!)) }))
       .filter((x) => x.d <= radius)
       .sort((a, b) => a.d - b.d);
@@ -391,7 +392,8 @@ export function GisMapPage() {
               {selCase.mapped && (
                 <div className="border-t border-slate-100">
                   <div className="px-4 pt-3 text-[13px] font-medium text-slate-600">
-                    {nearSel.length} farm(s) within {formatRadius(radius)}
+                    {nearSel.length} farm(s) to monitor within {formatRadius(radius)} (ground-zero farm not
+                    included)
                   </div>
                   <ul className="max-h-[260px] overflow-y-auto py-1">
                     {nearSel.map(({ f, d }) => (
@@ -1156,12 +1158,15 @@ export function RadiusPage() {
     p.set('case', v);
     setParams(p, { replace: true });
   };
+  // The list is of farms to monitor: the ground-zero farm (where the case is) is left out.
+  const groundZeroFarm = data?.farms.find((f) => f.role === 'Ground-zero farm');
   const rows = (data?.farms ?? []).filter(
     (f) =>
+      f.role !== 'Ground-zero farm' &&
       (!bq || `${f.name} ${f.ownerName} ${f.ownerContact ?? ''}`.toLowerCase().includes(bq.toLowerCase())) &&
       (!bBarangay || f.barangay === bBarangay) &&
       (!bSpecies || f.species.some((s) => s.species === bSpecies)) &&
-      (!monitor || (f.role !== 'Ground-zero farm' && f.monitoring === monitor)),
+      (!monitor || f.monitoring === monitor),
   );
 
   return (
@@ -1321,7 +1326,13 @@ export function RadiusPage() {
               />
             </div>
             <Card>
-              <CardHeader title={`Farms within ${formatRadius(data.radius)}`} />
+              <CardHeader title={`Farms to monitor within ${formatRadius(data.radius)}`} />
+              {groundZeroFarm && (
+                <p className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">
+                  <Badge tone="violet">Ground zero</Badge> {groundZeroFarm.name} · {groundZeroFarm.ownerName}{' '}
+                  — the farm with the case, not in the list to monitor.
+                </p>
+              )}
               <DataTable
                 rows={rows}
                 rowKey={(r) => r.id}

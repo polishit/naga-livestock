@@ -15,7 +15,7 @@ export function pcicStatus(p: { status: string; endDate: Date | null }) {
 }
 
 /**
- * Duplicate protection: an RSBSA number belongs to one person (blocked), and the same name in the
+ * Duplicate protection: an RSBSA Control Number belongs to one person (blocked), and the same name in the
  * same barangay is probably the same person (warning — the user can confirm it is someone else).
  */
 async function checkDuplicates(
@@ -28,7 +28,7 @@ async function checkDuplicates(
     });
     if (r)
       throw badRequest('Validation failed', {
-        fieldErrors: { rsbsa: [`RSBSA number already used by ${r.code} (${r.fullName})`] },
+        fieldErrors: { rsbsa: [`RSBSA Control Number already used by ${r.code} (${r.fullName})`] },
       });
   }
   if (d.confirmDuplicate) return;
@@ -185,8 +185,6 @@ ownersRouter.get(
         status: s.status,
         violations: s.violations,
         barangay: s.barangay,
-        fineAmount: s.fineAmount != null ? Number(s.fineAmount) : null,
-        finePaid: s.finePaid,
       })),
       pcic: o.pcicPolicies.map(serializePcic),
     });

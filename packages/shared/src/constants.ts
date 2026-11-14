@@ -47,42 +47,30 @@ export const BARANGAY_CENTERS: Partial<Record<Barangay, [number, number]>> = {
 
 export const NAGA_CENTER: [number, number] = [13.636, 123.235];
 
-export const SPECIES = [
-  'Cattle',
-  'Carabao',
-  'Swine',
-  'Goat',
-  'Sheep',
-  'Chicken',
-  'Duck',
-  'Other Poultry',
-  'Other',
-] as const;
+export const SPECIES = ['Cattle', 'Carabao', 'Goat', 'Sheep', 'Pig', 'Chicken', 'Ducks', 'Goose'] as const;
 export type Species = (typeof SPECIES)[number];
 
 export const SPECIES_COLORS: Record<Species, string> = {
   Cattle: '#92400e',
   Carabao: '#475569',
-  Swine: '#ec4899',
   Goat: '#d97706',
   Sheep: '#7c3aed',
+  Pig: '#ec4899',
   Chicken: '#eab308',
-  Duck: '#06b6d4',
-  'Other Poultry': '#0d9488',
-  Other: '#9ca3af',
+  Ducks: '#06b6d4',
+  Goose: '#0d9488',
 };
 
 /** Letter used in generated animal IDs, e.g. NC-C-0001 for cattle. */
 export const SPECIES_ID_LETTER: Record<Species, string> = {
   Cattle: 'C',
   Carabao: 'K',
-  Swine: 'S',
   Goat: 'G',
   Sheep: 'H',
+  Pig: 'S',
   Chicken: 'P',
-  Duck: 'D',
-  'Other Poultry': 'Q',
-  Other: 'X',
+  Ducks: 'D',
+  Goose: 'O',
 };
 
 /** Farm scale. What the farm raises (piggery, cattle-only…) is worked out from its population. */
@@ -105,14 +93,14 @@ export const LIVESTOCK_RAISED = [
   'No Livestock Yet',
 ] as const;
 export type LivestockRaised = (typeof LIVESTOCK_RAISED)[number];
-const POULTRY: string[] = ['Chicken', 'Duck', 'Other Poultry'];
+const POULTRY: string[] = ['Chicken', 'Ducks', 'Goose'];
 export function livestockRaised(species: string[]): LivestockRaised {
   const set = [...new Set(species)];
   if (!set.length) return 'No Livestock Yet';
   if (set.every((s) => POULTRY.includes(s))) return 'Poultry';
   if (set.length > 1) return 'Mixed';
   const one: Record<string, LivestockRaised> = {
-    Swine: 'Piggery',
+    Pig: 'Piggery',
     Cattle: 'Cattle Only',
     Carabao: 'Carabao Only',
     Goat: 'Goat Only',
@@ -130,104 +118,6 @@ export const RECORD_SOURCE_LABELS: Record<RecordSource, string> = {
   BARANGAY: 'Barangay Referral',
   OTHER: 'Other',
 };
-
-/** Standard livestock classifications per species: production stage, with the sex and age group it implies. */
-export interface Classification {
-  code: string;
-  label: string;
-  sex: 'Male' | 'Female' | 'Mixed';
-  age: 'Young' | 'Grower' | 'Adult';
-}
-const c = (code: string, label: string, sex: Classification['sex'], age: Classification['age']) => ({
-  code,
-  label,
-  sex,
-  age,
-});
-export const CLASSIFICATIONS: Record<Species, Classification[]> = {
-  Swine: [
-    c('piglet', 'Piglet', 'Mixed', 'Young'),
-    c('weaner', 'Weaner', 'Mixed', 'Young'),
-    c('grower', 'Grower / Finisher', 'Mixed', 'Grower'),
-    c('gilt', 'Gilt', 'Female', 'Grower'),
-    c('sow', 'Sow', 'Female', 'Adult'),
-    c('boar', 'Boar', 'Male', 'Adult'),
-  ],
-  Cattle: [
-    c('calf', 'Calf', 'Mixed', 'Young'),
-    c('heifer', 'Heifer', 'Female', 'Grower'),
-    c('bullock', 'Bullock / Steer', 'Male', 'Grower'),
-    c('cow', 'Cow', 'Female', 'Adult'),
-    c('bull', 'Bull', 'Male', 'Adult'),
-  ],
-  Carabao: [
-    c('calf', 'Calf', 'Mixed', 'Young'),
-    c('heifer', 'Heifer', 'Female', 'Grower'),
-    c('bullock', 'Bullock', 'Male', 'Grower'),
-    c('caracow', 'Caracow', 'Female', 'Adult'),
-    c('carabull', 'Carabull', 'Male', 'Adult'),
-  ],
-  Goat: [
-    c('kid', 'Kid', 'Mixed', 'Young'),
-    c('doeling', 'Doeling', 'Female', 'Grower'),
-    c('buckling', 'Buckling', 'Male', 'Grower'),
-    c('doe', 'Doe', 'Female', 'Adult'),
-    c('buck', 'Buck', 'Male', 'Adult'),
-  ],
-  Sheep: [
-    c('lamb', 'Lamb', 'Mixed', 'Young'),
-    c('ewe', 'Ewe', 'Female', 'Adult'),
-    c('ram', 'Ram', 'Male', 'Adult'),
-  ],
-  Chicken: [
-    c('chick', 'Chick', 'Mixed', 'Young'),
-    c('pullet', 'Pullet', 'Female', 'Grower'),
-    c('broiler', 'Broiler', 'Mixed', 'Grower'),
-    c('layer', 'Layer / Hen', 'Female', 'Adult'),
-    c('rooster', 'Rooster', 'Male', 'Adult'),
-  ],
-  Duck: [
-    c('duckling', 'Duckling', 'Mixed', 'Young'),
-    c('grower', 'Grower', 'Mixed', 'Grower'),
-    c('layer', 'Layer', 'Female', 'Adult'),
-    c('drake', 'Drake', 'Male', 'Adult'),
-  ],
-  'Other Poultry': [
-    c('young', 'Young', 'Mixed', 'Young'),
-    c('female', 'Adult Female', 'Female', 'Adult'),
-    c('male', 'Adult Male', 'Male', 'Adult'),
-  ],
-  Other: [c('young', 'Young', 'Mixed', 'Young'), c('adult', 'Adult', 'Mixed', 'Adult')],
-};
-export type Breakdown = Record<string, number>;
-/** Classification label for a code within a species (falls back to the code). */
-export const classLabel = (species: string, code: string) =>
-  CLASSIFICATIONS[species as Species]?.find((x) => x.code === code)?.label ?? code;
-/** Totals of a breakdown grouped by sex, age group and production stage. */
-export function summarizeBreakdown(species: string, b: Breakdown | null | undefined) {
-  const list = CLASSIFICATIONS[species as Species] ?? CLASSIFICATIONS.Other;
-  const bySex: Record<string, number> = {};
-  const byAge: Record<string, number> = {};
-  const byStage: { code: string; label: string; count: number }[] = [];
-  for (const k of list) {
-    const n = b?.[k.code] ?? 0;
-    byStage.push({ code: k.code, label: k.label, count: n });
-    if (!n) continue;
-    bySex[k.sex] = (bySex[k.sex] ?? 0) + n;
-    byAge[k.age] = (byAge[k.age] ?? 0) + n;
-  }
-  const total = byStage.reduce((a, x) => a + x.count, 0);
-  return { bySex, byAge, byStage, total };
-}
-
-/** One-line summary of a breakdown, e.g. "Sow 4 · Piglet 20 · Boar 1" (empty when not classified). */
-export function breakdownText(species: string, b: Breakdown | null | undefined) {
-  const list = CLASSIFICATIONS[species as Species] ?? CLASSIFICATIONS.Other;
-  return list
-    .filter((k) => (b?.[k.code] ?? 0) > 0)
-    .map((k) => `${k.label} ${b![k.code]}`)
-    .join(' · ');
-}
 
 /** Veterinary services recorded on the Deworming & Veterinary Services page (deworming is the main one). */
 export const SERVICE_TYPES = [
@@ -289,12 +179,11 @@ export const SERVICE_SPECIES_ORDER = [
   'Goat',
   'Cattle',
   'Carabao',
-  'Swine',
+  'Pig',
   'Sheep',
   'Chicken',
-  'Duck',
-  'Other Poultry',
-  'Other',
+  'Ducks',
+  'Goose',
 ] as const;
 
 /** Farm visits: why the visit was made and what was found. */
@@ -329,7 +218,6 @@ export const MONITORED_DISEASES = [
 ] as const;
 
 export const SEXES = ['Mixed', 'Male', 'Female'] as const;
-export const LIFE_STAGES = ['Mixed', 'young', 'grower', 'adult', 'breeder'] as const;
 export const HEALTH_STATUSES = ['Healthy', 'Sick', 'Under treatment', 'Quarantined'] as const;
 
 export const OWNER_STATUSES = ['ACTIVE', 'INACTIVE', 'ARCHIVED'] as const;

@@ -3,7 +3,6 @@ import {
   CASE_OUTCOME_LABELS,
   CASE_STATUS_LABELS,
   CASE_STATUSES,
-  CLASSIFICATIONS,
   FARM_TYPE_LABELS,
   INVESTIGATION_VISIT_LABELS,
   RECORD_SOURCE_LABELS,
@@ -30,7 +29,6 @@ import {
   type FarmType,
   type RecordSource,
   type ServiceType,
-  type Species,
   type VisitFinding,
   type VisitPurpose,
 } from '@livestock/shared';
@@ -238,45 +236,6 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           .sort((a, b) => a[0] - b[0])
           .map(([oid, o]) => ({ code: owners.find((x) => x.id === oid)?.code ?? '', ...o })),
         summary: [{ label: 'Owners', value: byOwner.size }],
-      };
-    }
-    case 'population-classification': {
-      const pop = populationTotals(await loadFarms(p));
-      const rows: Record<string, string | number | null>[] = [];
-      for (const sp of pop.bySpecies.filter((x) => !p.species || x.species === p.species)) {
-        const classes = CLASSIFICATIONS[sp.species as Species] ?? [];
-        const classified = Object.values(sp.breakdown).reduce((x, y) => x + y, 0);
-        for (const c of classes)
-          rows.push({
-            species: sp.species,
-            class: c.label,
-            sex: c.sex,
-            age: c.age,
-            head: sp.breakdown[c.code] ?? 0,
-          });
-        if (sp.population > classified)
-          rows.push({
-            species: sp.species,
-            class: 'Not yet classified',
-            sex: '—',
-            age: '—',
-            head: sp.population - classified,
-          });
-        rows.push({ species: `${sp.species} total`, class: '', sex: '', age: '', head: sp.population });
-      }
-      return {
-        ...base,
-        subtitle: await subtitle({ barangay: p.barangay, species: p.species }),
-        columns: [
-          col('species', 'Species'),
-          col('class', 'Classification'),
-          col('sex', 'Sex'),
-          col('age', 'Age Group'),
-          col('head', 'No. of Heads', 'right'),
-        ],
-        rows,
-        summary: [{ label: 'Total livestock', value: pop.total }],
-        note: 'Classification counts come from the latest farm visit or monthly update. Heads without a breakdown are shown as "Not yet classified".',
       };
     }
     case 'population-groups': {
@@ -923,7 +882,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('barangay', 'Barangay'),
           col('zone', 'Zone'),
           col('contact', 'Contact'),
-          col('cert', 'RSBSA No.'),
+          col('cert', 'RSBSA Control No.'),
           col('registered', 'Registered'),
         ],
         rows: owners.map((o) => ({
@@ -1047,8 +1006,6 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         orderBy: { discoveredAt: 'desc' },
       });
       const rows = s.filter((x) => inRange(x.discoveredAt, p));
-      const fined = rows.filter((x) => x.fineAmount != null && Number(x.fineAmount) > 0);
-      const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
       return {
         ...base,
         columns: [
@@ -1059,7 +1016,6 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('owner', 'Owner'),
           col('barangay', 'Barangay'),
           col('violation', 'Violation'),
-          col('fine', 'Fine'),
           col('status', 'Status'),
         ],
         rows: rows.map((x) => ({
@@ -1070,24 +1026,12 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           owner: x.owner?.fullName ?? 'Unknown',
           barangay: `${x.barangay} — ${x.location}`,
           violation: `${x.violationType ?? '—'}${x.violations ? ` (${x.violations})` : ''}`,
-          fine:
-            x.fineAmount != null && Number(x.fineAmount) > 0
-              ? `${peso(Number(x.fineAmount))} · ${x.finePaid ? `Paid, OR ${x.orNumber}` : 'Unpaid'}`
-              : '—',
           status: titleCase(x.status),
         })),
         summary: [
           { label: 'Incidents', value: rows.length },
           { label: 'Violations', value: rows.reduce((a, x) => a + x.violations, 0) },
           { label: 'Closed', value: rows.filter((x) => x.status === 'CLOSED').length },
-          {
-            label: 'Fines collected',
-            value: peso(fined.filter((x) => x.finePaid).reduce((a, x) => a + Number(x.fineAmount), 0)),
-          },
-          {
-            label: 'Fines unpaid',
-            value: peso(fined.filter((x) => !x.finePaid).reduce((a, x) => a + Number(x.fineAmount), 0)),
-          },
         ],
       };
     }
@@ -1161,8 +1105,8 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         columns: [
           col('barangay', 'Barangay'),
           col('owners', 'Owners', 'right'),
-          col('registered', 'With RSBSA No.', 'right'),
-          col('unregistered', 'Without RSBSA No.', 'right'),
+          col('registered', 'With RSBSA Control No.', 'right'),
+          col('unregistered', 'Without RSBSA Control No.', 'right'),
           col('pct', 'Registered', 'right'),
         ],
         rows: [...by.entries()]
@@ -1176,11 +1120,11 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           })),
         summary: [
           { label: 'Owners', value: owners.length },
-          { label: 'With RSBSA No.', value: registered },
-          { label: 'Without RSBSA No.', value: owners.length - registered },
+          { label: 'With RSBSA Control No.', value: registered },
+          { label: 'Without RSBSA Control No.', value: owners.length - registered },
           { label: 'Registered', value: pct(registered, owners.length) },
         ],
-        note: 'The owners without an RSBSA number are listed by name in the Incomplete Records report.',
+        note: 'The owners without an RSBSA Control Number are listed by name in the Incomplete Records report.',
       };
     }
     case 'incomplete-records': {
@@ -1190,7 +1134,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         orderBy: { id: 'asc' },
       });
       for (const o of owners) {
-        const missing = [!o.contact && 'contact number', !o.rsbsa && 'RSBSA number'].filter(Boolean);
+        const missing = [!o.contact && 'contact number', !o.rsbsa && 'RSBSA Control Number'].filter(Boolean);
         if (missing.length)
           rows.push({
             type: 'Owner',

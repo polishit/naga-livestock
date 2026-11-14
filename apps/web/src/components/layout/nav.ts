@@ -16,7 +16,6 @@ import {
   MapPinned,
   Microscope,
   Radar,
-  Search,
   Settings,
   ShieldCheck,
   Stethoscope,
@@ -50,10 +49,7 @@ export const NAV: NavSection[] = [
   {
     id: 'home',
     label: null,
-    items: [
-      { to: '/', label: 'Dashboard', icon: LayoutGrid, hint: 'Summary of the whole city' },
-      { to: '/search', label: 'Search', icon: Search, hint: 'Find any owner, farm, animal, case or sample' },
-    ],
+    items: [{ to: '/', label: 'Dashboard', icon: LayoutGrid, hint: 'Summary of the whole city' }],
   },
   {
     id: 'registry',

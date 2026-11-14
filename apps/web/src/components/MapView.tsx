@@ -147,11 +147,14 @@ const pinIcon = L.divIcon({
 function FitTo({
   points,
   circle,
+  focus,
   bounds,
   version,
 }: {
   points: [number, number][];
   circle?: { lat: number; lng: number; radius: number };
+  /** One area to show (e.g. the barangay chosen in a form); takes priority over the points. */
+  focus?: L.LatLngBounds | null;
   bounds?: L.LatLngBounds | null;
   version: number;
 }) {
@@ -159,6 +162,8 @@ function FitTo({
   useEffect(() => {
     if (circle) {
       map.fitBounds(L.latLng(circle.lat, circle.lng).toBounds(circle.radius * 2.4), { animate: false });
+    } else if (focus && focus.isValid()) {
+      map.fitBounds(focus, { padding: [16, 16], animate: false });
     } else if (bounds && bounds.isValid()) {
       map.fitBounds(bounds, { padding: [16, 16], animate: false });
     } else if (points.length > 1) {
@@ -216,6 +221,8 @@ export interface MapViewProps {
   fitKey?: string | number;
   /** Shaded barangays (the map then fits to them). */
   areas?: AreaLayer;
+  /** One barangay outline to zoom to (e.g. the barangay chosen in a form). Change fitKey to re-fit. */
+  focusArea?: GeoJSON.Feature | null;
   /** Cases drawn with a pulsing ring (e.g. newly reported this month on the timeline). */
   highlightCaseIds?: number[];
 }
@@ -236,9 +243,11 @@ export function MapView({
   overlay,
   fitKey,
   areas,
+  focusArea,
   highlightCaseIds,
 }: MapViewProps) {
   const [version, setVersion] = useState(0);
+  const focusBounds = useMemo(() => (focusArea ? L.geoJSON(focusArea).getBounds() : null), [focusArea]);
   const areaBounds = useMemo(() => (areas ? L.geoJSON(areas.data).getBounds() : null), [areas?.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const highlighted = useMemo(() => new Set(highlightCaseIds ?? []), [highlightCaseIds]);
   const points = useMemo(() => {
@@ -278,7 +287,28 @@ export function MapView({
           maxZoom={19}
         />
         <InvalidateOnResize />
-        <FitTo points={points} circle={focusCircle} bounds={areaBounds} version={version} />
+        <FitTo
+          points={points}
+          circle={focusCircle}
+          focus={focusBounds}
+          bounds={areaBounds}
+          version={version}
+        />
+        {focusArea && (
+          <GeoJSON
+            key={String(focusArea.properties?.name ?? '')}
+            data={focusArea}
+            interactive={false}
+            style={{
+              color: '#166534',
+              weight: 2,
+              opacity: 0.8,
+              dashArray: '5 4',
+              fillColor: '#16a34a',
+              fillOpacity: 0.06,
+            }}
+          />
+        )}
         {areas && (
           <GeoJSON
             key={`${areas.version}|${areas.selected ?? ''}`}

@@ -36,7 +36,6 @@ export interface Lookups {
     species: string;
     breed: string | null;
     sex: string;
-    lifeStage: string;
     count: number;
     tagged: number;
   }[];

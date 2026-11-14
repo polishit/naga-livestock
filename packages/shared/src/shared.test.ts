@@ -66,7 +66,7 @@ describe('schemas', () => {
     const r = caseCreateSchema.safeParse({
       ownerId: 1,
       farmId: 1,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'ASF',
       affected: 1,
       deaths: 2,

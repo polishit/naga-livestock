@@ -34,7 +34,7 @@ test('closing a form with typed changes asks first', async ({ page }) => {
 test('move a tagged animal to another group on its farm', async ({ page }) => {
   // Farm 10 (NC-C-0007's farm) gets an adult cattle group to move it into.
   const g = await page.request.post('/api/population/groups', {
-    data: { farmId: 10, species: 'Cattle', lifeStage: 'adult', count: 4 },
+    data: { farmId: 10, species: 'Cattle', count: 4 },
   });
   expect(g.status()).toBe(201);
   await page.goto('/animals/7');
@@ -119,7 +119,7 @@ test('print a farm profile and an owner ID card with QR codes', async ({ page, c
   await cardWin.close();
 });
 
-test('stray incident: violation and fine with receipt', async ({ page }) => {
+test('stray incident: violation recorded without a fine or penalty', async ({ page }) => {
   const s = await page.request.post('/api/strays', {
     data: { species: 'Goat', barangay: 'Pacol', location: 'National highway', ownerId: 5 },
   });
@@ -129,20 +129,17 @@ test('stray incident: violation and fine with receipt', async ({ page }) => {
   await page.goto(`/strays?open=${id}`);
   const d = dialog(page);
   await expect(d.getByText(`${code} · Stray goat`)).toBeVisible();
-  const today = new Date().toLocaleDateString('en-CA');
   await d.getByLabel('Violation type').selectOption('Animal on a public road or highway');
-  await d.getByLabel('Fine (₱)').fill('500');
-  await d.getByLabel('Fine paid').check();
-  await d.getByRole('button', { name: 'Save changes' }).click();
-  await expect(d.getByText('Enter the official receipt (OR) number')).toBeVisible();
-  await d.getByLabel('Official receipt (OR) no.').fill('OR-1200345');
-  await d.getByLabel('Date paid').fill(today);
-  await shot(page, 'stray-penalty');
+  await d.getByLabel('Number of violations').fill('1');
+  await expect(d.getByText('Penalty')).toHaveCount(0);
+  await expect(d.getByLabel(/Fine/)).toHaveCount(0);
+  await expect(d.getByLabel(/Official receipt/)).toHaveCount(0);
+  await shot(page, 'stray-violation');
   await d.getByRole('button', { name: 'Save changes' }).click();
   await expectToast(page, 'Incident updated.');
+  await expect(page.getByRole('columnheader', { name: /Fine/ })).toHaveCount(0);
   const row = page.getByRole('row').filter({ hasText: code });
-  await expect(row.getByText('₱500')).toBeVisible();
-  await expect(row.getByText('Paid')).toBeVisible();
+  await expect(row.getByRole('cell', { name: '1', exact: true })).toBeVisible();
 });
 
 test('ASF case lists the response steps and logs a missing one', async ({ page }) => {
@@ -173,23 +170,17 @@ test('farms have no pasture fields', async ({ page }) => {
   await expect(page.locator('.leaflet-marker-icon').filter({ hasText: 'P' })).toHaveCount(0);
 });
 
-test('stray incident shows the payment part only when there is a fine', async ({ page }) => {
+test('stray incident has no impound, fine or payment fields', async ({ page }) => {
   await page.goto('/strays');
   await page.waitForLoadState('networkidle');
   await page.getByRole('row').nth(1).click();
   const d = dialog(page);
   await expect(d.getByLabel('Status')).toBeVisible();
-  await d.getByLabel('Status').selectOption('REPORTED');
+  await d.getByLabel('Status').selectOption('CLOSED');
   await expect(d.getByLabel('Impound date')).toHaveCount(0);
   await expect(d.getByLabel('Release date')).toHaveCount(0);
-  await d.getByLabel('Fine (₱)').fill('');
-  await expect(d.getByLabel('Fine paid')).toHaveCount(0);
-  await d.getByLabel('Status').selectOption('CLOSED');
-  await d.getByLabel('Fine (₱)').fill('300');
-  await d.getByLabel('Fine paid').uncheck();
-  await expect(d.getByLabel('Official receipt (OR) no. *')).toHaveCount(0);
-  await d.getByLabel('Fine paid').check();
-  await expect(d.getByLabel('Official receipt (OR) no. *')).toBeVisible();
+  await expect(d.getByLabel(/Fine/)).toHaveCount(0);
+  await expect(d.getByLabel(/Official receipt/)).toHaveCount(0);
 });
 
 test('cowlick is asked only for cattle and carabao', async ({ page }) => {
@@ -201,7 +192,7 @@ test('cowlick is asked only for cattle and carabao', async ({ page }) => {
   const pick = (re: RegExp) => options.find((o) => re.test(o))!;
   await group.selectOption({ label: pick(/· (Cattle|Carabao)/) });
   await expect(d.getByLabel('Cowlick (hair whorl) pattern')).toBeVisible();
-  await group.selectOption({ label: pick(/· (Swine|Goat|Chicken|Sheep|Duck)/) });
+  await group.selectOption({ label: pick(/· (Pig|Goat|Chicken|Sheep|Ducks)/) });
   await expect(d.getByLabel('Cowlick (hair whorl) pattern')).toHaveCount(0);
 });
 
@@ -223,7 +214,7 @@ test('PCIC application lists its insured ear tags', async ({ page }) => {
 test('owners can be filtered by RSBSA registration', async ({ page }) => {
   await page.goto('/owners');
   await page.getByLabel('RSBSA').selectOption('no');
-  await expect(page.getByRole('button', { name: 'RSBSA No.' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'RSBSA Control No.' })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: 'OWN-0002' }).getByText('—').first()).toBeVisible();
   await shot(page, 'owners-rsbsa');
 });

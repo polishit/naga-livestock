@@ -39,12 +39,15 @@ const HELP: Record<string, Help> = {
     title: 'Livestock Owners',
     purpose: 'The owner masterlist, built from the DA list and farm visits.',
     steps: [
-      'Search by name, contact or RSBSA number, or filter by barangay or source.',
+      'Search by name, contact or RSBSA Control Number, or filter by barangay or source.',
       'New entry from the DA list or a visit? Select "Add Owner, Farm and Livestock" and follow the steps.',
       'Select a row to open the owner: personal information first, then ownership and insurance.',
     ],
     terms: [
-      ['RSBSA', 'Registry System for Basic Sectors in Agriculture number of the raiser.'],
+      [
+        'RSBSA Control Number',
+        'The raiser’s control number in the Registry System for Basic Sectors in Agriculture.',
+      ],
       ['Source', 'Where the office got the record: DA masterlist, farm visit or barangay referral.'],
       ['Archived', 'No longer raising livestock; kept for history, hidden from lists.'],
     ],
@@ -83,10 +86,10 @@ const HELP: Record<string, Help> = {
   },
   '/farms/:id': {
     title: 'Farm profile',
-    purpose: 'One farm: information, livestock with classifications, visits and services, and cases.',
+    purpose: 'One farm: information, livestock head counts, visits and services, and cases.',
     steps: [
-      'After each visit select "Record Farm Visit": note the findings, update the head count (with age, sex and stage) and the deworming given, all in one form.',
-      'Livestock tab: one card per species. Select "Update count / classify" to change the numbers.',
+      'After each visit select "Record Farm Visit": note the findings, update the head count and the deworming given, all in one form.',
+      'Livestock tab: one card per species. Select "Update count" on a card, or "Update Head Count" for all species, to change the numbers.',
       'Visits & Services tab: every visit and service on one timeline.',
       'Select "Print" for a paper copy with the letterhead.',
     ],
@@ -96,14 +99,12 @@ const HELP: Record<string, Help> = {
     title: 'Population Monitoring',
     purpose: 'Head count from the masterlist, by species, farm and barangay.',
     steps: [
-      'By Species: total heads per species with the breakdown by age, sex and production stage.',
+      'By Species: total heads per species.',
+      'Search: type a farm, owner, barangay, species or breed to list the matching farms.',
       'By Farm: each farm’s count per species. Select a row to open the farm.',
       'To update a farm, choose it in the box at the top and select "Update Head Count".',
     ],
-    terms: [
-      ['Not classified', 'Heads counted without an age, sex or stage breakdown yet.'],
-      ['Last counted', 'Month of the latest count (farm visit or DA list).'],
-    ],
+    terms: [['Last counted', 'Month of the latest count (farm visit or DA list).']],
   },
   '/animals': {
     title: 'Animal ID / Ear Tags',
@@ -134,13 +135,11 @@ const HELP: Record<string, Help> = {
   },
   '/strays': {
     title: 'Stray & Violations',
-    purpose: 'Animals found wandering, the violations and the fines.',
+    purpose: 'Animals found wandering and the violations recorded.',
     steps: [
       'Select "Report incident", describe the animal and click where it was found.',
-      'Select the incident to update it: owner, violation and fine. Set the status to Closed when it is settled.',
-      'Enter the fine. Tick "Fine paid" when it is paid, then enter the OR number.',
+      'Select the incident to update it: owner, violation type and number of violations. Set the status to Closed when it is settled.',
     ],
-    terms: [['OR number', 'Official receipt number of the paid fine.']],
   },
   '/gis-map': {
     title: 'Livestock & Disease Map',
@@ -242,14 +241,6 @@ const HELP: Record<string, Help> = {
       'Print the Analysis Request Form and the Sample Collection Form and send them with the samples.',
       'When the results arrive (negatives usually by email), open the batch and select "Enter results".',
       'A positive sample shows "Open case": the disease case starts as Active with the sample attached.',
-    ],
-  },
-  '/search': {
-    title: 'Search',
-    purpose: 'Find any record from one place.',
-    steps: [
-      'Type a name, code, ear tag, RSBSA number, certificate number or sample ID.',
-      'Narrow it with the record type, barangay or species. With only a barangay or species chosen, everything there is listed.',
     ],
   },
   '/response': {

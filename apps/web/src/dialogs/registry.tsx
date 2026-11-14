@@ -7,7 +7,6 @@ import {
   BARANGAYS,
   FARM_TYPES,
   HEALTH_STATUSES,
-  LIFE_STAGES,
   MIN_DATE,
   OWNER_STATUSES,
   PCIC_STATUSES,
@@ -34,19 +33,18 @@ import {
   FARM_TYPE_LABELS,
   RECORD_SOURCES,
   RECORD_SOURCE_LABELS,
-  type Breakdown,
 } from '@livestock/shared';
 import { ApiError, api, isQueued } from '@/lib/api';
 import {
   offerFarmLocationForCases,
   useAddressLookup,
   useApi,
+  useBarangayShapes,
   useLookups,
   useResetOnOpen,
   useSave,
 } from '@/lib/hooks';
 import { MapView } from '@/components/MapView';
-import { BreakdownEditor, breakdownOk, cleanBreakdown } from '@/dialogs/services';
 import { AddressLookupHint, DocumentPicker, err, useZodForm } from '@/components/forms';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
@@ -252,7 +250,7 @@ export function OwnerDialog({
           <Input {...form.register('contact')} inputMode="tel" placeholder="09XX-XXX-XXXX" />
         </Field>
         <Field
-          label="RSBSA number"
+          label="RSBSA Control Number"
           error={err(e, 'rsbsa')}
           hint="Registry System for Basic Sectors in Agriculture, if registered"
         >
@@ -474,7 +472,7 @@ export function PcicDialog({
   ownerId: number;
   policy?: PcicRecord | null;
   animals?: InsurableAnimal[];
-  /** The owner's RSBSA number (suggested as the subsidy reference). */
+  /** The owner's RSBSA Control Number (suggested as the subsidy reference). */
   rsbsa?: string | null;
 }) {
   const form = useZodForm(pcicCreateSchema, {});
@@ -590,7 +588,7 @@ export function PcicDialog({
           />
         </div>
         {subsidized && (
-          <Field label="RSBSA reference no." error={err(e, 'rsbsaRef')}>
+          <Field label="RSBSA Control No." error={err(e, 'rsbsaRef')}>
             <Input {...form.register('rsbsaRef')} />
           </Field>
         )}
@@ -701,10 +699,20 @@ export function FarmDialog({
     source: farm?.source ?? (editing ? '' : 'FARM_VISIT'),
   } as any);
   const geo = useAddressLookup(form, { address: 'address', barangay: 'barangay' });
+  // Choosing a barangay moves the map to it, so the farm is easier to pin.
+  const shapes = useBarangayShapes();
+  const [focusBrgy, setFocusBrgy] = useState('');
   useEffect(() => {
-    if (open) geo.reset();
+    if (open) {
+      geo.reset();
+      setFocusBrgy('');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  const focusArea = focusBrgy
+    ? (shapes.data?.features.find((f) => f.properties?.name === focusBrgy) ?? null)
+    : null;
+  const barangayField = form.register('barangay');
   const save = useSave<any, { id: number }>(
     editing ? 'PATCH' : 'POST',
     editing ? `/api/farms/${farm!.id}` : '/api/farms',
@@ -734,7 +742,10 @@ export function FarmDialog({
     form.setValue('ownerId', id);
     const o = lookups?.owners.find((x) => String(x.id) === id);
     if (o) {
-      if (!form.getValues('barangay')) form.setValue('barangay', o.barangay);
+      if (!form.getValues('barangay')) {
+        form.setValue('barangay', o.barangay);
+        setFocusBrgy(o.barangay);
+      }
       if (!form.getValues('zone') && o.zone) form.setValue('zone', o.zone);
     }
   };
@@ -827,7 +838,14 @@ export function FarmDialog({
             </Select>
           </Field>
           <Field label="Barangay *" error={err(e, 'barangay')}>
-            <Select {...form.register('barangay')} aria-invalid={!!e.barangay}>
+            <Select
+              {...barangayField}
+              onChange={(ev) => {
+                barangayField.onChange(ev);
+                setFocusBrgy(ev.target.value);
+              }}
+              aria-invalid={!!e.barangay}
+            >
               <option value="">Select...</option>
               {BARANGAYS.map((b) => (
                 <option key={b}>{b}</option>
@@ -855,8 +873,8 @@ export function FarmDialog({
         </div>
         <div>
           <p className="mb-2 text-[13px] text-slate-500">
-            Click the map to set the farm location; drag the pin to adjust. The address and barangay are
-            filled in automatically. Coordinates are optional.
+            Choose the barangay to move the map there, then click the map to set the farm location; drag the
+            pin to adjust. The address and barangay are filled in automatically. Coordinates are optional.
           </p>
           <MapView
             className="h-64 sm:h-80"
@@ -868,7 +886,8 @@ export function FarmDialog({
                 geo.lookup(p.lat, p.lng);
               },
             }}
-            fitKey={open ? 'open' : 'closed'}
+            focusArea={focusArea}
+            fitKey={`${open ? 'open' : 'closed'}|${focusArea ? focusBrgy : ''}`}
           />
           <AddressLookupHint state={geo.state} onApplySuggestion={geo.applySuggestion} />
         </div>
@@ -890,24 +909,15 @@ export function GroupDialog({
   const form = useZodForm(groupCreateSchema, {});
   useResetOnOpen(open, form, {
     farmId: String(farmId),
-    species: 'Swine',
+    species: 'Pig',
     breed: '',
     sex: 'Mixed',
-    lifeStage: 'Mixed',
     reportingMonth: isoMonth(),
     count: '0',
     healthStatus: 'Healthy',
     purpose: '',
     remarks: '',
   } as any);
-  const [classify, setClassify] = useState(false);
-  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
-  useEffect(() => {
-    if (open) {
-      setClassify(false);
-      setBreakdown(null);
-    }
-  }, [open]);
   const save = useSave<any>('POST', '/api/population/groups', {
     success: step ? '' : 'Livestock added to the farm.',
     label: (b) => `Add ${b.species} group`,
@@ -947,17 +957,7 @@ export function GroupDialog({
       <form
         id="group-form"
         noValidate
-        onSubmit={form.handleSubmit((v) => {
-          const b = classify ? cleanBreakdown(breakdown) : null;
-          if (!breakdownOk(Number(v.count), b)) {
-            form.setError('count', {
-              type: 'manual',
-              message: 'The classification must add up to the head count',
-            });
-            return;
-          }
-          save.mutate({ ...v, breakdown: b });
-        })}
+        onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
         <Field label="Species" error={err(e, 'species')}>
@@ -974,15 +974,6 @@ export function GroupDialog({
           <Select {...form.register('sex')}>
             {SEXES.map((s) => (
               <option key={s}>{s}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Life stage" error={err(e, 'lifeStage')}>
-          <Select {...form.register('lifeStage')}>
-            {LIFE_STAGES.map((s) => (
-              <option key={s} value={s}>
-                {titleCase(s)}
-              </option>
             ))}
           </Select>
         </Field>
@@ -1027,20 +1018,6 @@ export function GroupDialog({
         <Field label="Remarks" error={err(e, 'remarks')}>
           <Input {...form.register('remarks')} />
         </Field>
-        <div className="sm:col-span-2">
-          <Checkbox label="Classify by age, sex and stage" checked={classify} onChange={setClassify} />
-          {classify && (
-            <div className="mt-2">
-              <BreakdownEditor
-                species={form.watch('species')}
-                total={Number(form.watch('count')) || 0}
-                value={breakdown}
-                onChange={setBreakdown}
-                idPrefix="new-group"
-              />
-            </div>
-          )}
-        </div>
       </form>
     </Dialog>
   );
@@ -1054,7 +1031,6 @@ export interface GroupRow {
   sex: string;
   count: number;
   tagged: number;
-  breakdown?: Breakdown | null;
 }
 
 export function PopulationUpdateDialog({
@@ -1065,12 +1041,9 @@ export function PopulationUpdateDialog({
   prefill,
   note,
   onSaved,
-  classifyGroupId,
 }: DialogProps & {
   farm: { id: number; name: string };
   groups: GroupRow[];
-  /** Open with this species' classification boxes showing (from "Classify" on a species card). */
-  classifyGroupId?: number | null;
   /** Suggested new counts (e.g. after deaths in a disease case); staff review before saving. */
   prefill?: Record<number, { count: number; reason: string }>;
   note?: string;
@@ -1086,19 +1059,6 @@ export function PopulationUpdateDialog({
       reason: prefill?.[g.id]?.reason ?? '',
     })),
   } as any);
-  // Classification (age, sex, stage) per species: optional, shown when ticked.
-  const [classify, setClassify] = useState<Record<number, boolean>>({});
-  const [breakdowns, setBreakdowns] = useState<Record<number, Breakdown | null>>({});
-  useEffect(() => {
-    if (!open) return;
-    setClassify(
-      Object.fromEntries(
-        groups.map((g) => [g.id, g.id === classifyGroupId || !!cleanBreakdown(g.breakdown)]),
-      ),
-    );
-    setBreakdowns(Object.fromEntries(groups.map((g) => [g.id, g.breakdown ?? null])));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
   const save = useSave<any>('POST', '/api/population/updates', {
     success: `Population for ${farm.name} saved.`,
     label: () => `Population update — ${farm.name}`,
@@ -1131,21 +1091,7 @@ export function PopulationUpdateDialog({
       <form
         id="pop-form"
         noValidate
-        onSubmit={form.handleSubmit((v) => {
-          const entries = (v.entries as { groupId: number; count: number; reason?: string }[]).map((x) => ({
-            ...x,
-            breakdown: classify[x.groupId] ? cleanBreakdown(breakdowns[x.groupId]) : null,
-          }));
-          const bad = entries.findIndex((x) => !breakdownOk(x.count, x.breakdown));
-          if (bad >= 0) {
-            form.setError(`entries.${bad}.count` as any, {
-              type: 'manual',
-              message: 'The classification must add up to this count',
-            });
-            return;
-          }
-          save.mutate({ ...v, entries });
-        })}
+        onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="space-y-3"
       >
         {note && (
@@ -1199,24 +1145,6 @@ export function PopulationUpdateDialog({
                   </span>
                 </div>
               </div>
-              <div className="mt-2">
-                <Checkbox
-                  label="Classify by age, sex and stage"
-                  checked={!!classify[g.id]}
-                  onChange={(c) => setClassify((x) => ({ ...x, [g.id]: c }))}
-                />
-              </div>
-              {classify[g.id] && (
-                <div className="mt-2">
-                  <BreakdownEditor
-                    species={g.species}
-                    total={isNaN(val) ? 0 : val}
-                    value={breakdowns[g.id]}
-                    onChange={(b) => setBreakdowns((x) => ({ ...x, [g.id]: b }))}
-                    idPrefix={`pop-${g.id}`}
-                  />
-                </div>
-              )}
             </div>
           );
         })}
@@ -1243,7 +1171,6 @@ export function GroupEditDialog({
     species: string;
     breed: string | null;
     sex: string;
-    lifeStage: string;
     healthStatus: string;
     purpose?: string | null;
     remarks?: string | null;
@@ -1253,7 +1180,6 @@ export function GroupEditDialog({
   useResetOnOpen(open, form, {
     breed: group?.breed ?? '',
     sex: group?.sex ?? 'Mixed',
-    lifeStage: group?.lifeStage ?? 'Mixed',
     healthStatus: group?.healthStatus ?? 'Healthy',
     purpose: group?.purpose ?? '',
     remarks: group?.remarks ?? '',
@@ -1295,15 +1221,6 @@ export function GroupEditDialog({
           <Select {...form.register('sex')}>
             {SEXES.map((s) => (
               <option key={s}>{s}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Life stage" error={err(e, 'lifeStage')}>
-          <Select {...form.register('lifeStage')}>
-            {LIFE_STAGES.map((s) => (
-              <option key={s} value={s}>
-                {titleCase(s)}
-              </option>
             ))}
           </Select>
         </Field>

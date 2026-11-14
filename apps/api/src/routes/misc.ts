@@ -646,7 +646,6 @@ metricsRouter.get(
         species: g.species,
         breed: g.breed,
         sex: g.sex,
-        lifeStage: g.lifeStage,
         count: g.count,
         tagged: g.animals.length,
       })),

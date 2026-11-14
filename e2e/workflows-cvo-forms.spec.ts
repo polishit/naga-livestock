@@ -24,7 +24,7 @@ test('send a batch of samples, print the DA forms, enter results and open a case
 
   const s1 = page.getByRole('listitem', { name: 'Sample 1' });
   await pickOption(s1.getByLabel('Farm (owner) *'), 'San Felipe Piggery');
-  await expect(s1.getByLabel('Species *')).toHaveValue('Swine');
+  await expect(s1.getByLabel('Species *')).toHaveValue('Pig');
   await s1.getByLabel('Age').fill('4 m');
   await s1.getByLabel('Sex').selectOption('M');
   await expect(s1.getByLabel('Specimen *')).toHaveValue('Blood');
@@ -32,7 +32,7 @@ test('send a batch of samples, print the DA forms, enter results and open a case
   // A dead pig gives organs instead of blood.
   await page.getByRole('button', { name: 'Add sample' }).first().click();
   const s2 = page.getByRole('listitem', { name: 'Sample 2' });
-  await expect(s2.getByLabel('Species *')).toHaveValue('Swine');
+  await expect(s2.getByLabel('Species *')).toHaveValue('Pig');
   await s2.getByLabel('Live / dead').selectOption('DEAD');
   await expect(s2.getByLabel('Specimen *')).toHaveValue('Tissue / Organs');
   await expect(s2.getByLabel('Organs taken *')).toHaveValue(/Spleen/);
@@ -78,27 +78,24 @@ test('send a batch of samples, print the DA forms, enter results and open a case
   await expect(page.getByText(/Positive/).first()).toBeVisible();
 });
 
-test('search everything by name, ear tag or code, narrowed by type and barangay', async ({ page }) => {
+test('no Search tab: population monitoring has its own search', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Search', exact: true })).toHaveCount(0);
+  // An old link to the search page opens Population Monitoring.
   await page.goto('/search');
-  await page.getByLabel('Search everything').fill('Piggery');
-  await expect(page.getByText(/\d+ result\(s\)/)).toBeVisible();
-  await expect(page.getByRole('button', { name: /Ground Zero Piggery/ }).first()).toBeVisible();
-  await page.getByLabel('Record type').selectOption('farm');
-  await expect(page).toHaveURL(/type=farm/);
+  await expect(page).toHaveURL(/\/population$/);
+  await expect(page.getByRole('heading', { name: 'Population Monitoring' })).toBeVisible();
+  // Typing in the search lists the matching farms ("By Farm").
+  await page.getByLabel('Search population').fill('Piggery');
+  await expect(page.getByRole('tab', { name: 'By Farm' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('cell', { name: 'Ground Zero Piggery' }).first()).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Hillside Ranch' })).toHaveCount(0);
+  // It works with the barangay filter.
   await page.getByLabel('Barangay').selectOption('Cararayan');
-  await expect(page.getByRole('button', { name: /Ground Zero Piggery/ }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /San Felipe Piggery/ })).toHaveCount(0);
-  await page
-    .getByRole('button', { name: /Ground Zero Piggery/ })
-    .first()
-    .click();
+  await expect(page.getByRole('cell', { name: 'Ground Zero Piggery' }).first()).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'San Felipe Piggery' })).toHaveCount(0);
+  await page.getByRole('cell', { name: 'Ground Zero Piggery' }).first().click();
   await expect(page).toHaveURL(/\/farms\/\d+/);
-
-  // The top search bar leads to the full search.
-  await page.getByPlaceholder(/Search owner, farm/).fill('ET-24');
-  await page.getByRole('button', { name: /Search everything for/ }).click();
-  await expect(page).toHaveURL(/\/search\?q=ET-24/);
-  await expect(page.getByText(/Animal/).first()).toBeVisible();
 });
 
 test('pregnancy diagnosis is offered for cattle and counted with its result', async ({ page }) => {

@@ -55,7 +55,7 @@ export default function StraysPage() {
             onRowClick={(r) => setSelected(r)}
             pageSize={0}
             searchText={(r) =>
-              `${r.code} ${r.species} ${r.ownerName ?? ''} ${r.barangay} ${r.earTag ?? ''} ${r.location} ${r.orNumber ?? ''}`
+              `${r.code} ${r.species} ${r.ownerName ?? ''} ${r.barangay} ${r.earTag ?? ''} ${r.location}`
             }
             defaultSort={{ key: 'discoveredAt', dir: 'desc' }}
             toolbar={
@@ -102,20 +102,6 @@ export default function StraysPage() {
                   r.voided ? <Badge tone="red">Voided</Badge> : <StrayStatusBadge status={r.status} />,
               },
               { key: 'violations', header: 'Violations' },
-              {
-                key: 'fineAmount',
-                header: 'Fine',
-                sort: (r) => r.fineAmount ?? 0,
-                cell: (r) =>
-                  r.fineAmount ? (
-                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      ₱{r.fineAmount.toLocaleString()}
-                      {r.finePaid ? <Badge tone="green">Paid</Badge> : <Badge tone="amber">Unpaid</Badge>}
-                    </span>
-                  ) : (
-                    '—'
-                  ),
-              },
             ]}
           />
         </Card>

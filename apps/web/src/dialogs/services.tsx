@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CLASSIFICATIONS,
   MAX_HEAD,
   MIN_DATE,
   SERVICE_SPECIES_ORDER,
@@ -21,9 +20,7 @@ import {
   isoDate,
   vaccinationCreateSchema,
   vaccinationUpdateSchema,
-  type Breakdown,
   type ServiceType,
-  type Species,
   type VisitPurpose,
 } from '@livestock/shared';
 import { ApiError, isQueued, mutate } from '@/lib/api';
@@ -36,81 +33,6 @@ import { Button, Checkbox, Dialog, Field, Input, Select, Textarea } from '@/comp
 interface DialogProps {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-}
-
-/* ---------------- classification breakdown ---------------- */
-
-const sumOf = (b: Breakdown | null | undefined) => Object.values(b ?? {}).reduce((a, n) => a + (n || 0), 0);
-
-/** Drops zero entries; an empty breakdown is sent as null (not classified). */
-export function cleanBreakdown(b: Breakdown | null | undefined): Breakdown | null {
-  const out: Breakdown = {};
-  for (const [k, n] of Object.entries(b ?? {})) if (n > 0) out[k] = n;
-  return Object.keys(out).length ? out : null;
-}
-
-/** True when a breakdown is empty (not classified) or adds up to the head count. */
-export const breakdownOk = (count: number, b: Breakdown | null | undefined) =>
-  !cleanBreakdown(b) || sumOf(b) === count;
-
-/**
- * Head count per classification (age, sex and production stage) for one species.
- * Optional: leaving every box empty means the heads are not classified yet.
- */
-export function BreakdownEditor({
-  species,
-  total,
-  value,
-  onChange,
-  idPrefix = 'bd',
-}: {
-  species: string;
-  total: number;
-  value: Breakdown | null | undefined;
-  onChange: (b: Breakdown) => void;
-  idPrefix?: string;
-}) {
-  const list = CLASSIFICATIONS[species as Species] ?? CLASSIFICATIONS.Other;
-  const classified = sumOf(value);
-  const ok = classified === 0 || classified === total;
-  return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {list.map((c) => (
-          <label key={c.code} htmlFor={`${idPrefix}-${c.code}`} className="block">
-            <span className="block text-[13px] font-medium text-slate-700">{c.label}</span>
-            <span className="block text-[12px] text-slate-400">
-              {c.sex} · {c.age}
-            </span>
-            <Input
-              id={`${idPrefix}-${c.code}`}
-              type="number"
-              min={0}
-              max={MAX_HEAD}
-              inputMode="numeric"
-              className="mt-1 h-9"
-              value={value?.[c.code] ? String(value[c.code]) : ''}
-              placeholder="0"
-              onChange={(e) => {
-                const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
-                onChange({ ...(value ?? {}), [c.code]: n });
-              }}
-            />
-          </label>
-        ))}
-      </div>
-      <div
-        className={cn('mt-2 text-[13px]', ok ? 'text-slate-500' : 'text-red-600')}
-        role={ok ? undefined : 'alert'}
-      >
-        {classified === 0
-          ? `Not classified yet — optional. Total: ${total} head.`
-          : ok
-            ? `All ${total} head classified.`
-            : `Classified ${classified} of ${total} head — the numbers must add up to ${total}.`}
-      </div>
-    </div>
-  );
 }
 
 /* ---------------- deworming & veterinary services ---------------- */
@@ -605,13 +527,10 @@ export interface VisitGroup {
   breed: string | null;
   count: number;
   tagged: number;
-  breakdown?: Breakdown | null;
 }
 
 interface CountRow {
   count: string;
-  breakdown: Breakdown | null;
-  classify: boolean;
 }
 interface ServiceRow {
   type: '' | ServiceType;
@@ -621,7 +540,7 @@ interface ServiceRow {
 
 /**
  * Record a farm visit: the office's main field activity. In one form the staff note the purpose and
- * findings, update the head count (with the classification breakdown) and record deworming or other
+ * findings, update the head count and record deworming or other
  * services given during the visit. Editing a visit changes the visit details only.
  */
 export function FarmVisitDialog({
@@ -675,14 +594,7 @@ export function FarmVisitDialog({
     });
     setUpdateCounts(!editing && defaultPurpose === 'ROUTINE' && groups.length > 0);
     setGiveServices(!editing && (defaultPurpose === 'DEWORMING' || defaultPurpose === 'CHECKUP'));
-    setCounts(
-      Object.fromEntries(
-        groups.map((g) => [
-          g.id,
-          { count: String(g.count), breakdown: g.breakdown ?? null, classify: !!cleanBreakdown(g.breakdown) },
-        ]),
-      ),
-    );
+    setCounts(Object.fromEntries(groups.map((g) => [g.id, { count: String(g.count) }])));
     const svc: ServiceType | '' =
       defaultPurpose === 'DEWORMING' ? 'DEWORMING' : defaultPurpose === 'CHECKUP' ? 'CHECKUP' : '';
     setServices(
@@ -749,10 +661,7 @@ export function FarmVisitDialog({
           const n = Number(r?.count);
           if (r?.count === '' || isNaN(n) || n < 0) errs[`count-${g.id}`] = 'Enter the head count';
           else if (n < g.tagged) errs[`count-${g.id}`] = `At least ${g.tagged} (tagged animals)`;
-          const b = r?.classify ? cleanBreakdown(r.breakdown) : null;
-          if (b && !breakdownOk(n, b))
-            errs[`count-${g.id}`] = 'The classification must add up to the head count';
-          return { groupId: g.id, count: n, breakdown: b, reason: `Farm visit ${v.date}` };
+          return { groupId: g.id, count: n, reason: `Farm visit ${v.date}` };
         })
       : [];
     const serviceEntries = giveServices
@@ -845,7 +754,7 @@ export function FarmVisitDialog({
   const setCount = (id: number, patch: Partial<CountRow>) =>
     setCounts((c) => ({
       ...c,
-      [id]: { ...(c[id] ?? { count: '0', breakdown: null, classify: false }), ...patch },
+      [id]: { ...(c[id] ?? { count: '0' }), ...patch },
     }));
   const setService = (id: number, patch: Partial<ServiceRow>) =>
     setServices((s) => ({ ...s, [id]: { ...(s[id] ?? { type: '', count: '0', product: '' }), ...patch } }));
@@ -955,7 +864,6 @@ export function FarmVisitDialog({
                 )}
                 {sorted.map((g) => {
                   const r = counts[g.id];
-                  const n = Number(r?.count);
                   return (
                     <div key={g.id} className="rounded-lg border border-slate-200 p-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -968,36 +876,16 @@ export function FarmVisitDialog({
                             {g.code} · last recorded {g.count} head{g.tagged ? ` · ${g.tagged} tagged` : ''}
                           </div>
                         </div>
-                        <div className="flex items-end gap-3">
-                          <Field label="Head count now" error={errors[`count-${g.id}`]} className="w-36">
-                            <Input
-                              type="number"
-                              min={g.tagged}
-                              value={r?.count ?? ''}
-                              aria-label={`${g.species} head count`}
-                              onChange={(e) => setCount(g.id, { count: e.target.value })}
-                            />
-                          </Field>
-                          <div className="pb-2">
-                            <Checkbox
-                              label="Classify"
-                              checked={!!r?.classify}
-                              onChange={(c) => setCount(g.id, { classify: c })}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      {r?.classify && (
-                        <div className="mt-3">
-                          <BreakdownEditor
-                            species={g.species}
-                            total={isNaN(n) ? 0 : n}
-                            value={r.breakdown}
-                            onChange={(b) => setCount(g.id, { breakdown: b })}
-                            idPrefix={`visit-${g.id}`}
+                        <Field label="Head count now" error={errors[`count-${g.id}`]} className="w-36">
+                          <Input
+                            type="number"
+                            min={g.tagged}
+                            value={r?.count ?? ''}
+                            aria-label={`${g.species} head count`}
+                            onChange={(e) => setCount(g.id, { count: e.target.value })}
                           />
-                        </div>
-                      )}
+                        </Field>
+                      </div>
                     </div>
                   );
                 })}

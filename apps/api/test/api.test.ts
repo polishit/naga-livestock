@@ -87,7 +87,7 @@ describe('dashboard metrics match the prototype seed', () => {
 
   it('generates every report type', async () => {
     const { body: types } = await admin.get('/api/reports');
-    expect(types).toHaveLength(36);
+    expect(types).toHaveLength(35);
     for (const t of types.filter((x: { id: string }) => x.id !== 'outbreak-area')) {
       const res = await admin.get(`/api/reports/${t.id}`);
       expect(res.status, t.id).toBe(200);
@@ -158,7 +158,7 @@ describe('disease surveillance', () => {
   it('uses farm coordinates when a case has no pin, and records history', async () => {
     const res = await admin
       .post('/api/cases')
-      .send({ ownerId: 1, farmId: 1, species: 'Swine', disease: 'ASF', affected: 3, deaths: 0 });
+      .send({ ownerId: 1, farmId: 1, species: 'Pig', disease: 'ASF', affected: 3, deaths: 0 });
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({
       lat: 13.638,
@@ -183,7 +183,7 @@ describe('disease surveillance', () => {
   it('rejects a farm that does not belong to the owner', async () => {
     const res = await admin
       .post('/api/cases')
-      .send({ ownerId: 2, farmId: 1, species: 'Swine', disease: 'ASF', affected: 1, deaths: 0 });
+      .send({ ownerId: 2, farmId: 1, species: 'Pig', disease: 'ASF', affected: 1, deaths: 0 });
     expect(res.status).toBe(400);
     expect(res.body.fieldErrors.farmId).toBeDefined();
   });
@@ -274,7 +274,7 @@ describe('logic fixes: population stays correct', () => {
   it('groups can be edited, and archived only when empty', async () => {
     const e = await admin
       .patch('/api/population/groups/2')
-      .send({ breed: 'Native', sex: 'Mixed', lifeStage: 'Mixed', healthStatus: 'Healthy' });
+      .send({ breed: 'Native', sex: 'Mixed', healthStatus: 'Healthy' });
     expect(e.status).toBe(200);
     expect(e.body.breed).toBe('Native');
     expect((await admin.post('/api/population/groups/2/archive')).status).toBe(400);
@@ -286,11 +286,11 @@ describe('logic fixes: disease cases', () => {
     const base = { ownerId: 1, farmId: 1, disease: 'Test', deaths: 0 };
     const noSpecies = await admin.post('/api/cases').send({ ...base, species: 'Goat', affected: 1 });
     expect(noSpecies.body.fieldErrors.species[0]).toMatch(/has no Goat/);
-    const tooMany = await admin.post('/api/cases').send({ ...base, species: 'Swine', affected: 999 });
-    expect(tooMany.body.fieldErrors.affected[0]).toMatch(/only 40 Swine/);
+    const tooMany = await admin.post('/api/cases').send({ ...base, species: 'Pig', affected: 999 });
+    expect(tooMany.body.fieldErrors.affected[0]).toMatch(/only 40 Pig/);
     const dates = await admin.post('/api/cases').send({
       ...base,
-      species: 'Swine',
+      species: 'Pig',
       affected: 1,
       reportedAt: '2026-10-01',
       symptomsDate: '2026-10-05',
@@ -298,7 +298,7 @@ describe('logic fixes: disease cases', () => {
     expect(dates.body.fieldErrors.symptomsDate).toBeDefined();
     const future = await admin
       .post('/api/cases')
-      .send({ ...base, species: 'Swine', affected: 1, reportedAt: '2099-01-01' });
+      .send({ ...base, species: 'Pig', affected: 1, reportedAt: '2099-01-01' });
     expect(future.body.fieldErrors.reportedAt[0]).toMatch(/future/);
   });
 
@@ -306,7 +306,7 @@ describe('logic fixes: disease cases', () => {
     const t = new Date().toISOString().slice(0, 10);
     const c = await admin
       .post('/api/cases')
-      .send({ ownerId: 1, farmId: 1, species: 'Swine', disease: 'ASF', affected: 2, deaths: 0 });
+      .send({ ownerId: 1, farmId: 1, species: 'Pig', disease: 'ASF', affected: 2, deaths: 0 });
     const id = c.body.id;
     expect((await admin.post(`/api/cases/${id}/status`).send({ status: 'POSITIVE' })).status).toBe(404);
     const status = async () => (await admin.get(`/api/cases/${id}`)).body.case.status;
@@ -347,7 +347,7 @@ describe('logic fixes: disease cases', () => {
   it('a case never tested can be closed as not confirmed', async () => {
     const c = await admin
       .post('/api/cases')
-      .send({ ownerId: 1, farmId: 1, species: 'Swine', disease: 'Swine flu', affected: 1, deaths: 0 });
+      .send({ ownerId: 1, farmId: 1, species: 'Pig', disease: 'Swine flu', affected: 1, deaths: 0 });
     const r = await admin
       .post(`/api/cases/${c.body.id}/close`)
       .send({ outcome: 'NOT_CONFIRMED', note: 'Animals recovered in two days; owner refused sampling' });
@@ -358,7 +358,7 @@ describe('logic fixes: disease cases', () => {
     const t = new Date().toISOString().slice(0, 10);
     const c = await admin
       .post('/api/cases')
-      .send({ ownerId: 1, farmId: 1, species: 'Swine', disease: 'ASF', affected: 2, deaths: 0 });
+      .send({ ownerId: 1, farmId: 1, species: 'Pig', disease: 'ASF', affected: 2, deaths: 0 });
     const id = c.body.id;
     const due = async () =>
       (await admin.get('/api/case-worklist')).body.visits.find((v: { caseId: number }) => v.caseId === id);
@@ -553,7 +553,7 @@ describe('richer records, date rules and record keeping', () => {
     expect(early.body.fieldErrors.date[0]).toMatch(/before the case began/);
     const pcic = await admin
       .post('/api/owners/1/pcic')
-      .send({ species: 'Swine', applicationDate: '2099-01-01' });
+      .send({ species: 'Pig', applicationDate: '2099-01-01' });
     expect(pcic.body.fieldErrors.applicationDate).toBeDefined();
     const phone = await admin
       .post('/api/owners')
@@ -737,7 +737,7 @@ describe('logic audit: corrections, reminders and record integrity', () => {
   it('cannot report a month before the group was first recorded', async () => {
     const g = await admin
       .post('/api/population/groups')
-      .send({ farmId: 13, species: 'Duck', count: 5, reportingMonth: isoMonth() });
+      .send({ farmId: 13, species: 'Ducks', count: 5, reportingMonth: isoMonth() });
     expect(g.status).toBe(201);
     const early = await admin
       .post('/api/population/updates')
@@ -857,7 +857,7 @@ describe('logic audit: corrections, reminders and record integrity', () => {
 
   it('PCIC insurance: the scanned application with its date, type and RSBSA subsidy; status can be updated', async () => {
     const p = await admin.post('/api/owners/2/pcic').send({
-      species: 'Swine',
+      species: 'Pig',
       applicationDate: '2026-01-05',
       applicationType: 'NEW',
       subsidized: true,
@@ -865,7 +865,7 @@ describe('logic audit: corrections, reminders and record integrity', () => {
       fileKeys: ['documents/2026-01/pcic-application.pdf'],
     });
     expect(p.status).toBe(201);
-    const noDate = await admin.post('/api/owners/2/pcic').send({ species: 'Swine' });
+    const noDate = await admin.post('/api/owners/2/pcic').send({ species: 'Pig' });
     expect(noDate.body.fieldErrors.applicationDate).toBeDefined();
     const saved = (await admin.get('/api/owners/2')).body.pcic.find(
       (x: { id: number }) => x.id === p.body.id,
@@ -879,7 +879,7 @@ describe('logic audit: corrections, reminders and record integrity', () => {
       status: 'ACTIVE',
     });
     const claim = await admin.patch(`/api/owners/pcic/${p.body.id}`).send({
-      species: 'Swine',
+      species: 'Pig',
       applicationDate: '2026-01-05',
       applicationType: 'NEW',
       status: 'CLAIMED',
@@ -927,9 +927,7 @@ describe('logic audit: corrections, reminders and record integrity', () => {
 describe('usability additions', () => {
   it('moves a tagged animal to another group on the same farm', async () => {
     // NC-C-0007 is in GRP-0021 (farm 10, cattle).
-    const g = await admin
-      .post('/api/population/groups')
-      .send({ farmId: 10, species: 'Cattle', lifeStage: 'adult', count: 5 });
+    const g = await admin.post('/api/population/groups').send({ farmId: 10, species: 'Cattle', count: 5 });
     expect(g.status).toBe(201);
     const src0 = (await prisma.populationGroup.findUnique({ where: { id: 21 } }))!.count;
     const wrongSpecies = await admin.post('/api/animals/7/move').send({ groupId: 22 });
@@ -994,7 +992,7 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     return { ownerId: o.body.id as number, farmId: f.body.id as number, animals };
   }
 
-  it('records a violation and a paid fine, then closes the incident', async () => {
+  it('records a violation (no fine or penalty), then closes the incident', async () => {
     const s = await admin
       .post('/api/strays')
       .send({ species: 'Goat', barangay: 'Pacol', location: 'Highway shoulder', ownerId: 5 });
@@ -1003,33 +1001,31 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     // Only two statuses remain: Reported and Closed.
     const old = await admin.patch(url).send({ status: 'IMPOUNDED' });
     expect(old.status).toBe(400);
-    const fined = await admin.patch(url).send({
+    const marked = await admin.patch(url).send({
       violationType: 'Animal on a public road or highway',
+      violations: '1',
+      // Fine and payment fields are no longer part of the record: they are ignored.
       fineAmount: '500',
+      orNumber: 'OR-778812',
     });
-    expect(fined.status).toBe(200);
-    expect(fined.body).toMatchObject({ status: 'REPORTED', fineAmount: 500, finePaid: false });
-    expect(fined.body.impoundPlace).toBeUndefined();
+    expect(marked.status).toBe(200);
+    expect(marked.body).toMatchObject({ status: 'REPORTED', violations: 1 });
+    expect(marked.body.fineAmount).toBeUndefined();
+    expect(marked.body.orNumber).toBeUndefined();
+    expect(marked.body.impoundPlace).toBeUndefined();
     // Sending only the remarks keeps everything else.
     await admin.patch(url).send({ remarks: 'Owner informed by phone' });
     const kept = (await admin.get(url)).body;
-    expect(kept).toMatchObject({ status: 'REPORTED', fineAmount: 500 });
-    const noOr = await admin.patch(url).send({ finePaid: true });
-    expect(noOr.body.fieldErrors.orNumber[0]).toMatch(/official receipt/);
+    expect(kept).toMatchObject({ status: 'REPORTED', violationType: 'Animal on a public road or highway' });
     const summary = (await admin.get('/api/strays/owner/5/summary')).body;
-    expect(summary.unpaidFines).toBeGreaterThanOrEqual(1);
-    const done = await admin.patch(url).send({
-      status: 'CLOSED',
-      finePaid: true,
-      orNumber: 'OR-778812',
-      paidAt: today,
-    });
+    expect(summary.unpaidFines).toBeUndefined();
+    const done = await admin.patch(url).send({ status: 'CLOSED' });
     expect(done.status).toBe(200);
     const report = (await admin.get('/api/reports/stray-incidents')).body;
     const row = report.rows.find((r: { code: string }) => r.code === s.body.code);
-    expect(row.fine).toMatch(/Paid, OR OR-778812/);
+    expect(row.fine).toBeUndefined();
     expect(row.status).toBe('Closed');
-    expect(report.columns.some((c: { key: string }) => c.key === 'impound')).toBe(false);
+    expect(report.columns.some((c: { key: string }) => c.key === 'fine' || c.key === 'impound')).toBe(false);
   });
 
   it("keeps a tagged stray's owner consistent with the registered tag", async () => {
@@ -1128,7 +1124,7 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     const rs = (await admin.get('/api/reports/rsbsa-registration')).body;
     const total = rs.rows.reduce((a: number, r: { owners: number }) => a + r.owners, 0);
     expect(total).toBe(owners.length);
-    expect(rs.summary.find((x: { label: string }) => x.label === 'With RSBSA No.').value).toBe(
+    expect(rs.summary.find((x: { label: string }) => x.label === 'With RSBSA Control No.').value).toBe(
       owners.filter((o) => o.rsbsa).length,
     );
     const o = await admin
@@ -1137,7 +1133,7 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     expect(o.status).toBe(201);
     const inc = (await admin.get('/api/reports/incomplete-records')).body;
     const row = inc.rows.find((r: { code: string }) => r.code === o.body.code);
-    expect(row).toMatchObject({ type: 'Owner', missing: 'contact number, RSBSA number' });
+    expect(row).toMatchObject({ type: 'Owner', missing: 'contact number, RSBSA Control Number' });
     expect(inc.rows.some((r: { type: string }) => r.type === 'Animal')).toBe(true);
   });
 
@@ -1161,12 +1157,12 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
   });
 
   it('blocks moving animals out of a farm under quarantine until it is lifted', async () => {
-    const sick = await freshHerd('Quarantine Owner', { Swine: 2 });
-    const other = await freshHerd('Receiving Owner', { Swine: 1 });
+    const sick = await freshHerd('Quarantine Owner', { Pig: 2 });
+    const other = await freshHerd('Receiving Owner', { Pig: 1 });
     const c = await admin.post('/api/cases').send({
       ownerId: sick.ownerId,
       farmId: sick.farmId,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'African Swine Fever (ASF)',
       affected: 1,
       deaths: 0,
@@ -1177,7 +1173,7 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
       .post(`/api/cases/${c.body.id}/responses`)
       .send({ type: 'QUARANTINE', status: 'ONGOING', date: today });
     expect(q.status).toBe(201);
-    const out = sick.animals.Swine[0];
+    const out = sick.animals.Pig[0];
     const blocked = await admin
       .post('/api/transfers')
       .send({ animalId: out, toFarmId: other.farmId, date: today });
@@ -1185,7 +1181,7 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     expect(blocked.body.fieldErrors.date[0]).toMatch(new RegExp(`under quarantine for ${c.body.code}`));
     const into = await admin
       .post('/api/transfers')
-      .send({ animalId: other.animals.Swine[0], toFarmId: sick.farmId, date: today });
+      .send({ animalId: other.animals.Pig[0], toFarmId: sick.farmId, date: today });
     expect(into.body.fieldErrors.toFarmId[0]).toMatch(/under quarantine/);
     const lift = await admin
       .patch(`/api/responses/${q.body.id}`)
@@ -1212,11 +1208,11 @@ describe('farm edits reach open cases; work lists across open cases', () => {
       lat: 13.66,
       lng: 123.27,
     });
-    await admin.post('/api/population/groups').send({ farmId: f.body.id, species: 'Swine', count: 5 });
+    await admin.post('/api/population/groups').send({ farmId: f.body.id, species: 'Pig', count: 5 });
     const c = await admin.post('/api/cases').send({
       ownerId: o.body.id,
       farmId: f.body.id,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'Hog cholera',
       affected: 1,
       deaths: 0,
@@ -1252,11 +1248,11 @@ describe('farm edits reach open cases; work lists across open cases', () => {
     const f = await admin
       .post('/api/farms')
       .send({ ownerId: o.body.id, name: 'Worklist Farm', type: 'backyard', barangay: 'Pacol' });
-    await admin.post('/api/population/groups').send({ farmId: f.body.id, species: 'Swine', count: 5 });
+    await admin.post('/api/population/groups').send({ farmId: f.body.id, species: 'Pig', count: 5 });
     const c = await admin.post('/api/cases').send({
       ownerId: o.body.id,
       farmId: f.body.id,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'African Swine Fever (ASF)',
       affected: 1,
       deaths: 0,
@@ -1316,9 +1312,7 @@ describe('reports & analytics insights and the task list', () => {
       'Vaccination',
       'Stray livestock & violations',
     ]);
-    expect(r.body.rows.find((x: { indicator: string }) => x.indicator === 'Fines collected').value).toMatch(
-      /^₱/,
-    );
+    expect(r.body.rows.some((x: { indicator: string }) => /fine/i.test(x.indicator))).toBe(false);
   });
 
   it('compares this period with the one before', async () => {
@@ -1443,7 +1437,7 @@ describe('removing and correcting records', () => {
     const c = await admin.post('/api/cases').send({
       ownerId: 1,
       farmId: 1,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'Duplicate report',
       affected: 1,
       deaths: 0,
@@ -1526,7 +1520,7 @@ describe('removing and correcting records', () => {
     const c = await admin.post('/api/cases').send({
       ownerId: 1,
       farmId: 1,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'Edit test',
       affected: 1,
       deaths: 0,
@@ -1557,26 +1551,32 @@ describe('removing and correcting records', () => {
 });
 
 describe('CVO revisions: masterlist, deworming, farm visits, monthly report', () => {
-  it('stores a classification breakdown that must add up to the head count', async () => {
-    const bad = await admin.post('/api/population/groups').send({
-      farmId: 13,
-      species: 'Goat',
-      count: 6,
-      reportingMonth: isoMonth(),
-      breakdown: { kid: 2, doe: 2 },
-    });
-    expect(bad.status).toBe(400);
+  it('keeps head counts only: no life stage or age/sex/stage classification', async () => {
     const ok = await admin.post('/api/population/groups').send({
       farmId: 13,
       species: 'Goat',
       count: 6,
       reportingMonth: isoMonth(),
-      breakdown: { kid: 2, doe: 3, buck: 1 },
+      lifeStage: 'adult',
+      breakdown: { kid: 2, doe: 2 },
     });
     expect(ok.status).toBe(201);
     const farm = await admin.get('/api/farms/13');
     const g = farm.body.groups.find((x: { id: number }) => x.id === ok.body.id);
-    expect(g.breakdown).toEqual({ kid: 2, doe: 3, buck: 1 });
+    expect(g.count).toBe(6);
+    expect(g.lifeStage).toBeUndefined();
+    expect(g.breakdown).toBeUndefined();
+  });
+
+  it('uses the office species list: Cattle, Carabao, Goat, Sheep, Pig, Chicken, Ducks, Goose', async () => {
+    for (const species of ['Goose', 'Ducks'])
+      expect(
+        (await admin.post('/api/population/groups').send({ farmId: 13, species, count: 3 })).status,
+      ).toBe(201);
+    for (const species of ['Swine', 'Duck', 'Other Poultry', 'Other'])
+      expect(
+        (await admin.post('/api/population/groups').send({ farmId: 13, species, count: 3 })).status,
+      ).toBe(400);
   });
 
   it('records deworming without a product and requires a vaccine only for vaccinations', async () => {
@@ -1651,7 +1651,7 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     });
   const pig = (sampleId: string, extra: object = {}) => ({
     farmId: 1,
-    species: 'Swine',
+    species: 'Pig',
     sampleId,
     sampleType: 'Blood',
     animalAge: '3 m',
@@ -1666,7 +1666,7 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     const bad = await batch([pig('SURV-A1'), pig('SURV-A1')]);
     expect(bad.body.fieldErrors.samples[0]).toMatch(/own sample ID/);
     const wrongSpecies = await batch([pig('SURV-A1', { farmId: 10 })]);
-    expect(wrongSpecies.body.fieldErrors['samples.0.species'][0]).toMatch(/no swine on record/);
+    expect(wrongSpecies.body.fieldErrors['samples.0.species'][0]).toMatch(/no pig on record/);
     const noOrgans = await batch([pig('SURV-A1', { condition: 'DEAD', sampleType: 'Tissue / Organs' })]);
     expect(noOrgans.status).toBe(201);
     const b = await batch([
@@ -1684,7 +1684,7 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     const dup = await batch([pig('SURV-B1')]);
     expect(dup.body.fieldErrors['samples.0.sampleId'][0]).toMatch(/already used/);
     let s = (await admin.get(`/api/lab-submissions/${b.body.id}`)).body;
-    expect(s).toMatchObject({ total: 3, pending: 3, barangays: [expect.any(String)], species: ['Swine'] });
+    expect(s).toMatchObject({ total: 3, pending: 3, barangays: [expect.any(String)], species: ['Pig'] });
     expect(s.samples[2]).toMatchObject({
       organs: 'Spleen, Lymph node',
       hoursSinceDeath: 6,
@@ -1724,7 +1724,7 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     const c = await admin.post('/api/cases').send({
       ownerId: s.samples[2].ownerId,
       farmId: 1,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'African Swine Fever (ASF)',
       affected: 1,
       deaths: 1,
@@ -1737,7 +1737,7 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     const again = await admin.post('/api/cases').send({
       ownerId: s.samples[2].ownerId,
       farmId: 1,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'ASF',
       affected: 1,
       deaths: 0,
@@ -1752,7 +1752,7 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     const c = await admin.post('/api/cases').send({
       ownerId: 1,
       farmId: 1,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'ASF',
       affected: 1,
       deaths: 0,
@@ -1845,14 +1845,14 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     expect(found[0]).toMatchObject({ type: 'Animal' });
   });
 
-  it('the search page narrows by type, barangay and species', async () => {
+  it('the search narrows by type, barangay and species', async () => {
     const all = (await admin.get('/api/search?q=SURV-B&limit=50')).body;
     expect(all.some((x: { type: string }) => x.type === 'Sample')).toBe(true);
     const batches = (await admin.get('/api/search?q=SUB-&type=submission&limit=50')).body;
     expect(batches.length).toBeGreaterThan(0);
     expect(batches.every((x: { type: string }) => x.type === 'Lab batch')).toBe(true);
-    const pacolSwine = (await admin.get('/api/search?barangay=Pacol&species=Swine&limit=100')).body;
-    expect(pacolSwine.length).toBeGreaterThan(0);
-    expect(pacolSwine.every((x: { barangay?: string }) => x.barangay === 'Pacol')).toBe(true);
+    const pacolPigs = (await admin.get('/api/search?barangay=Pacol&species=Pig&limit=100')).body;
+    expect(pacolPigs.length).toBeGreaterThan(0);
+    expect(pacolPigs.every((x: { barangay?: string }) => x.barangay === 'Pacol')).toBe(true);
   });
 });

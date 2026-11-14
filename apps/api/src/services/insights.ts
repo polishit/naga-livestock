@@ -96,7 +96,6 @@ async function periodCounts(p: Period, f: Filters = {}) {
       },
     }),
   ]);
-  const fines = strays.filter((s) => s.fineAmount != null);
   const vaxOnly = vax.filter((v) => v.serviceType === 'VACCINATION');
   const deworm = vax.filter((v) => v.serviceType === 'DEWORMING');
   const checkups = vax.filter((v) => v.serviceType === 'CHECKUP');
@@ -129,8 +128,6 @@ async function periodCounts(p: Period, f: Filters = {}) {
       .sort((a, b) => b.doses - a.doses),
     strays: strays.length,
     closedStrays: strays.filter((s) => s.status === 'CLOSED').length,
-    finesImposed: sum(fines.map((s) => Number(s.fineAmount))),
-    finesCollected: sum(fines.filter((s) => s.finePaid).map((s) => Number(s.fineAmount))),
     visits,
     labsSent,
     labPositive: labResults.filter((l) => l.result === 'POSITIVE').length,
@@ -313,7 +310,7 @@ export async function dataQuality(f: Filters = {}) {
     },
     {
       key: 'rsbsa',
-      label: 'Owners without an RSBSA number',
+      label: 'Owners without an RSBSA Control Number',
       missing: owners.filter((o) => !o.rsbsa).length,
       total: owners.length,
       href: '/owners?rsbsa=no',
@@ -432,8 +429,6 @@ export async function accomplishmentReport(
   const popEnd = pop.get(endMonth) ?? 0;
   const targets = await targetProgress(Number(to.slice(0, 4)));
   const s = await getSettings();
-  const peso = (n: number) =>
-    `₱${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const rows: { section: string; indicator: string; value: string | number }[] = [];
   const add = (section: string, indicator: string, value: string | number) =>
     rows.push({ section, indicator, value });
@@ -495,8 +490,6 @@ export async function accomplishmentReport(
 
   add('Stray livestock & violations', 'Stray incidents reported', c.strays);
   add('Stray livestock & violations', 'Incidents closed', c.closedStrays);
-  add('Stray livestock & violations', 'Fines imposed', peso(c.finesImposed));
-  add('Stray livestock & violations', 'Fines collected', peso(c.finesCollected));
 
   const scope = [p.barangay, p.species].filter(Boolean).join(' · ');
   return {

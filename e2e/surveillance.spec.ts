@@ -22,7 +22,7 @@ test('report a disease incident and move it through the surveillance stages', as
   await expect(page.getByLabel('Barangay')).toHaveValue('Pacol');
   // Only the species this farm keeps are offered; animals affected starts at the farm's head count.
   const speciesOptions = page.getByLabel('Species affected').locator('option');
-  await expect(speciesOptions).toHaveText(['Select...', 'Chicken — 158 head', 'Other Poultry — 26 head']);
+  await expect(speciesOptions).toHaveText(['Select...', 'Chicken — 158 head', 'Ducks — 26 head']);
   await page.getByLabel('Species affected').selectOption('Chicken');
   await expect(page.getByLabel('Animals affected')).toHaveValue('158');
   await expect(page.getByText('158 chicken on this farm')).toBeVisible();
@@ -127,7 +127,7 @@ test('radius analysis matches the outbreak figures', async ({ page }) => {
   await expect(page.getByRole('cell', { name: /^210 m/ })).toBeVisible();
   await expect(page.getByRole('cell', { name: /^910 m/ })).toBeVisible();
   await page.getByRole('button', { name: '500 m' }).click();
-  await expect(page.getByText('Farms within 500 m')).toBeVisible();
+  await expect(page.getByText('Farms to monitor within 500 m')).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'CSV' }).click();
   expect((await download).suggestedFilename()).toBe('outbreak-area-report-case-0001.csv');
@@ -319,7 +319,7 @@ test('a negative result sets the status by itself; a never-tested case closes as
   const head = page.getByRole('listitem', { name: 'Step 5: Update the head count' });
   await expect(head).toContainText(/animal\(s\) died or were culled/);
   await head.getByRole('button', { name: 'Update head count' }).click();
-  await expect(dialog(page).getByText('Suggested counts take 2 swine off for CASE-0008')).toBeVisible();
+  await expect(dialog(page).getByText('Suggested counts take 2 head of pig off for CASE-0008')).toBeVisible();
   await dialog(page).getByRole('button', { name: 'Save head count' }).click();
   await expect(head).toContainText('already reflects');
   await page.getByRole('tab', { name: 'Timeline' }).click();

@@ -21,11 +21,9 @@ import {
   FARM_TYPES,
   FARM_TYPE_LABELS,
   LIVESTOCK_RAISED,
-  breakdownText,
   fmtDate,
   fmtMonth,
   titleCase,
-  type Breakdown,
   type FarmType,
   ANIMAL_PURPOSE_LABELS,
   type AnimalPurpose,
@@ -256,14 +254,12 @@ interface FarmDetail {
     species: string;
     breed: string | null;
     sex: string;
-    lifeStage: string;
     count: number;
     tagged: number;
     healthStatus: string;
     purpose: string | null;
     remarks: string | null;
     lastVerified: string | null;
-    breakdown: Breakdown | null;
   }[];
   animals: {
     id: number;
@@ -312,7 +308,6 @@ export function FarmDetailPage() {
   const [dlg, setDlg] = useState<Dlg>(null);
   const [editGroup, setEditGroup] = useState<FarmDetail['groups'][number] | null>(null);
   const [activityGroup, setActivityGroup] = useState<FarmDetail['groups'][number] | null>(null);
-  const [classifyId, setClassifyId] = useState<number | null>(null);
   const [editVisit, setEditVisit] = useState<VisitRecord | null>(null);
   const [editService, setEditService] = useState<VaccinationRow | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -588,9 +583,6 @@ export function FarmDetailPage() {
                       className="rounded-lg bg-slate-100 px-3 py-1.5 text-[14px] text-slate-700"
                     >
                       <b className="font-semibold text-slate-900">{g.count}</b> {g.species}
-                      {g.breakdown && breakdownText(g.species, g.breakdown) ? (
-                        <span className="text-slate-500"> — {breakdownText(g.species, g.breakdown)}</span>
-                      ) : null}
                     </span>
                   ))
                 ) : (
@@ -634,22 +626,13 @@ export function FarmDetailPage() {
         {tab === 'livestock' && (
           <div>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[14px] text-slate-600">
-                Head count per species with the classification by age, sex and production stage.
-              </p>
+              <p className="text-[14px] text-slate-600">Head count per species.</p>
               {editable && (
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setDlg('group')}>
                     <Plus /> Add Species
                   </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setClassifyId(null);
-                      setDlg('update');
-                    }}
-                    disabled={!data.groups.length}
-                  >
+                  <Button size="sm" onClick={() => setDlg('update')} disabled={!data.groups.length}>
                     <ClipboardList /> Update Head Count
                   </Button>
                 </div>
@@ -663,7 +646,6 @@ export function FarmDetailPage() {
                     species={g.species}
                     count={g.count}
                     breed={g.breed}
-                    breakdown={g.breakdown}
                     meta={
                       <>
                         {g.code} · {g.healthStatus}
@@ -680,15 +662,8 @@ export function FarmDetailPage() {
                         </Button>
                         {editable && (
                           <>
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              onClick={() => {
-                                setClassifyId(g.id);
-                                setDlg('update');
-                              }}
-                            >
-                              Update count / classify
+                            <Button size="xs" variant="outline" onClick={() => setDlg('update')}>
+                              Update count
                             </Button>
                             <Button
                               size="xs"
@@ -856,12 +831,7 @@ export function FarmDetailPage() {
         onOpenChange={(o) => !o && setActivityGroup(null)}
         group={activityGroup}
       />
-      <PopulationUpdateDialog
-        {...dlgProps('update')}
-        farm={f}
-        groups={data.groups}
-        classifyGroupId={classifyId}
-      />
+      <PopulationUpdateDialog {...dlgProps('update')} farm={f} groups={data.groups} />
       <AnimalDialog {...dlgProps('animal')} />
       <ServiceDialog {...dlgProps('service')} farmId={f.id} />
       <FarmVisitDialog

@@ -214,7 +214,7 @@ export function LabSubmissionsPage() {
 const blankSample = (prev?: Record<string, any>, n = 1) => ({
   id: undefined,
   farmId: prev?.farmId ?? '',
-  species: prev?.species ?? 'Swine',
+  species: prev?.species ?? 'Pig',
   sampleId: '',
   sampleType: prev?.sampleType ?? 'Blood',
   animalAge: '',
@@ -468,13 +468,11 @@ export function LabSubmissionFormPage() {
                     </Field>
                     <Field label="Species *" error={serverErr('species')}>
                       <Select {...reg('species')} aria-invalid={!!serverErr('species')}>
-                        {(species.length ? species.map((x) => x.species) : [r.species || 'Swine']).map(
-                          (sp) => (
-                            <option key={sp} value={sp}>
-                              {sp}
-                            </option>
-                          ),
-                        )}
+                        {(species.length ? species.map((x) => x.species) : [r.species || 'Pig']).map((sp) => (
+                          <option key={sp} value={sp}>
+                            {sp}
+                          </option>
+                        ))}
                       </Select>
                     </Field>
                     <Field label="Age" error={serverErr('animalAge')}>

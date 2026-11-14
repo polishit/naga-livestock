@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import { breakdownText, fmtDate, fmtMonth, titleCase } from '@livestock/shared';
+import { fmtDate, fmtMonth, titleCase } from '@livestock/shared';
 import type { Letterhead } from './export';
 
 /** Escape text for HTML. */
@@ -98,12 +98,10 @@ export interface FarmProfileData {
     species: string;
     breed: string | null;
     sex: string;
-    lifeStage: string;
     count: number;
     tagged: number;
     healthStatus: string;
     lastVerified: string | null;
-    breakdown?: Record<string, number> | null;
   }[];
   vaccinations: {
     date: string;
@@ -154,12 +152,11 @@ export function printFarmProfile(d: FarmProfileData, lh: Letterhead, printedBy?:
     </div>
     <h2>Livestock Population</h2>
     ${table(
-      ['Species', 'Breed', 'No. of Heads', 'Classification', 'Tagged', 'Health', 'Last Verified'],
+      ['Species', 'Breed', 'No. of Heads', 'Tagged', 'Health', 'Last Verified'],
       d.groups.map((g) => [
         g.species,
         g.breed,
         g.count,
-        breakdownText(g.species, g.breakdown) || 'Not classified',
         g.tagged,
         g.healthStatus,
         g.lastVerified ? fmtMonth(g.lastVerified) : '—',
@@ -234,7 +231,7 @@ export function printOwnerCard(o: OwnerCardData, lh: Letterhead) {
             <div class="name">${h(o.fullName)}</div>
             <div><span class="lbl">Barangay:</span> ${h(o.barangay)}${o.zone ? `, ${h(o.zone)}` : ''}</div>
             <div><span class="lbl">Contact:</span> ${h(o.contact)}</div>
-            <div><span class="lbl">RSBSA No.:</span> ${h(o.rsbsa)}</div>
+            <div><span class="lbl">RSBSA Control No.:</span> ${h(o.rsbsa)}</div>
             <div><span class="lbl">Registered:</span> ${h(fmtDate(o.registeredAt))}</div>
           </div>
           <div class="cqr"><img src="${qr}" alt="QR code"/>Scan to verify</div>
@@ -274,8 +271,6 @@ export interface MonthlyReportData {
       species: string;
       population: number;
       farms: number;
-      breakdown: Record<string, number>;
-      classified: number;
     }[];
   };
   diseases: {
@@ -369,23 +364,13 @@ export function printMonthlyReport(m: MonthlyReportData, lh: Letterhead, prepare
       m.population.owners,
     )}</b> livestock owners (current masterlist).</p>
     ${tableN(
-      ['Species', 'No. of Farms', 'No. of Heads', 'Classification (Age / Sex / Stage)'],
+      ['Species', 'No. of Farms', 'No. of Heads'],
       [1, 2],
       m.population.bySpecies
         .filter((s) => s.population > 0)
-        .map((s) => [
-          s.species,
-          num(s.farms),
-          num(s.population),
-          [
-            breakdownText(s.species, s.breakdown),
-            s.population > s.classified ? `${num(s.population - s.classified)} not classified` : '',
-          ]
-            .filter(Boolean)
-            .join(' · ') || 'Not classified',
-        ]),
+        .map((s) => [s.species, num(s.farms), num(s.population)]),
       'No livestock recorded.',
-      ['Total', ' ', num(m.population.total), ' '],
+      ['Total', ' ', num(m.population.total)],
     )}
 
     <h2>II. Disease Surveillance</h2>
@@ -520,11 +505,11 @@ export interface LabFormData {
 const FORM_SPECIES: [string, string[]][] = [
   ['Bovine', ['Cattle']],
   ['Bubaline', ['Carabao']],
-  ['Swine', ['Swine']],
+  ['Swine', ['Pig']],
   ['Caprine', ['Goat']],
   ['Ovine', ['Sheep']],
-  ['Avian', ['Chicken', 'Duck', 'Other Poultry']],
-  ['Others', ['Other']],
+  ['Avian', ['Chicken', 'Ducks', 'Goose']],
+  ['Others', []],
 ];
 const FORM_PURPOSES = [
   'Diagnostics',

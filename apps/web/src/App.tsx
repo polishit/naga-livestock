@@ -42,7 +42,6 @@ const LabSubmissionFormPage = lazy(() =>
 const LabSubmissionDetailPage = lazy(() =>
   import('@/pages/LabSubmissionsPages').then((m) => ({ default: m.LabSubmissionDetailPage })),
 );
-const SearchPage = lazy(() => import('@/pages/SearchPage'));
 const MonthlyReportPage = lazy(() => import('@/pages/MonthlyReportPage'));
 const AnalyticsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.AnalyticsPage })));
 const ReportsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.ReportsPage })));
@@ -122,7 +121,7 @@ export default function App() {
             }
           />
           <Route path="lab-submissions/:id" element={<LabSubmissionDetailPage />} />
-          <Route path="search" element={<SearchPage />} />
+          <Route path="search" element={<Navigate to="/population" replace />} />
           <Route path="services" element={<ServicesPage />} />
           <Route path="vaccinations" element={<Navigate to="/services" replace />} />
           <Route path="monthly-report" element={<MonthlyReportPage />} />

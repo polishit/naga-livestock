@@ -31,11 +31,6 @@ export const REPORT_TYPES: ReportTypeDef[] = [
   { id: 'population-by-species', title: 'Current Recorded Population by Species', category: 'population' },
   { id: 'population-by-farm', title: 'Current Recorded Population by Farm', category: 'population' },
   { id: 'population-by-owner', title: 'Current Recorded Population by Owner', category: 'population' },
-  {
-    id: 'population-classification',
-    title: 'Population by Classification (Age, Sex, Stage)',
-    category: 'population',
-  },
   { id: 'population-groups', title: 'Population Groups Masterlist', category: 'population' },
   { id: 'population-updates', title: 'Monthly Population Updates', category: 'population' },
   { id: 'population-overdue', title: 'Overdue / Outdated Population Records', category: 'population' },

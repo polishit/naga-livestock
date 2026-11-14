@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   await login(page);
 });
 
-test('record a farm visit with head count, classification and deworming in one form', async ({ page }) => {
+test('record a farm visit with head count and deworming in one form', async ({ page }) => {
   await page.goto('/farms/13');
   await expect(page.getByText('Not visited yet')).toBeVisible();
   await page.getByRole('button', { name: 'Record Farm Visit' }).first().click();
@@ -20,14 +20,10 @@ test('record a farm visit with head count, classification and deworming in one f
   await d.getByLabel('Goat product used').fill('Albendazole');
   await d.getByLabel('Sheep product used').fill('Albendazole');
 
-  // Head count with the classification by age, sex and stage.
+  // Head count only: no age, sex or stage classification.
   await d.getByLabel('Update the head count (masterlist) from this visit').check();
-  await d.getByLabel('Classify', { exact: true }).first().check();
-  await d.locator('#visit-29-kid').fill('5');
-  await d.locator('#visit-29-doe').fill('8');
-  await d.getByRole('button', { name: 'Save visit' }).click();
-  await expect(d.getByText('The classification must add up to the head count')).toBeVisible();
-  await d.locator('#visit-29-buck').fill('2');
+  await expect(d.getByLabel('Classify', { exact: true })).toHaveCount(0);
+  await d.getByLabel('Goat head count').fill('15');
   await d.getByRole('button', { name: 'Save visit' }).click();
   await expectToast(page, /Farm visit VIS-\d+ recorded \(head count updated, 2 service records added\)/);
 
@@ -35,9 +31,9 @@ test('record a farm visit with head count, classification and deworming in one f
   await expect(page.getByText('Farm Visit · Deworming')).toBeVisible();
   await expect(page.getByText(/Deworming · Goat · 15 head/)).toBeVisible();
   await page.getByRole('tab', { name: /Livestock/ }).click();
-  await expect(
-    page.locator('.card').filter({ hasText: 'GRP-0029' }).getByText('Doe', { exact: true }),
-  ).toBeVisible();
+  const goats = page.locator('.card').filter({ hasText: 'GRP-0029' });
+  await expect(goats.getByText('15', { exact: true })).toBeVisible();
+  await expect(goats.getByText('Doe', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Not visited yet')).toHaveCount(0);
 });
 
@@ -53,7 +49,10 @@ test('one map with filters and layers leads to the farms to monitor', async ({ p
   await expect(page.getByRole('heading', { name: /^Farms \(/ })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /^Disease Reports \(/ })).toBeVisible();
   await page.getByRole('button', { name: /African Swine Fever \(ASF\).*CASE-0001/ }).click();
-  await expect(page.getByText(/farm\(s\) within 1\.00 km/)).toBeVisible();
+  // The ground-zero farm (the case's own farm) is not in the list of farms to monitor.
+  await expect(
+    page.getByText(/farm\(s\) to monitor within 1\.00 km \(ground-zero farm not included\)/),
+  ).toBeVisible();
   // The box closes with an X.
   await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Farms to monitor' }).click();

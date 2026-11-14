@@ -3,10 +3,10 @@
  *
  *   Owners .............. 3 (Juan Dela Cruz, Ramon Mendoza, Elena Ramos)
  *   Farms ............... 3 (a backyard piggery, a cattle & carabao farm with pasture, a commercial piggery)
- *   Population .......... 5 groups, each with 3 months of head counts and an age/sex breakdown
+ *   Population .......... 5 groups, each with 3 months of head counts
  *   Tagged animals ...... 2 (a cow and a carabao: ear tag, cowlick, purpose, ownership certificate)
  *   Ownership record .... 1 (the carabao sold from Juan to Ramon)
- *   Stray / violation ... 1 (the carabao on the road: impounded, released, fine paid, closed)
+ *   Stray / violation ... 1 (the carabao on the road: impounded, released to the owner, closed)
  *   Disease case ........ 1 (ASF, Active: report, site visit, 2 lab samples, positive, all 7 ASF steps,
  *                            head count updated, monitoring of the farm within 1 km) — next step: close it
  *   Lab submission ...... 1 (surveillance batch of 3 samples from the farm within 1 km, negative by email)
@@ -235,10 +235,8 @@ async function main() {
       start: number;
       purpose?: string;
       sex?: string;
-      lifeStage?: string;
       healthStatus?: string;
       remarks?: string;
-      breakdown?: Record<string, number>;
       changes?: { on: string; delta: number; reason: string }[];
     },
   ) => {
@@ -251,11 +249,9 @@ async function main() {
         species: g.species,
         breed: g.breed,
         sex: g.sex ?? 'Mixed',
-        lifeStage: g.lifeStage ?? 'Mixed',
         count: final,
         healthStatus: g.healthStatus ?? 'Healthy',
         purpose: g.purpose ?? null,
-        breakdown: g.breakdown ?? undefined,
         remarks: g.remarks ?? null,
         lastVerified: now,
         createdAt: DT(`${ago(99)}T08:00:00`),
@@ -293,7 +289,7 @@ async function main() {
   const inRange = (d: string) => (d.slice(0, 7) < months[1] ? `${months[1]}-03` : d);
 
   await group(juanFarm.id, {
-    species: 'Swine',
+    species: 'Pig',
     breed: 'Native × Large White',
     start: 12,
     healthStatus: 'Quarantined',
@@ -311,7 +307,6 @@ async function main() {
     breed: 'Philippine Carabao',
     start: 2,
     purpose: 'DRAFT',
-    breakdown: { caracow: 1 },
     remarks: 'Used for plowing',
     changes: [{ on: inRange(ago(TRANSFER)), delta: -1, reason: 'Sold 1 to Ramon Mendoza (TRF-0001)' }],
   });
@@ -320,7 +315,6 @@ async function main() {
     breed: 'Brahman',
     start: 6,
     purpose: 'BREEDING',
-    breakdown: { calf: 1, heifer: 1, cow: 4, bull: 1 },
     remarks: 'Breeding herd; grazes on the foothill pasture',
     changes: [{ on: inRange(`${months[1]}-12`), delta: 1, reason: 'births +1 (calf)' }],
   });
@@ -329,14 +323,12 @@ async function main() {
     breed: 'Philippine Carabao',
     start: 3,
     purpose: 'DRAFT',
-    breakdown: { caracow: 2, carabull: 2 },
     changes: [{ on: inRange(ago(TRANSFER)), delta: 1, reason: 'Bought 1 from Juan Dela Cruz (TRF-0001)' }],
   });
-  const elenaSwine = await group(elenaFarm.id, {
-    species: 'Swine',
+  const elenaPigs = await group(elenaFarm.id, {
+    species: 'Pig',
     breed: 'Large White',
     start: 52,
-    breakdown: { piglet: 8, weaner: 12, grower: 30, gilt: 4, sow: 5, boar: 1 },
     remarks: 'Inside the 1 km radius of CASE-0001: checked and sampled, all negative',
     changes: [{ on: `${months[1]}-20`, delta: 8, reason: 'births +8 (one sow farrowed)' }],
   });
@@ -433,15 +425,11 @@ async function main() {
       status: 'CLOSED',
       violations: 1,
       violationType: 'Animal on a public road or highway',
-      fineAmount: 500,
       impoundedAt: D(ago(STRAY)),
       impoundPlace: 'City Vet impounding area, Carolina',
       releasedAt: D(ago(STRAY - 1)),
       releasedTo: 'Ramon Mendoza (owner)',
-      finePaid: true,
-      orNumber: 'OR-7712398',
-      paidAt: D(ago(STRAY - 1)),
-      remarks: 'First offense. Owner paid the fine, got the carabao back and replaced the rope.',
+      remarks: 'First offense. Owner warned, got the carabao back and replaced the rope.',
       createdBy: JOY,
       createdAt: DT(`${ago(STRAY)}T07:00:00`),
     },
@@ -456,7 +444,7 @@ async function main() {
       farmId: juanFarm.id,
       barangay: juanFarm.barangay,
       zone: juanFarm.zone,
-      species: 'Swine',
+      species: 'Pig',
       disease: 'African Swine Fever (ASF)',
       affected: 5,
       deaths: 3,
@@ -530,7 +518,7 @@ async function main() {
   const caseSample = (s: { sampleId: string; sampleType: string; [k: string]: unknown }) => ({
     caseId: asf.id,
     farmId: juanFarm.id,
-    species: 'Swine',
+    species: 'Pig',
     testMethod: ASF_TEST,
     laboratory: LAB,
     submittedBy: MARK,
@@ -712,7 +700,7 @@ async function main() {
     ].map(([sex, age], i) => ({
       submissionId: sub.id,
       farmId: elenaFarm.id,
-      species: 'Swine',
+      species: 'Pig',
       sampleId: `S${stamp}-${String(i + 1).padStart(2, '0')}`,
       sampleType: 'Blood',
       condition: 'LIVE',
@@ -849,8 +837,8 @@ async function main() {
   await service({
     type: 'CHECKUP',
     farmId: elenaFarm.id,
-    groupId: elenaSwine.id,
-    species: 'Swine',
+    groupId: elenaPigs.id,
+    species: 'Pig',
     count: 60,
     product: 'Vitamins (B-complex)',
     on: MONITOR,

@@ -16,7 +16,7 @@ import {
   fmtDate,
   isoDate,
   strayCreateSchema,
-  strayFormSchema,
+  strayUpdateSchema,
   titleCase,
   transferCreateSchema,
   ANIMAL_PURPOSES,
@@ -319,8 +319,8 @@ export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { 
   const choices = (lookups?.groups ?? []).filter(
     (g) => g.farmId === animal.farmId && g.species === animal.species && g.id !== animal.groupId,
   );
-  const label = (g: { code: string; lifeStage: string; sex: string; breed: string | null; count: number }) =>
-    `${g.code} · ${titleCase(g.lifeStage)}${g.sex !== 'Mixed' ? ` · ${g.sex}` : ''}${g.breed ? ` · ${g.breed}` : ''} · ${g.count} head`;
+  const label = (g: { code: string; sex: string; breed: string | null; count: number }) =>
+    `${g.code}${g.sex !== 'Mixed' ? ` · ${g.sex}` : ''}${g.breed ? ` · ${g.breed}` : ''} · ${g.count} head`;
   return (
     <Dialog
       open={open}
@@ -377,7 +377,7 @@ export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { 
   );
 }
 
-/** Earlier stray incidents of an owner, so repeat offenders are noticed when deciding penalties. */
+/** Earlier stray incidents of an owner, so repeat offenders are noticed. */
 export function OwnerStrayHistory({
   ownerId,
   exceptId,
@@ -390,8 +390,6 @@ export function OwnerStrayHistory({
     incidents: number;
     violations: number;
     open: number;
-    unpaidFines?: number;
-    unpaidAmount?: number;
     last: { code: string; discoveredAt: string } | null;
   }>(id ? `/api/strays/owner/${id}/summary${exceptId ? `?except=${exceptId}` : ''}` : null);
   if (!id || !data) return null;
@@ -413,9 +411,6 @@ export function OwnerStrayHistory({
       {data.last
         ? ` — last ${data.last.code} on ${fmtDate(data.last.discoveredAt)}`
         : ''}.{data.open ? ` ${data.open} still open.` : ''}
-      {data.unpaidFines
-        ? ` Unpaid fine${data.unpaidFines === 1 ? '' : 's'}: ₱${(data.unpaidAmount ?? 0).toLocaleString()}.`
-        : ''}
     </div>
   );
 }
@@ -693,17 +688,13 @@ export interface StrayRecord {
   photoKeys: string[];
   lat: number | null;
   lng: number | null;
-  fineAmount: number | null;
-  finePaid: boolean;
-  orNumber: string | null;
-  paidAt: string | null;
   /** Voided: reported in error. Kept, read-only, and left out of every figure. */
   voided?: boolean;
   voidedBy?: string | null;
   voidReason?: string | null;
 }
 
-/** Incident details, violation and penalty. Read-only users can view it. */
+/** Incident details and violation. Read-only users can view it. */
 export function StrayUpdateDialog({
   open,
   onOpenChange,
@@ -712,18 +703,13 @@ export function StrayUpdateDialog({
   const { data: lookups } = useLookups();
   const { canEdit: canWrite, isAdmin } = useAuth();
   const [action, setAction] = useState<null | 'void' | 'delete'>(null);
-  const foundOn = stray ? isoDate(new Date(stray.discoveredAt)) : undefined;
-  const form = useZodForm(strayFormSchema(foundOn), {});
+  const form = useZodForm(strayUpdateSchema, {});
   useResetOnOpen(open, form, {
     status: stray?.status ?? 'REPORTED',
     violations: String(stray?.violations ?? 0),
     violationType: stray?.violationType ?? '',
     ownerId: stray?.ownerId ? String(stray.ownerId) : '',
     remarks: stray?.remarks ?? '',
-    fineAmount: stray?.fineAmount != null ? String(stray.fineAmount) : '',
-    finePaid: stray?.finePaid ?? false,
-    orNumber: stray?.orNumber ?? '',
-    paidAt: stray?.paidAt ?? '',
   } as any);
   const save = useSave<any>('PATCH', `/api/strays/${stray?.id}`, {
     success: 'Incident updated.',
@@ -734,21 +720,7 @@ export function StrayUpdateDialog({
   if (!stray) return null;
   // A voided report is read-only. A fresh report nobody acted on yet can be deleted; otherwise void it.
   const canEdit = canWrite && !stray.voided;
-  const deletable = stray.status === 'REPORTED' && !(stray.fineAmount && stray.fineAmount > 0);
-  const status = form.watch('status');
-  const finePaid = form.watch('finePaid');
-  const hasFine = Number(form.watch('fineAmount') || 0) > 0;
-  // Payment details show once there is a fine and it is paid; closing with an unpaid fine is flagged.
-  const unpaidClose = status === 'CLOSED' && hasFine && !finePaid;
-  const today = isoDate();
-  // Hidden parts are emptied before saving so the record holds only what applies.
-  const clearHidden = () => {
-    const v = form.getValues() as Record<string, unknown>;
-    const set = (k: string, val: unknown) => form.setValue(k as any, val as any);
-    const fine = Number(v.fineAmount || 0) > 0;
-    if (!fine) set('finePaid', false);
-    if (!fine || !v.finePaid) ['orNumber', 'paidAt'].forEach((k) => set(k, ''));
-  };
+  const deletable = stray.status === 'REPORTED';
   return (
     <Dialog
       open={open}
@@ -823,14 +795,7 @@ export function StrayUpdateDialog({
         </div>
         <PhotoGallery keys={stray.photoKeys} className="sm:max-w-[264px]" />
       </div>
-      <form
-        id="stray-update"
-        noValidate
-        onSubmit={(ev) => {
-          clearHidden();
-          return form.handleSubmit((v) => save.mutate(v))(ev);
-        }}
-      >
+      <form id="stray-update" noValidate onSubmit={form.handleSubmit((v) => save.mutate(v))}>
         <fieldset disabled={!canEdit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Status" error={err(e, 'status')}>
             <Select {...form.register('status')}>
@@ -866,42 +831,6 @@ export function StrayUpdateDialog({
             <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />
           </div>
 
-          <h3 className="text-[14px] font-semibold text-slate-800 sm:col-span-2">Penalty</h3>
-          <Field label="Fine (₱)" error={err(e, 'fineAmount')}>
-            <Input type="number" min={0} step="0.01" {...form.register('fineAmount')} />
-          </Field>
-          {hasFine ? (
-            <Field label="Payment" error={err(e, 'finePaid')}>
-              <label className="flex h-10 items-center gap-2 text-[15px] text-slate-700">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 accent-brand-strong"
-                  {...form.register('finePaid')}
-                />
-                Fine paid
-              </label>
-            </Field>
-          ) : (
-            <p className="self-end pb-2.5 text-[13px] text-slate-500">Leave blank if no fine was imposed.</p>
-          )}
-          {hasFine && finePaid && (
-            <>
-              <Field label="Official receipt (OR) no. *" error={err(e, 'orNumber')}>
-                <Input {...form.register('orNumber')} />
-              </Field>
-              <Field label="Date paid" error={err(e, 'paidAt')}>
-                <Input type="date" min={foundOn} max={today} {...form.register('paidAt')} />
-              </Field>
-            </>
-          )}
-          {unpaidClose && (
-            <p
-              role="status"
-              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[14px] text-amber-800 sm:col-span-2"
-            >
-              The fine has not been paid yet.
-            </p>
-          )}
           <Field label="Remarks / actions taken" error={err(e, 'remarks')} className="sm:col-span-2">
             <Textarea rows={3} {...form.register('remarks')} />
           </Field>

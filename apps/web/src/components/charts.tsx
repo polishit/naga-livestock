@@ -192,13 +192,7 @@ export function CoverageBars({
         margin={{ left: -8, right: 8, top: 6 }}
       >
         {GRID}
-        <XAxis
-          dataKey="species"
-          tick={{ ...AXIS, fontSize: 9.5 }}
-          tickLine={false}
-          interval={0}
-          tickFormatter={(v: string) => (v === 'Other Poultry' ? 'Oth. Poultry' : v)}
-        />
+        <XAxis dataKey="species" tick={{ ...AXIS, fontSize: 9.5 }} tickLine={false} interval={0} />
         <YAxis
           domain={[0, 100]}
           ticks={[0, 25, 50, 75, 100]}

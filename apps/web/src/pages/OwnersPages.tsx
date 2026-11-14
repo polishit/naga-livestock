@@ -69,7 +69,7 @@ export function OwnersPage() {
   const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
   const [status, setStatus] = useState('');
   const [archived, setArchived] = useState(false);
-  // ?rsbsa=no lists the owners still without an RSBSA number (linked from Record completeness).
+  // ?rsbsa=no lists the owners still without an RSBSA Control Number (linked from Record completeness).
   const [rsbsa, setRsbsa] = useState(params.get('rsbsa') ?? '');
   const [source, setSource] = useState('');
   const [species, setSpecies] = useState(params.get('species') ?? '');
@@ -100,7 +100,7 @@ export function OwnersPage() {
           barangay ? `Barangay ${barangay}` : 'All barangays',
           species && `raising ${species.toLowerCase()}`,
           farmType && FARM_TYPE_LABELS[farmType as FarmType],
-          rsbsa && (rsbsa === 'yes' ? 'with RSBSA No.' : 'without RSBSA No.'),
+          rsbsa && (rsbsa === 'yes' ? 'with RSBSA Control No.' : 'without RSBSA Control No.'),
           insured && (insured === 'yes' ? 'insured (PCIC)' : 'not insured'),
         ]
           .filter(Boolean)
@@ -110,7 +110,7 @@ export function OwnersPage() {
           { key: 'name', label: 'Livestock Owner' },
           { key: 'barangay', label: 'Barangay' },
           { key: 'contact', label: 'Contact' },
-          { key: 'rsbsa', label: 'RSBSA No.' },
+          { key: 'rsbsa', label: 'RSBSA Control No.' },
           { key: 'raises', label: 'Livestock Raised' },
           { key: 'farms', label: 'Farms' },
           { key: 'head', label: 'No. of Heads' },
@@ -166,7 +166,7 @@ export function OwnersPage() {
             rowKey={(r) => r.id}
             onRowClick={(r) => navigate(`/owners/${r.id}`)}
             searchText={(r) => `${r.code} ${r.fullName} ${r.barangay} ${r.contact ?? ''} ${r.rsbsa ?? ''}`}
-            searchPlaceholder="Search name, contact or RSBSA number"
+            searchPlaceholder="Search name, contact or RSBSA Control Number"
             toolbar={
               <>
                 <FilterSelect
@@ -190,8 +190,8 @@ export function OwnersPage() {
                   value={rsbsa}
                   onChange={setRsbsa}
                   options={[
-                    { value: 'yes', label: 'With RSBSA No.' },
-                    { value: 'no', label: 'No RSBSA No.' },
+                    { value: 'yes', label: 'With RSBSA Control No.' },
+                    { value: 'no', label: 'No RSBSA Control No.' },
                   ]}
                   all="RSBSA: all"
                   className="w-[calc(50%-4px)] sm:w-40"
@@ -241,7 +241,7 @@ export function OwnersPage() {
               { key: 'contact', header: 'Contact', sort: false },
               {
                 key: 'rsbsa',
-                header: 'RSBSA No.',
+                header: 'RSBSA Control No.',
                 cell: (r) => r.rsbsa ?? <span className="text-slate-400">—</span>,
               },
               { key: 'farms', header: 'Farms' },
@@ -286,8 +286,6 @@ interface OwnerDetail {
     status: string;
     violations: number;
     barangay: string;
-    fineAmount: number | null;
-    finePaid: boolean;
   }[];
   pcic: PcicRecord[];
 }
@@ -423,7 +421,7 @@ export function OwnerDetailPage() {
                       ['Zone / Purok', o.zone],
                       ['Street address', o.street],
                       ['Contact number', o.contact],
-                      ['RSBSA number', o.rsbsa],
+                      ['RSBSA Control Number', o.rsbsa],
                       ['Source of record', sourceLabel(o.source)],
                       ['Added to masterlist', fmtDate(o.registeredAt)],
                       ['Remarks', o.remarks],
@@ -686,19 +684,6 @@ export function OwnerDetailPage() {
                   { key: 'barangay', header: 'Barangay' },
                   { key: 'status', header: 'Status', cell: (r) => <StrayStatusBadge status={r.status} /> },
                   { key: 'violations', header: 'Violations' },
-                  {
-                    key: 'fineAmount',
-                    header: 'Fine',
-                    cell: (r) =>
-                      r.fineAmount ? (
-                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                          ₱{r.fineAmount.toLocaleString()}
-                          {r.finePaid ? <Badge tone="green">Paid</Badge> : <Badge tone="amber">Unpaid</Badge>}
-                        </span>
-                      ) : (
-                        '—'
-                      ),
-                  },
                 ]}
                 empty="No stray incidents."
               />

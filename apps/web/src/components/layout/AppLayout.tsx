@@ -282,18 +282,6 @@ function GlobalSearch({
               </button>
             ))
           )}
-          <button
-            type="button"
-            onMouseDown={() => {
-              navigate(`/search?q=${encodeURIComponent(debounced)}`);
-              setQ('');
-              setOpen(false);
-              onDone?.();
-            }}
-            className="mt-1 flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2.5 text-left text-[14px] font-medium text-brand-dark hover:bg-slate-50"
-          >
-            <Search className="h-4 w-4" /> Search everything for “{debounced}”
-          </button>
         </div>
       )}
     </div>

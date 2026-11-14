@@ -65,35 +65,52 @@ test('register a farm with a map pin, add a group and update its population', as
   await d.getByLabel('Owner', { exact: true }).selectOption({ label: 'Maria Santos · OWN-0002 · Cararayan' });
   await d.getByLabel('Farm name').fill('Santos Duck Pond');
   await d.getByLabel('Farm scale').selectOption('commercial');
+  // The barangay (filled in from the owner) is outlined and the map moves to it; choosing another
+  // barangay moves the map there.
+  const outline = d.locator('path[stroke-dasharray="5 4"]');
+  await expect(d.getByLabel('Barangay *')).toHaveValue('Cararayan');
+  await expect(outline).toHaveCount(1);
+  const cararayan = await outline.getAttribute('d');
+  await d.getByLabel('Barangay *').selectOption('Pacol');
+  await expect(outline).not.toHaveAttribute('d', cararayan!);
+  await d.getByLabel('Barangay *').selectOption('Cararayan');
+  await expect(outline).toHaveAttribute('d', cararayan!);
   await clickMap(page, d, 0.4, 0.5);
   await expect(d.getByLabel('Latitude', { exact: true })).not.toHaveValue('');
+  // Fine-tune by typing, about 3 km from the outbreak farms used by the radius test.
+  await d.getByLabel('Latitude', { exact: true }).fill('13.625');
+  await d.getByLabel('Longitude', { exact: true }).fill('123.265');
   await d.getByRole('button', { name: 'Add farm', exact: true }).click();
   await expectToast(page, 'Farm added to the masterlist.');
   await expect(page.getByRole('heading', { name: 'Santos Duck Pond' })).toBeVisible();
 
   await page.getByRole('tab', { name: /Livestock/ }).click();
   await page.getByRole('button', { name: 'Add Species' }).click();
-  await dialog(page).getByLabel('Species').selectOption('Duck');
+  // The office's species list, in order.
+  await expect(dialog(page).getByLabel('Species').locator('option')).toHaveText([
+    'Cattle',
+    'Carabao',
+    'Goat',
+    'Sheep',
+    'Pig',
+    'Chicken',
+    'Ducks',
+    'Goose',
+  ]);
+  await dialog(page).getByLabel('Species').selectOption('Ducks');
   await dialog(page).getByLabel('Breed').fill('Pateros');
   await dialog(page).getByLabel('Head count').fill('50');
-  // Optional classification by age, sex and stage must add up to the head count.
-  await dialog(page).getByLabel('Classify by age, sex and stage').check();
-  await dialog(page).getByLabel('Duckling').fill('30');
-  await dialog(page).getByLabel('Layer').fill('10');
-  await dialog(page).getByRole('button', { name: 'Add livestock' }).click();
-  await expect(dialog(page).getByText('The classification must add up to the head count')).toBeVisible();
-  await dialog(page).getByLabel('Drake').fill('10');
+  // Head count only: no life stage or classification.
+  await expect(dialog(page).getByLabel('Life stage')).toHaveCount(0);
+  await expect(dialog(page).getByText(/Classify/)).toHaveCount(0);
   await dialog(page).getByRole('button', { name: 'Add livestock' }).click();
   await expectToast(page, 'Livestock added to the farm.');
   await expect(page.getByText('Pateros')).toBeVisible();
-  await expect(page.getByText('Duckling', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Update Head Count' }).click();
   const u = dialog(page);
   await u.getByRole('spinbutton', { name: /GRP-\d+ count/ }).fill('56');
   await expect(u.getByText('+6')).toBeVisible();
-  // The classification shown (50 head) must be updated to match the new count.
-  await u.getByLabel('Duckling').fill('36');
   await u.getByRole('button', { name: 'Save head count' }).click();
   await expectToast(page, /Population for Santos Duck Pond saved/);
   await expect(page.getByText('56', { exact: true })).toBeVisible();
@@ -259,7 +276,7 @@ test('attach a PCIC insurance application, then mark it claimed', async ({ page 
   await d.getByLabel('Date of application *').fill('2026-01-05');
   await d.getByLabel('Application type').selectOption('RENEWAL');
   await d.getByLabel('Premium subsidized through RSBSA').check();
-  await d.getByLabel('RSBSA reference no.').fill('RSBSA-E2E-9');
+  await d.getByLabel('RSBSA Control No.').fill('RSBSA-E2E-9');
   await d.getByRole('button', { name: 'Save' }).click();
   await expectToast(page, 'Insurance application attached.');
   const row = page.getByRole('group', { name: 'Insurance application Jan 5, 2026' });

@@ -124,8 +124,6 @@ export function populationTotals(farms: LoadedFarm[]) {
       farms: number;
       tagged: number;
       population: number;
-      /** Head per classification code across all farms (for the species breakdown). */
-      breakdown: Record<string, number>;
     }
   >();
   let total = 0;
@@ -147,14 +145,11 @@ export function populationTotals(farms: LoadedFarm[]) {
         farms: 0,
         tagged: 0,
         population: 0,
-        breakdown: {},
       };
       s.groups += 1;
       if (g.count > 0) s.farms += 1;
       s.tagged += g.animals.length;
       s.population += g.count;
-      for (const [k, n] of Object.entries((g.breakdown as Record<string, number> | null) ?? {}))
-        s.breakdown[k] = (s.breakdown[k] ?? 0) + n;
       bySpecies.set(g.species, s);
     }
     byBarangay.set(farm.barangay, b);
@@ -226,7 +221,7 @@ export async function vaccinationCoverage(
   });
   const allGroups = farms.flatMap((f) => f.groups);
   const pop = populationTotals(farms);
-  const species = SPECIES.filter((s) => s !== 'Other' || pop.bySpecies.some((p) => p.species === 'Other'));
+  const species = SPECIES;
   const rows = species
     .filter((s) => !f.species || f.species === s)
     .map((s) => {

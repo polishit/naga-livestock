@@ -1,4 +1,4 @@
-import { ClipboardList, Plus, Printer } from 'lucide-react';
+import { ClipboardList, Plus, Printer, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -9,12 +9,10 @@ import {
   FARM_TYPE_LABELS,
   HEALTH_STATUSES,
   SPECIES,
-  breakdownText,
   fmtMonth,
   fmtNumber,
   isoMonth,
   type AnimalPurpose,
-  type Breakdown,
   type FarmType,
   type ReportResult,
 } from '@livestock/shared';
@@ -25,9 +23,8 @@ import { useApi, useLookups } from '@/lib/hooks';
 import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { BarangayBars } from '@/components/charts';
-import { BreakdownBars } from '@/components/livestock';
 import { ErrorBox, FilterSelect, Loading, PageHeader } from '@/components/page';
-import { Button, Card, CardHeader, Tabs } from '@/components/ui';
+import { Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
 import { GroupDialog, PopulationUpdateDialog } from '@/dialogs/registry';
 
 interface GroupRow {
@@ -47,7 +44,6 @@ interface GroupRow {
   purpose: string | null;
   farmType: string;
   lastVerified: string | null;
-  breakdown: Breakdown | null;
 }
 interface Totals {
   total: number;
@@ -58,7 +54,6 @@ interface Totals {
     farms: number;
     tagged: number;
     population: number;
-    breakdown: Breakdown;
   }[];
 }
 
@@ -72,6 +67,13 @@ export default function PopulationPage() {
   const [tab, setTab] = useState<PopTab>((params.get('tab') as PopTab) || 'summary');
   const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
   const [species, setSpecies] = useState(params.get('species') ?? '');
+  // Search the population records: farm, owner, barangay, species, breed or group code.
+  const [q, setQ] = useState(params.get('q') ?? '');
+  const onSearch = (v: string) => {
+    setQ(v);
+    // The search lists matching farms, so it opens the "By Farm" tab.
+    if (v.trim() && tab !== 'farms') setTab('farms');
+  };
   // More filters for the farm list: farm type, purpose, health and when it was last counted.
   const [farmType, setFarmType] = useState('');
   const [purpose, setPurpose] = useState('');
@@ -96,8 +98,13 @@ export default function PopulationPage() {
   };
   const t = totals.data;
   const month = isoMonth();
+  const needle = q.trim().toLowerCase();
   const rows = groups.data?.filter(
     (r) =>
+      (!needle ||
+        `${r.code} ${r.farmCode} ${r.farmName} ${r.ownerName} ${r.barangay} ${r.species} ${r.breed ?? ''}`
+          .toLowerCase()
+          .includes(needle)) &&
       (!farmType || r.farmType === farmType) &&
       (!purpose || r.purpose === purpose) &&
       (!health || r.healthStatus === health) &&
@@ -106,6 +113,7 @@ export default function PopulationPage() {
   );
   const scope = [
     barangay ? `Barangay ${barangay}` : 'All barangays',
+    needle && `matching “${q.trim()}”`,
     species,
     farmType && FARM_TYPE_LABELS[farmType as FarmType],
     purpose && ANIMAL_PURPOSE_LABELS[purpose as AnimalPurpose],
@@ -129,7 +137,6 @@ export default function PopulationPage() {
             { key: 'type', label: 'Type' },
             { key: 'species', label: 'Species' },
             { key: 'head', label: 'No. of Heads' },
-            { key: 'classes', label: 'Classification' },
             { key: 'counted', label: 'Last Counted' },
           ],
           rows: (rows ?? []).map((r) => ({
@@ -139,7 +146,6 @@ export default function PopulationPage() {
             type: FARM_TYPE_LABELS[r.farmType as FarmType] ?? r.farmType,
             species: `${r.species}${r.purpose ? ` (${ANIMAL_PURPOSE_LABELS[r.purpose as AnimalPurpose]})` : ''}`,
             head: r.count,
-            classes: breakdownText(r.species, r.breakdown) || 'Not classified',
             counted: fmtMonth(r.lastVerified),
           })),
           summary: [
@@ -179,7 +185,6 @@ export default function PopulationPage() {
           { key: 'farms', label: 'Farms' },
           { key: 'head', label: 'No. of Heads' },
           { key: 'tagged', label: 'Tagged' },
-          { key: 'classes', label: 'Classification (Age / Sex / Stage)' },
         ],
         rows: t.bySpecies
           .filter((x) => x.population > 0)
@@ -189,7 +194,6 @@ export default function PopulationPage() {
             farms: x.farms,
             head: x.population,
             tagged: x.tagged,
-            classes: breakdownText(x.species, x.breakdown) || 'Not classified',
           })),
         summary: [{ label: 'Total heads', value: t.total }],
       } as ReportResult,
@@ -201,7 +205,7 @@ export default function PopulationPage() {
     <div>
       <PageHeader
         title="Population Monitoring"
-        subtitle="Current head count from the masterlist, with the breakdown by age, sex and production stage."
+        subtitle="Current head count from the masterlist, by species, farm and barangay."
         actions={
           canEdit && (
             <>
@@ -227,6 +231,17 @@ export default function PopulationPage() {
         }
       />
       <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
+        <div className="relative w-full sm:w-72">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            type="search"
+            value={q}
+            onChange={(e) => onSearch(e.target.value)}
+            placeholder="Search farm, owner, barangay, species..."
+            aria-label="Search population"
+            className="pl-9"
+          />
+        </div>
         <FilterSelect
           label="Barangay"
           value={barangay}
@@ -336,9 +351,6 @@ export default function PopulationPage() {
                           <div className="text-[12px] text-slate-500">head</div>
                         </div>
                       </div>
-                      <div className="mt-3">
-                        <BreakdownBars species={s.species} total={s.population} breakdown={s.breakdown} />
-                      </div>
                       <button
                         type="button"
                         className="link mt-3 text-[14px]"
@@ -372,8 +384,6 @@ export default function PopulationPage() {
                 loading={groups.isLoading}
                 rowKey={(r) => r.id}
                 onRowClick={(r) => navigate(`/farms/${r.farmId}?tab=livestock`)}
-                searchText={(r) => `${r.code} ${r.farmName} ${r.ownerName} ${r.species} ${r.breed ?? ''}`}
-                searchPlaceholder="Search farm, owner or species..."
                 toolbar={
                   farmParam && (
                     <button
@@ -404,15 +414,6 @@ export default function PopulationPage() {
                         : r.species,
                   },
                   { key: 'count', header: 'No. of Heads', className: 'font-semibold' },
-                  {
-                    key: 'breakdown',
-                    header: 'Classification',
-                    sort: false,
-                    cell: (r) =>
-                      breakdownText(r.species, r.breakdown) || (
-                        <span className="text-slate-400">Not classified</span>
-                      ),
-                  },
                   { key: 'lastVerified', header: 'Last Counted', cell: (r) => fmtMonth(r.lastVerified) },
                 ]}
               />

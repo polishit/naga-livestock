@@ -1737,7 +1737,7 @@ export function CaseDetailPage() {
           farm={{ id: c.farmId, name: c.farmName ?? '' }}
           groups={farmDetail.groups}
           prefill={popPrefill(farmDetail.groups, c.species, c.code, pending)}
-          note={`Suggested counts take ${pending} ${c.species.toLowerCase()} off for ${c.code}. Check the numbers before saving.`}
+          note={`Suggested counts take ${pending} head of ${c.species.toLowerCase()} off for ${c.code}. Check the numbers before saving.`}
           onSaved={() => {
             setPopExtra(0);
             reconcile.mutate({});

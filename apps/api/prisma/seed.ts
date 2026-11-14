@@ -1,23 +1,18 @@
 /**
  * Demo data for the defense: a small set with ONE complete example of every form and feature.
- * 8 owners (1 archived), 11 farms (1 archived), 6 tagged animals, 7 cases (1 voided), deworming,
- * check-ups and vaccinations (1 voided), farm visits (incl. monitoring around the ASF case), head counts
- * classified by age, sex and stage, 5 stray reports (1 voided), 4 PCIC policies and vaccination targets.
+ * 8 owners (1 archived), 11 farms (1 archived; pig farms marked Backyard/Commercial), 6 tagged
+ * animals (cattle/carabao with purpose and ownership certificate), 7 cases in every classification
+ * (Reported, Suspected, Active, Negative, Closed; 1 voided), deworming, check-ups, vaccinations,
+ * pregnancy diagnosis and insemination, farm visits (incl. monitoring around the ASF case), monthly
+ * head counts, 5 stray reports (1 voided), 4 PCIC insurance applications,
+ * 2 lab submission batches (one with results by email, one still pending) and vaccination targets.
  * All dates are counted back from the day you seed, so seed again the day before the demo.
  * Run with: pnpm db:seed         (WIPES the database, loads the demo data)
  *           pnpm db:seed:empty   (WIPES the database, keeps only the 4 login accounts)
  */
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
-import {
-  CLASSIFICATIONS,
-  SPECIES_ID_LETTER,
-  addMonths,
-  code,
-  isoDate,
-  isoMonth,
-  type Species,
-} from '@livestock/shared';
+import { SPECIES_ID_LETTER, addMonths, code, isoDate, isoMonth, type Species } from '@livestock/shared';
 import { PrismaClient } from '../src/generated/prisma/client.ts';
 import { adapterFromUrl } from '../src/lib/adapter.ts';
 
@@ -82,7 +77,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.238,
     status: 'verified',
     groups: [
-      ['Swine', 30, 'Large White'],
+      ['Pig', 30, 'Large White'],
       ['Chicken', 148, 'Native'],
     ],
     remarks: 'ASF confirmed (CASE-0001). No restocking until cleared by the City Vet.',
@@ -95,7 +90,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.238665,
     status: 'overdue',
     groups: [
-      ['Swine', 40, 'Large White'],
+      ['Pig', 40, 'Large White'],
       ['Chicken', 87, 'Native'],
     ],
   },
@@ -134,7 +129,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2841,
     status: 'verified',
     groups: [
-      ['Swine', 38, 'Large White'],
+      ['Pig', 38, 'Large White'],
       ['Cattle', 9, 'Brahman'],
     ],
   },
@@ -174,7 +169,7 @@ const FARMS: FarmSeed[] = [
     lng: 123.2228,
     status: 'overdue',
     groups: [
-      ['Swine', 25, 'Large White'],
+      ['Pig', 25, 'Large White'],
       ['Goat', 14, 'Native'],
     ],
   },
@@ -185,7 +180,7 @@ const FARMS: FarmSeed[] = [
     lat: 13.63304,
     lng: 123.2389,
     status: 'verified',
-    groups: [['Swine', 12, 'Native']],
+    groups: [['Pig', 12, 'Native']],
   },
 ];
 
@@ -213,7 +208,7 @@ const ANIMALS: AnimalSeed[] = [
     markings: 'Dark brown, notched left ear',
     cowlick: 'Cowlick on right shoulder',
   },
-  // NC-K-0002: the stray carabao (open, fine unpaid); a transfer that was reversed.
+  // NC-K-0002: the stray carabao (open report); a transfer that was reversed.
   {
     farm: 'Hillside Ranch',
     species: 'Carabao',
@@ -329,7 +324,7 @@ const CASES: CaseSeed[] = [
     // CASE-0001: confirmed ASF, every ASF response step done — next step is "Close the case".
     farm: 'Ground Zero Piggery',
     disease: 'African Swine Fever (ASF)',
-    species: 'Swine',
+    species: 'Pig',
     affected: 10,
     deaths: 1,
     reported: 60,
@@ -560,7 +555,7 @@ const CASES: CaseSeed[] = [
     // CASE-0004: lab result negative; linked to CASE-0003 (same owner's neighbouring farm).
     farm: 'Belmonte Mixed Farm',
     disease: 'Classical Swine Fever (Hog Cholera)',
-    species: 'Swine',
+    species: 'Pig',
     affected: 4,
     deaths: 1,
     reported: 9,
@@ -708,14 +703,14 @@ const CASES: CaseSeed[] = [
 // days ago, vaccine, farm, 'G' group (species) or 'A' animal (code), count, dose, next dose, remarks, void reason
 type V = [number, string, string, 'G' | 'A', string, number, number, string | null, string?, string?];
 const VAX: V[] = [
-  [95, HC, 'Ground Zero Piggery', 'G', 'Swine', 28, 1, ago(65)],
-  [65, HC, 'Ground Zero Piggery', 'G', 'Swine', 26, 2, null],
+  [95, HC, 'Ground Zero Piggery', 'G', 'Pig', 28, 1, ago(65)],
+  [65, HC, 'Ground Zero Piggery', 'G', 'Pig', 26, 2, null],
   [90, NCD, 'Ground Zero Piggery', 'G', 'Chicken', 104, 1, null],
   [80, NCD, 'Cararayan Hog Farm', 'G', 'Chicken', 61, 1, ago(5)], // overdue
   [85, HS, 'Hillside Ranch', 'G', 'Cattle', 8, 1, null],
   [85, HS, 'Hillside Ranch', 'A', 'NC-K-0002', 1, 1, null],
   [40, HS, 'Isarog Foothill Farm', 'G', 'Cattle', 9, 1, null, 'Whole herd, after CASE-0005'],
-  [25, HC, 'Belmonte Mixed Farm', 'G', 'Swine', 20, 1, ahead(10)],
+  [25, HC, 'Belmonte Mixed Farm', 'G', 'Pig', 20, 1, ahead(10)],
   [20, HS, 'Carolina Cattle Range', 'A', 'NC-C-0003', 1, 1, ahead(5), 'Insured animal (PCIC)'],
   [18, NCD, 'Pacol Poultry House', 'G', 'Chicken', 150, 1, ahead(3), 'Ring vaccination near CASE-0003'],
   [
@@ -754,10 +749,10 @@ const SERVICES: S[] = [
   [38, 'DEWORMING', 'Hillside Ranch', 'Goat', 15, 'Albendazole', null, 'Previous round'],
   [40, 'DEWORMING', 'Carolina Cattle Range', 'Cattle', 14, 'Levamisole', null, 'Previous round'],
   [70, 'DEWORMING', 'Belmonte Mixed Farm', 'Goat', 13, 'Albendazole', null, 'Previous round'],
-  [5, 'CHECKUP', 'Garcia Backyard', 'Swine', 12, 'Vitamins (B-complex)', null],
-  [8, 'CHECKUP', 'Cararayan Hog Farm', 'Swine', 40, null, null, 'All pigs checked; no signs of ASF'],
+  [5, 'CHECKUP', 'Garcia Backyard', 'Pig', 12, 'Vitamins (B-complex)', null],
+  [8, 'CHECKUP', 'Cararayan Hog Farm', 'Pig', 40, null, null, 'All pigs checked; no signs of ASF'],
   [2, 'CHECKUP', 'Pacol Poultry House', 'Chicken', 158, 'Multivitamins', null],
-  [35, 'CHECKUP', 'Isarog Foothill Farm', 'Swine', 38, null, null],
+  [35, 'CHECKUP', 'Isarog Foothill Farm', 'Pig', 38, null, null],
   [
     12,
     'TREATMENT',
@@ -828,15 +823,6 @@ const VISITS: FV[] = [
   ],
   [40, 'Carolina Cattle Range', 'DEWORMING', 'NO_SIGNS', null, 'Previous deworming round.'],
 ];
-
-/** Share of a group's heads per classification (same order as CLASSIFICATIONS), for the demo breakdowns. */
-const SHARES: Partial<Record<Species, number[]>> = {
-  Swine: [0.35, 0.15, 0.3, 0.05, 0.12],
-  Cattle: [0.2, 0.2, 0.1, 0.4],
-  Carabao: [0.15, 0.15, 0.15, 0.4],
-  Goat: [0.3, 0.15, 0.1, 0.4],
-  Chicken: [0.15, 0.15, 0.2, 0.42],
-};
 
 async function wipe() {
   // Child tables first.
@@ -1055,7 +1041,7 @@ async function main() {
     });
   await prisma.populationGroup.update({
     where: { id: groupOf('Hillside Ranch', 'Goat').id },
-    data: { sex: 'Female', lifeStage: 'breeder', remarks: 'Breeding herd of does' },
+    data: { sex: 'Female', remarks: 'Breeding herd of does' },
   });
 
   // The archived owner's closed farm, with its emptied group — archived, kept for the records.
@@ -1079,7 +1065,7 @@ async function main() {
     data: {
       code: code('GRP', ++groupNo),
       farmId: closedFarm.id,
-      species: 'Swine',
+      species: 'Pig',
       breed: 'Large White',
       count: 0,
       lastVerified: '2026-06',
@@ -1200,7 +1186,7 @@ async function main() {
   /* stray incidents: one at each status, plus one voided */
   const strays = [
     {
-      // Tagged animal: the ear tag links the report to the animal and its owner. Fine not yet paid.
+      // Tagged animal: the ear tag links the report to the animal and its owner.
       at: `${ago(20)}T09:36:00`,
       species: 'Carabao',
       earTag: 'ET-2402',
@@ -1214,13 +1200,12 @@ async function main() {
       status: 'REPORTED' as const,
       violations: 1,
       violationType: 'Animal on a public road or highway',
-      fineAmount: 500,
-      remarks: 'Owner informed by phone; to pay the fine.',
+      remarks: 'Owner informed by phone; to pick up the carabao.',
     },
     {
-      // Closed after the fine was paid.
+      // Repeat offense, closed after a written warning.
       at: `${ago(30)}T07:10:00`,
-      species: 'Swine',
+      species: 'Pig',
       ownerId: 7,
       barangay: 'Cararayan',
       location: 'Cararayan public market',
@@ -1230,10 +1215,7 @@ async function main() {
       status: 'CLOSED' as const,
       violations: 2,
       violationType: 'Repeat offense',
-      fineAmount: 1500,
-      finePaid: true,
-      orNumber: 'OR-7712398',
-      paidAt: D(ago(29)),
+      remarks: 'Second warning given in writing; pen fence repaired.',
     },
     {
       // Settled with a warning.
@@ -1246,7 +1228,7 @@ async function main() {
       status: 'CLOSED' as const,
       violations: 1,
       violationType: 'Stray / roaming animal',
-      remarks: 'Owner warned in writing and fixed the fence. No fine (first offense).',
+      remarks: 'Owner warned in writing and fixed the fence (first offense).',
     },
     {
       // New report, owner not known yet (no ear tag).
@@ -1550,30 +1532,13 @@ async function main() {
     });
   }
 
-  /* head counts classified by age, sex and production stage (adds up to each group's count) */
-  for (const g of await prisma.populationGroup.findMany({ where: { archived: false, count: { gt: 0 } } })) {
-    const shares = SHARES[g.species as Species];
-    if (!shares) continue;
-    const list = CLASSIFICATIONS[g.species as Species];
-    const b: Record<string, number> = {};
-    let left = g.count;
-    list.forEach((c, k) => {
-      const n = k === list.length - 1 ? left : Math.min(left, Math.round(g.count * (shares[k] ?? 0)));
-      if (n > 0) b[c.code] = n;
-      left -= n;
-    });
-    // One group is left unclassified on purpose (shows "Not classified yet").
-    if (g.code === 'GRP-0013') continue;
-    await prisma.populationGroup.update({ where: { id: g.id }, data: { breakdown: b } });
-  }
-
   /* PCIC insurance: claimed, active with insured ear tags, ending soon, expired */
   await prisma.pcicPolicy.createMany({
     data: [
       {
         ownerId: 1,
         policyNo: 'PCIC-LV-2026-00118',
-        species: 'Swine',
+        species: 'Pig',
         heads: 40,
         amountCovered: 400000,
         startDate: D('2026-05-15'),
@@ -1608,7 +1573,7 @@ async function main() {
       {
         ownerId: 2,
         policyNo: 'PCIC-LV-2025-00977',
-        species: 'Swine',
+        species: 'Pig',
         heads: 20,
         amountCovered: 180000,
         startDate: D('2025-07-01'),
@@ -1697,7 +1662,7 @@ async function main() {
 
   /* ASF surveillance: blood samples from pigs in several barangays, sent to RADDL in batches */
   const piggeries = await prisma.populationGroup.findMany({
-    where: { archived: false, species: 'Swine', count: { gt: 0 } },
+    where: { archived: false, species: 'Pig', count: { gt: 0 } },
     include: { farm: true },
     orderBy: { id: 'asc' },
   });
@@ -1726,7 +1691,7 @@ async function main() {
       data: rows.map((r, i) => ({
         submissionId: s.id,
         farmId: r.farmId,
-        species: 'Swine',
+        species: 'Pig',
         sampleId: `S${ago(submittedDaysAgo + 1)
           .slice(2)
           .replace(/-/g, '')}-${String(i + 1).padStart(2, '0')}`,
@@ -1777,7 +1742,7 @@ async function main() {
     data: {
       key: `vaccinationTargets:${new Date().getFullYear()}`,
       value: JSON.stringify([
-        { vaccine: HC, species: 'Swine', target: 100 },
+        { vaccine: HC, species: 'Pig', target: 100 },
         { vaccine: NCD, species: 'Chicken', target: 350 },
         { vaccine: HS, species: 'Cattle', target: 30 },
       ]),
@@ -1785,7 +1750,7 @@ async function main() {
   });
 
   console.log(
-    `Done: ${owners.length + 1} owners, ${farms.length + 1} farms, ${groupNo} groups, ${animals.length} animals, ${CASES.length} cases, ${VAX.length + SERVICES.length} service records, ${VISITS.length} farm visits, ${strays.length} stray reports.`,
+    `Done: ${owners.length + 1} owners, ${farms.length + 1} farms, ${groupNo} groups, ${animals.length} animals, ${CASES.length} cases, ${VAX.length + SERVICES.length} service records, ${VISITS.length} farm visits, ${strays.length} stray reports, 4 insurance applications, 2 lab submission batches.`,
   );
   console.log('Sign in with admin@nagacityvet.gov.ph / Livestock@2026');
 }
