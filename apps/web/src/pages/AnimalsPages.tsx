@@ -1,4 +1,4 @@
-import { ArrowRightLeft, MoveRight, Pencil, Plus, Printer, Search, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, MoveRight, Pencil, Plus, Printer, Search } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -19,7 +19,6 @@ import { fileUrl, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { DocumentLinks, PhotoGallery } from '@/components/forms';
-import { MoreMenu } from '@/components/MoreMenu';
 import { ErrorBox, FilterSelect, KV, Loading, PageHeader, Timeline } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
@@ -30,7 +29,6 @@ import {
   TransferDialog,
   type AnimalRecord,
 } from '@/dialogs/animals';
-import { DeleteDialog } from '@/dialogs/corrections';
 import type { CaseRow, TransferRow, VaccinationRow } from './types';
 
 type AnimalRow = AnimalRecord & { groupCode: string; barangay: string };
@@ -183,10 +181,10 @@ function animalActivity(d: AnimalDetail) {
 export function AnimalDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit, isAdmin } = useAuth();
+  const { canEdit } = useAuth();
   const lh = useLetterhead();
   const [tab, setTab] = useState<'activity' | 'vax' | 'own' | 'cases'>('activity');
-  const [dlg, setDlg] = useState<null | 'edit' | 'transfer' | 'move' | 'delete'>(null);
+  const [dlg, setDlg] = useState<null | 'edit' | 'transfer' | 'move'>(null);
   const { data, isLoading, error } = useApi<AnimalDetail>(`/api/animals/${id}`);
   if (error) return <ErrorBox error={error} />;
   if (isLoading || !data) return <Loading />;
@@ -252,18 +250,6 @@ export function AnimalDetailPage() {
                 <Pencil /> Edit
               </Button>
             )}
-            {/* Sold or died is a status (Edit); Delete is only for an animal registered by mistake. */}
-            <MoreMenu
-              items={[
-                isAdmin && {
-                  label: 'Delete (entered by mistake)',
-                  icon: Trash2,
-                  danger: true,
-                  hint: 'Only if it has no vaccinations, transfers or insurance',
-                  onSelect: () => setDlg('delete'),
-                },
-              ]}
-            />
           </>
         }
       />
@@ -462,15 +448,6 @@ export function AnimalDetailPage() {
         )}
       </div>
       <AnimalDialog open={dlg === 'edit'} onOpenChange={(o) => setDlg(o ? 'edit' : null)} animal={a} />
-      {dlg === 'delete' && (
-        <DeleteDialog
-          open
-          onOpenChange={(o) => !o && setDlg(null)}
-          url={`/api/animals/${a.id}`}
-          what={a.code}
-          onDeleted={() => navigate('/animals')}
-        />
-      )}
       <MoveGroupDialog open={dlg === 'move'} onOpenChange={(o) => setDlg(o ? 'move' : null)} animal={a} />
       <TransferDialog
         open={dlg === 'transfer'}

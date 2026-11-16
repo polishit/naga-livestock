@@ -37,7 +37,6 @@ import {
   useZodForm,
 } from '@/components/forms';
 import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
-import { DeleteDialog } from './corrections';
 import { VoidDialog } from './surveillance';
 
 interface DialogProps {
@@ -701,8 +700,8 @@ export function StrayUpdateDialog({
   stray,
 }: DialogProps & { stray: StrayRecord | null }) {
   const { data: lookups } = useLookups();
-  const { canEdit: canWrite, isAdmin } = useAuth();
-  const [action, setAction] = useState<null | 'void' | 'delete'>(null);
+  const { canEdit: canWrite, isReviewer } = useAuth();
+  const [action, setAction] = useState<null | 'void'>(null);
   const form = useZodForm(strayUpdateSchema, {});
   useResetOnOpen(open, form, {
     status: stray?.status ?? 'REPORTED',
@@ -718,9 +717,8 @@ export function StrayUpdateDialog({
   });
   const e = form.formState.errors;
   if (!stray) return null;
-  // A voided report is read-only. A fresh report nobody acted on yet can be deleted; otherwise void it.
+  // A voided report is read-only. A report entered in error is voided with a reason, never deleted.
   const canEdit = canWrite && !stray.voided;
-  const deletable = stray.status === 'REPORTED';
   return (
     <Dialog
       open={open}
@@ -729,13 +727,9 @@ export function StrayUpdateDialog({
       size="lg"
       footer={
         <>
-          {isAdmin && !stray.voided && (
-            <Button
-              variant="ghost"
-              className="text-red-600 sm:mr-auto"
-              onClick={() => setAction(deletable ? 'delete' : 'void')}
-            >
-              {deletable ? 'Delete (entered by mistake)' : 'Void (reported in error)'}
+          {isReviewer && !stray.voided && (
+            <Button variant="ghost" className="text-red-600 sm:mr-auto" onClick={() => setAction('void')}>
+              Void (reported in error)
             </Button>
           )}
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -766,15 +760,6 @@ export function StrayUpdateDialog({
           url={`/api/strays/${stray.id}/void`}
           what={`stray report ${stray.code}`}
           onVoided={() => onOpenChange(false)}
-        />
-      )}
-      {action === 'delete' && (
-        <DeleteDialog
-          open
-          onOpenChange={(o) => !o && setAction(null)}
-          url={`/api/strays/${stray.id}`}
-          what={`stray report ${stray.code}`}
-          onDeleted={() => onOpenChange(false)}
         />
       )}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">

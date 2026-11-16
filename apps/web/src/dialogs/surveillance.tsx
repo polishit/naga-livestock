@@ -27,8 +27,6 @@ import {
   RESPONSE_TYPES_WITH_LOCATION,
   RESPONSE_TYPE_LABELS,
   fmtDateTime,
-  ROLES,
-  ROLE_LABELS,
   caseCloseSchema,
   caseOutcomesFor,
   caseUpdateSchema,
@@ -37,8 +35,6 @@ import {
   labCreateSchema,
   responseCreateSchema,
   titleCase,
-  userCreateSchema,
-  userUpdateSchema,
   voidSchema,
   type CaseStatus,
   type ResponseType,
@@ -1052,92 +1048,6 @@ export function ResponseDialog({
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
           <Textarea rows={3} {...form.register('remarks')} />
         </Field>
-      </form>
-    </Dialog>
-  );
-}
-
-export interface UserRecord {
-  id: number;
-  name: string;
-  email: string;
-  title: string | null;
-  role: string;
-  active: boolean;
-}
-
-export function UserDialog({ open, onOpenChange, user }: DialogProps & { user?: UserRecord }) {
-  const editing = !!user;
-  const form = useZodForm(editing ? userUpdateSchema : userCreateSchema, {});
-  useResetOnOpen(open, form, {
-    name: user?.name ?? '',
-    email: user?.email ?? '',
-    role: user?.role ?? 'STAFF',
-    title: user?.title ?? '',
-    password: '',
-    ...(editing ? { active: user!.active } : {}),
-  } as any);
-  const save = useSave<any>(editing ? 'PATCH' : 'POST', editing ? `/api/users/${user!.id}` : '/api/users', {
-    success: editing ? 'User updated.' : 'User created.',
-    form,
-    offline: false,
-    onDone: () => onOpenChange(false),
-  });
-  const e = form.formState.errors;
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={editing ? `Edit ${user!.name}` : 'Add user'}
-      footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button form="user-form" type="submit" loading={save.isPending}>
-            {editing ? 'Save changes' : 'Create user'}
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="user-form"
-        noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
-      >
-        <Field label="Full name *" error={err(e, 'name')}>
-          <Input {...form.register('name')} />
-        </Field>
-        <Field label="Email *" error={err(e, 'email')}>
-          <Input type="email" {...form.register('email')} disabled={editing} />
-        </Field>
-        <Field label="Role" error={err(e, 'role')}>
-          <Select {...form.register('role')}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Title" error={err(e, 'title')}>
-          <Input {...form.register('title')} placeholder="Veterinary Inspector" />
-        </Field>
-        <Field label={editing ? 'New password (optional)' : 'Password *'} error={err(e, 'password')}>
-          <Input type="password" autoComplete="new-password" {...form.register('password')} />
-        </Field>
-        {editing && (
-          <Field label="Status">
-            <Select
-              value={form.watch('active') ? 'true' : 'false'}
-              onChange={(ev) => form.setValue('active', (ev.target.value === 'true') as any)}
-            >
-              <option value="true">Active</option>
-              <option value="false">Deactivated</option>
-            </Select>
-          </Field>
-        )}
       </form>
     </Dialog>
   );

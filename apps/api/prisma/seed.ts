@@ -14,7 +14,8 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { SPECIES_ID_LETTER, addMonths, code, isoDate, isoMonth, type Species } from '@livestock/shared';
 import { PrismaClient } from '../src/generated/prisma/client.ts';
-import { adapterFromUrl } from '../src/lib/adapter.ts';
+import { adapterFromUrl, dropAuditLock } from '../src/lib/adapter.ts';
+import { ensureAuditLock } from '../src/lib/audit.ts';
 
 // Same fallback as prisma.config.ts, so seeding works even before apps/api/.env exists.
 const DATABASE_URL = process.env.DATABASE_URL ?? 'mysql://livestock:livestock@localhost:3306/livestock';
@@ -826,6 +827,10 @@ const VISITS: FV[] = [
 
 async function wipe() {
   // Child tables first.
+  // The audit tables are locked against changes in the database; lift the lock to rebuild from zero.
+  // (The server puts the lock back when it starts.)
+  await dropAuditLock(DATABASE_URL);
+  await prisma.auditEntry.deleteMany();
   await prisma.activityLog.deleteMany();
   await prisma.caseStatusHistory.deleteMany();
   await prisma.investigation.deleteMany();
@@ -880,14 +885,29 @@ async function main() {
   const hash = await bcrypt.hash('Livestock@2026', 10);
   const users = await Promise.all(
     [
-      { name: LIZA, email: 'admin@nagacityvet.gov.ph', role: 'ADMIN' as const, title: 'Administrator' },
-      { name: MARK, email: 'mark@nagacityvet.gov.ph', role: 'STAFF' as const, title: 'Veterinary Inspector' },
-      { name: JOY, email: 'joy@nagacityvet.gov.ph', role: 'STAFF' as const, title: 'Veterinary Inspector' },
       {
-        name: 'Records Viewer',
-        email: 'viewer@nagacityvet.gov.ph',
-        role: 'READONLY' as const,
-        title: 'Read-only',
+        name: LIZA,
+        email: 'admin@nagacityvet.gov.ph',
+        role: 'ADMIN' as const,
+        title: 'System Administrator',
+      },
+      {
+        name: MARK,
+        email: 'mark@nagacityvet.gov.ph',
+        role: 'VETERINARIAN' as const,
+        title: 'Veterinary Inspector',
+      },
+      {
+        name: JOY,
+        email: 'joy@nagacityvet.gov.ph',
+        role: 'VETERINARIAN' as const,
+        title: 'Veterinary Inspector',
+      },
+      {
+        name: 'Ramil Bautista',
+        email: 'tech@nagacityvet.gov.ph',
+        role: 'TECHNICIAN' as const,
+        title: 'Field Technician',
       },
     ].map((u) => prisma.user.create({ data: { ...u, passwordHash: hash } })),
   );
@@ -1756,6 +1776,8 @@ async function main() {
 }
 
 main()
+  // Put the lock on the audit tables back (the server also does this when it starts).
+  .then(() => ensureAuditLock(DATABASE_URL))
   .catch((e) => {
     console.error(e);
     process.exit(1);

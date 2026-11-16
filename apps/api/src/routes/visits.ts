@@ -6,8 +6,9 @@ import {
   farmVisitUpdateSchema,
   type VisitFinding,
   type VisitPurpose,
+  voidSchema,
 } from '@livestock/shared';
-import { requireRole } from '../auth/auth';
+import { requireReviewer } from '../auth/auth';
 import { prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, today } from '../lib/dates';
@@ -33,6 +34,7 @@ visitsRouter.get(
     const to = qstr(req.query.to);
     const rows = await prisma.farmVisit.findMany({
       where: {
+        voidedAt: null,
         ...(farmId ? { farmId } : {}),
         ...(caseId ? { caseId } : {}),
         ...(purpose ? { purpose } : {}),
@@ -110,7 +112,7 @@ visitsRouter.patch(
     const d = parse(farmVisitUpdateSchema, req.body);
     assertNotFuture({ date: d.date });
     const before = await prisma.farmVisit.findUnique({ where: { id } });
-    if (!before) throw notFound('Farm visit');
+    if (!before || before.voidedAt) throw notFound('Farm visit');
     await checkLinks(before.farmId, d.caseId);
     const v = await prisma.farmVisit.update({
       where: { id },
@@ -129,16 +131,30 @@ visitsRouter.patch(
   }),
 );
 
-/** A visit entered by mistake can be removed (nothing else depends on it). */
-visitsRouter.delete(
-  '/:id',
-  requireRole('ADMIN'),
+/**
+ * A visit entered by mistake is voided with a reason: it stays in the database and in the audit
+ * trail, and leaves every list and figure. Nothing is deleted.
+ */
+visitsRouter.post(
+  '/:id/void',
+  requireReviewer,
   ah(async (req, res) => {
     const id = idParam(req);
+    const { reason } = parse(voidSchema, req.body);
     const v = await prisma.farmVisit.findUnique({ where: { id } });
     if (!v) throw notFound('Farm visit');
-    await prisma.farmVisit.delete({ where: { id } });
-    await logActivity('farm', v.farmId, 'visit-deleted', `Farm visit ${v.code} deleted`, req.user?.name);
-    res.status(204).end();
+    if (v.voidedAt) throw badRequest('This visit is already voided');
+    await prisma.farmVisit.update({
+      where: { id },
+      data: { voidedAt: new Date(), voidedBy: req.user?.name ?? null, voidReason: reason },
+    });
+    await logActivity(
+      'farm',
+      v.farmId,
+      'visit-voided',
+      `Farm visit ${v.code} voided: ${reason}`,
+      req.user?.name,
+    );
+    res.json({ ok: true });
   }),
 );

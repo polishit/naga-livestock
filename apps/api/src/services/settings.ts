@@ -12,6 +12,9 @@ export const DEFAULT_SETTINGS: SettingsInput = {
   officeAddress: 'Naga City, Camarines Sur',
   officeContact: '',
   officeEmail: '',
+  lockoutAttempts: 5,
+  lockoutMinutes: 15,
+  idleTimeoutMinutes: 30,
 };
 
 export async function getSettings(): Promise<SettingsInput> {

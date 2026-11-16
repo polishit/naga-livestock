@@ -45,7 +45,11 @@ const LabSubmissionDetailPage = lazy(() =>
 const MonthlyReportPage = lazy(() => import('@/pages/MonthlyReportPage'));
 const AnalyticsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.AnalyticsPage })));
 const ReportsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.ReportsPage })));
-const UsersPage = lazy(() => import('@/pages/AdminPages').then((m) => ({ default: m.UsersPage })));
+const UsersPage = lazy(() => import('@/pages/AccountPages').then((m) => ({ default: m.UsersPage })));
+const AuditLogPage = lazy(() => import('@/pages/AccountPages').then((m) => ({ default: m.AuditLogPage })));
+const FirstPasswordScreen = lazy(() =>
+  import('@/pages/AccountPages').then((m) => ({ default: m.FirstPasswordScreen })),
+);
 const SettingsPage = lazy(() => import('@/pages/AdminPages').then((m) => ({ default: m.SettingsPage })));
 
 function RequireAuth({ children, admin }: { children: ReactNode; admin?: boolean }) {
@@ -53,6 +57,8 @@ function RequireAuth({ children, admin }: { children: ReactNode; admin?: boolean
   const location = useLocation();
   if (loading) return <Loading />;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  // A temporary password must be changed before anything else can be opened.
+  if (user.mustChangePassword) return <FirstPasswordScreen />;
   if (admin && !isAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
@@ -133,6 +139,14 @@ export default function App() {
             element={
               <RequireAuth admin>
                 <UsersPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="audit-log"
+            element={
+              <RequireAuth admin>
+                <AuditLogPage />
               </RequireAuth>
             }
           />

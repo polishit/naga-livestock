@@ -9,7 +9,6 @@ import {
   RotateCcw,
   Stethoscope,
   Tag,
-  Trash2,
   History,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -50,7 +49,6 @@ import {
   PopulationUpdateDialog,
 } from '@/dialogs/registry';
 import { FarmVisitDialog, ServiceDialog, ServiceEditDialog, type VisitRecord } from '@/dialogs/services';
-import { DeleteDialog } from '@/dialogs/corrections';
 import type { CaseRow, FarmSummary, VaccinationRow } from './types';
 
 const scaleLabel = (t: string) => FARM_TYPE_LABELS[t as FarmType] ?? titleCase(t);
@@ -297,14 +295,13 @@ type Dlg = null | 'edit' | 'group' | 'update' | 'animal' | 'service' | 'group-ed
 export function FarmDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit, isAdmin, user } = useAuth();
+  const { canEdit, user } = useAuth();
   const qc = useQueryClient();
   const lh = useLetterhead();
   const [params, setParams] = useSearchParams();
   // Old links to ?tab=visits open the overview, where the visits now are.
   const tab = ((params.get('tab') === 'visits' ? 'overview' : params.get('tab')) as FarmTab) || 'overview';
   const setTab = (t: FarmTab) => setParams(t === 'overview' ? {} : { tab: t }, { replace: true });
-  const [deleting, setDeleting] = useState(false);
   const [dlg, setDlg] = useState<Dlg>(null);
   const [editGroup, setEditGroup] = useState<FarmDetail['groups'][number] | null>(null);
   const [activityGroup, setActivityGroup] = useState<FarmDetail['groups'][number] | null>(null);
@@ -466,13 +463,6 @@ export function FarmDetailPage() {
                         hint: 'Closed down; needs no animals and no open cases',
                         onSelect: archive,
                       },
-                  isAdmin && {
-                    label: 'Delete (entered by mistake)',
-                    icon: Trash2,
-                    danger: true,
-                    hint: 'Only if the farm has no records yet',
-                    onSelect: () => setDeleting(true),
-                  },
                 ]}
               />
             )}
@@ -814,15 +804,6 @@ export function FarmDetailPage() {
           </Card>
         )}
       </div>
-      {deleting && (
-        <DeleteDialog
-          open
-          onOpenChange={setDeleting}
-          url={`/api/farms/${f.id}`}
-          what={f.name}
-          onDeleted={() => navigate('/farms')}
-        />
-      )}
       <FarmDialog {...dlgProps('edit')} farm={f} />
       <GroupDialog {...dlgProps('group')} farmId={f.id} />
       <GroupEditDialog {...dlgProps('group-edit')} group={editGroup} />

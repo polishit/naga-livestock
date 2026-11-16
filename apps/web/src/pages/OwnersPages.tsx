@@ -1,4 +1,4 @@
-import { Archive, IdCard, Pencil, Plus, Printer, RotateCcw, Trash2, UserPlus } from 'lucide-react';
+import { Archive, IdCard, Pencil, Plus, Printer, RotateCcw, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -42,7 +42,6 @@ import {
   type PcicRecord,
 } from '@/dialogs/registry';
 import { RegisterRaiser } from '@/dialogs/RegisterRaiser';
-import { DeleteDialog } from '@/dialogs/corrections';
 import type { CaseRow, FarmSummary, TransferRow, VaccinationRow } from './types';
 
 interface OwnerRow {
@@ -301,10 +300,9 @@ const PCIC_TONE: Record<string, 'green' | 'blue' | 'amber' | 'slate'> = {
 export function OwnerDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit, isAdmin } = useAuth();
+  const { canEdit } = useAuth();
   const qc = useQueryClient();
   const lh = useLetterhead();
-  const [del, setDel] = useState<null | { url: string; what: string; owner?: boolean }>(null);
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as OwnerTab) || 'profile';
   const setTab = (t: OwnerTab) => setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
@@ -355,7 +353,7 @@ export function OwnerDetailPage() {
                     <Plus /> Add Farm
                   </Button>
                 )}
-                {/* Archive / Restore and Delete are in the same "More" menu on every record. */}
+                {/* Archive / Restore are in the same "More" menu on every record. */}
                 <MoreMenu
                   items={[
                     archived
@@ -374,13 +372,6 @@ export function OwnerDetailPage() {
                           hint: 'No longer raising livestock; kept for history',
                           onSelect: () => setArchive(true),
                         },
-                    isAdmin && {
-                      label: 'Delete (entered by mistake)',
-                      icon: Trash2,
-                      danger: true,
-                      hint: 'Only if the owner has no records yet',
-                      onSelect: () => setDel({ url: `/api/owners/${o.id}`, what: o.fullName, owner: true }),
-                    },
                   ]}
                 />
               </>
@@ -693,15 +684,6 @@ export function OwnerDetailPage() {
       </div>
       <OwnerDialog open={edit} onOpenChange={setEdit} owner={o} />
       {archive && <ArchiveOwnerDialog open={archive} onOpenChange={setArchive} owner={o} />}
-      {del && (
-        <DeleteDialog
-          open
-          onOpenChange={(x) => !x && setDel(null)}
-          url={del.url}
-          what={del.what}
-          onDeleted={() => del.owner && navigate('/owners')}
-        />
-      )}
       <FarmDialog open={addFarm} onOpenChange={setAddFarm} ownerId={o.id} />
       <PcicDialog
         open={addPcic}

@@ -1,4 +1,5 @@
 import {
+  ScrollText,
   Activity,
   ArrowRightLeft,
   BookOpen,
@@ -184,7 +185,20 @@ export const NAV: NavSection[] = [
     label: 'Administration',
     icon: Settings,
     items: [
-      { to: '/users', label: 'User Management', icon: UserCog, hint: 'Accounts and roles', adminOnly: true },
+      {
+        to: '/users',
+        label: 'User Management',
+        icon: UserCog,
+        hint: 'Staff accounts and roles',
+        adminOnly: true,
+      },
+      {
+        to: '/audit-log',
+        label: 'Audit Log',
+        icon: ScrollText,
+        hint: 'Who changed what, and when',
+        adminOnly: true,
+      },
       { to: '/settings', label: 'System Settings', icon: Settings, hint: 'Office details and defaults' },
     ],
   },

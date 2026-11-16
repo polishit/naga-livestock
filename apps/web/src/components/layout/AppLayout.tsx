@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CloudOff,
   Download,
+  KeyRound,
   LayoutGrid,
   LogOut,
   PanelLeft,
@@ -22,6 +23,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ROLE_LABELS, initials } from '@livestock/shared';
+import { ChangePasswordDialog } from '@/pages/AccountPages';
 import { runSync } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useApi, useOnline, usePendingCount } from '@/lib/hooks';
@@ -471,6 +473,7 @@ function UserMenu() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const install = useInstallAction();
+  const [changingPassword, setChangingPassword] = useState(false);
   if (!user) return null;
   return (
     <DropdownMenu.Root>
@@ -510,6 +513,12 @@ function UserMenu() {
             </DropdownMenu.Item>
           )}
           <DropdownMenu.Item
+            onSelect={() => setChangingPassword(true)}
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
+          >
+            <KeyRound className="h-4 w-4" /> Change password
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
             onSelect={() => navigate('/settings')}
             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-50"
           >
@@ -536,6 +545,7 @@ function UserMenu() {
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
       {install.dialog}
+      <ChangePasswordDialog open={changingPassword} onOpenChange={setChangingPassword} />
     </DropdownMenu.Root>
   );
 }

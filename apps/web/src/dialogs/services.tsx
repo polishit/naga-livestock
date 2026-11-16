@@ -404,7 +404,7 @@ export function ServiceEditDialog({
     >
       <p className="mb-4 text-[14px] text-slate-600">
         Animals served: <b className="font-medium text-slate-800">{v.targetLabel}</b>. The farm and animals
-        cannot be changed here; an administrator can delete a record entered by mistake.
+        cannot be changed here; a veterinarian or the administrator can void a record entered by mistake.
       </p>
       <form
         id="service-edit"

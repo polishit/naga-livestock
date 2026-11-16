@@ -15,7 +15,11 @@ import {
   RESPONSE_TYPE_LABELS,
   SERVICE_TYPE_LABELS,
   fmtDate,
+  ROLE_LABELS,
+  USER_STATUS_LABELS,
+  changePasswordSchema,
   loginSchema,
+  userReassignSchema,
   settingsSchema,
   userCreateSchema,
   userUpdateSchema,
@@ -34,7 +38,7 @@ import {
   setAuthCookies,
   toAuthUser,
 } from '../auth/auth';
-import { prisma } from '../db';
+import { audit, prisma } from '../db';
 import { env } from '../env';
 import { logActivity } from '../lib/activity';
 import { today, ymd } from '../lib/dates';
@@ -57,19 +61,85 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many sign-in attempts. Try again in a few minutes.' },
 });
 
+const clock = (d: Date) =>
+  new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
+const lockedMessage = (until: Date) =>
+  `This account is locked after too many wrong passwords. Try again at ${clock(until)}, or ask the System Administrator to reset your password.`;
+
+/** A temporary password the administrator hands over; it must be changed at the first sign-in. */
+function temporaryPassword() {
+  const letters = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
+  const pick = (set: string, n: number) =>
+    Array.from(crypto.randomBytes(n), (b) => set[b % set.length]).join('');
+  return `${pick(letters, 4)}-${pick('23456789', 4)}-${pick(letters, 2)}`;
+}
+
 authRouter.post(
   '/login',
   loginLimiter,
   ah(async (req, res) => {
     const { email, password } = parse(loginSchema, req.body);
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (!user || !user.active || !(await bcrypt.compare(password, user.passwordHash))) {
-      throw new HttpError(401, 'Incorrect email or password');
+    const wrong = new HttpError(401, 'Incorrect email or password');
+    if (!user) {
+      await audit({
+        tableName: 'User',
+        recordId: email.toLowerCase().slice(0, 60),
+        action: 'LOGIN_FAILED',
+        note: 'No account with this email',
+        actor: { userId: null, name: null, source: 'web' },
+      });
+      throw wrong;
     }
-    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    const actor = {
+      userId: user.id,
+      name: user.name,
+      source: user.role === 'OWNER' ? ('owner' as const) : ('web' as const),
+    };
+    if (user.lockedUntil && user.lockedUntil > new Date())
+      throw new HttpError(423, lockedMessage(user.lockedUntil));
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
+      const s = await getSettings();
+      const failed = user.failedLogins + 1;
+      if (failed >= s.lockoutAttempts) {
+        const until = new Date(Date.now() + s.lockoutMinutes * 60_000);
+        await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: until } });
+        await audit({
+          tableName: 'User',
+          recordId: user.id,
+          action: 'LOCKED',
+          note: `Locked for ${s.lockoutMinutes} minute(s) after ${failed} wrong passwords`,
+          actor,
+        });
+        throw new HttpError(423, lockedMessage(until));
+      }
+      await prisma.user.update({ where: { id: user.id }, data: { failedLogins: failed } });
+      await audit({
+        tableName: 'User',
+        recordId: user.id,
+        action: 'LOGIN_FAILED',
+        note: 'Wrong password',
+        actor,
+      });
+      const left = s.lockoutAttempts - failed;
+      throw new HttpError(
+        401,
+        `Incorrect email or password. ${left} more wrong ${left === 1 ? 'try' : 'tries'} will lock the account.`,
+      );
+    }
+    if (user.status !== 'ACTIVE')
+      throw new HttpError(
+        403,
+        `This account is ${user.status === 'SUSPENDED' ? 'suspended' : 'deactivated'}. Contact the System Administrator.`,
+      );
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null },
+    });
+    await audit({ tableName: 'User', recordId: user.id, action: 'LOGIN', actor });
     const au = toAuthUser(user);
     await setAuthCookies(res, au);
-    res.json({ user: au });
+    res.json({ user: au, idleTimeoutMinutes: (await getSettings()).idleTimeoutMinutes });
   }),
 );
 
@@ -92,34 +162,104 @@ authRouter.post(
   ah(async (req, res) => {
     await revokeRefreshToken(req.cookies?.[REFRESH_COOKIE]);
     clearAuthCookies(res);
+    if (req.user)
+      await audit({
+        tableName: 'User',
+        recordId: req.user.id,
+        action: 'LOGOUT',
+        note: req.body?.reason === 'idle' ? 'Signed out after no activity' : null,
+      });
     res.json({ ok: true });
   }),
 );
 
-authRouter.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user });
-});
+authRouter.get(
+  '/me',
+  requireAuth,
+  ah(async (req, res) => {
+    res.json({ user: req.user, idleTimeoutMinutes: (await getSettings()).idleTimeoutMinutes });
+  }),
+);
+
+/** Change your own password (and the only thing allowed while a temporary password is in use). */
+authRouter.post(
+  '/change-password',
+  requireAuth,
+  ah(async (req, res) => {
+    const d = parse(changePasswordSchema, req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user) throw new HttpError(401, 'Not authenticated');
+    if (!(await bcrypt.compare(d.current, user.passwordHash)))
+      throw badRequest('Validation failed', {
+        fieldErrors: { current: ['The current password is not correct'] },
+      });
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await bcrypt.hash(d.password, 10),
+        mustChangePassword: false,
+        passwordChangedAt: new Date(),
+      },
+    });
+    // Every other session of this account is signed out; this one continues with new cookies.
+    await prisma.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    forgetUserState(user.id);
+    await audit({ tableName: 'User', recordId: user.id, action: 'PASSWORD_CHANGED' });
+    const au = toAuthUser(updated);
+    await setAuthCookies(res, au);
+    res.json({ user: au });
+  }),
+);
 
 /* ---------------- users (admin) ---------------- */
 
 export const usersRouter = Router();
 
+const openCasesOf = (userId: number) =>
+  prisma.diseaseCase.findMany({
+    where: { assignedToId: userId, closedAt: null, voidedAt: null },
+    select: { id: true, code: true, disease: true, barangay: true },
+    orderBy: { id: 'asc' },
+  });
+
+const userRow = (u: {
+  id: number;
+  name: string;
+  email: string;
+  title: string | null;
+  role: string;
+  status: string;
+  mustChangePassword: boolean;
+  lockedUntil: Date | null;
+  lastLoginAt: Date | null;
+  createdAt: Date;
+}) => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  title: u.title,
+  role: u.role,
+  status: u.status,
+  mustChangePassword: u.mustChangePassword,
+  locked: !!u.lockedUntil && u.lockedUntil > new Date(),
+  lockedUntil: u.lockedUntil,
+  lastLoginAt: u.lastLoginAt,
+  createdAt: u.createdAt,
+});
+
+/** CVO staff accounts (livestock owners' logins are managed with their owner record). */
 usersRouter.get(
   '/',
   ah(async (_req, res) => {
-    const users = await prisma.user.findMany({ orderBy: { id: 'asc' } });
-    res.json(
-      users.map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        title: u.title,
-        role: u.role,
-        active: u.active,
-        lastLoginAt: u.lastLoginAt,
-        createdAt: u.createdAt,
-      })),
-    );
+    const users = await prisma.user.findMany({
+      where: { role: { not: 'OWNER' } },
+      orderBy: { id: 'asc' },
+      include: { _count: { select: { assignedCases: { where: { closedAt: null, voidedAt: null } } } } },
+    });
+    res.json(users.map((u) => ({ ...userRow(u), openCases: u._count.assignedCases })));
   }),
 );
 
@@ -130,23 +270,26 @@ usersRouter.post(
     const d = parse(userCreateSchema, req.body);
     const exists = await prisma.user.findUnique({ where: { email: d.email.toLowerCase() } });
     if (exists) throw badRequest('Validation failed', { fieldErrors: { email: ['Email already in use'] } });
+    const temp = temporaryPassword();
     const u = await prisma.user.create({
       data: {
         name: d.name,
         email: d.email.toLowerCase(),
         role: d.role,
         title: d.title ?? null,
-        passwordHash: await bcrypt.hash(d.password, 10),
+        passwordHash: await bcrypt.hash(temp, 10),
+        mustChangePassword: true,
       },
     });
     await logActivity(
       'user',
       u.id,
       'created',
-      `User ${u.email} created (${u.role.toLowerCase()})`,
+      `Account ${u.email} created (${ROLE_LABELS[u.role]})`,
       req.user?.name,
     );
-    res.status(201).json({ id: u.id, name: u.name, email: u.email, role: u.role });
+    // Shown once to the administrator, who hands it to the staff member.
+    res.status(201).json({ ...userRow(u), temporaryPassword: temp });
   }),
 );
 
@@ -156,31 +299,151 @@ usersRouter.patch(
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(userUpdateSchema, req.body);
-    if (id === req.user!.id && (d.active === false || (d.role && d.role !== 'ADMIN'))) {
-      throw badRequest('You cannot deactivate or demote your own account');
-    }
     const before = await prisma.user.findUnique({ where: { id } });
-    if (!before) throw new HttpError(404, 'User not found');
+    if (!before || before.role === 'OWNER') throw new HttpError(404, 'User not found');
+    const roleChanged = !!d.role && d.role !== before.role;
+    const statusChanged = !!d.status && d.status !== before.status;
+    if (
+      id === req.user!.id &&
+      ((statusChanged && d.status !== 'ACTIVE') || (roleChanged && d.role !== 'ADMIN'))
+    )
+      throw badRequest('You cannot suspend, deactivate or change the role of your own account');
+    // Work must not be left with someone who can no longer sign in.
+    if (statusChanged && d.status === 'DEACTIVATED') {
+      const open = await openCasesOf(id);
+      if (open.length)
+        throw new HttpError(
+          409,
+          `${before.name} still has ${open.length} open case(s). Reassign them to another staff member first.`,
+          { code: 'REASSIGN_REQUIRED', openCases: open },
+        );
+    }
     const u = await prisma.user.update({
       where: { id },
       data: {
         ...(d.name ? { name: d.name } : {}),
         ...(d.role ? { role: d.role } : {}),
         ...(d.title !== undefined ? { title: d.title ?? null } : {}),
-        ...(d.active !== undefined ? { active: d.active } : {}),
-        ...(d.password ? { passwordHash: await bcrypt.hash(d.password, 10) } : {}),
+        ...(d.status ? { status: d.status } : {}),
       },
     });
-    // Deactivation, a new password or a new role signs the user out of every session, so the
-    // change takes effect at once (they sign in again with the new role).
-    if (d.active === false || d.password || (d.role && d.role !== before.role))
+    // A new role or a block signs the user out of every session: the new permissions apply at the
+    // next sign-in.
+    if (roleChanged || (statusChanged && d.status !== 'ACTIVE'))
       await prisma.refreshToken.updateMany({
         where: { userId: id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
     forgetUserState(id);
-    await logActivity('user', id, 'updated', `User ${u.email} updated`, req.user?.name);
-    res.json({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active });
+    const notes = [
+      roleChanged ? `role ${ROLE_LABELS[before.role]} → ${ROLE_LABELS[u.role]}` : '',
+      statusChanged ? `status ${USER_STATUS_LABELS[before.status]} → ${USER_STATUS_LABELS[u.status]}` : '',
+      d.name && d.name !== before.name ? `name ${before.name} → ${u.name}` : '',
+    ].filter(Boolean);
+    await logActivity(
+      'user',
+      id,
+      statusChanged ? u.status.toLowerCase() : roleChanged ? 'role-changed' : 'updated',
+      `Account ${u.email} updated${notes.length ? ` — ${notes.join('; ')}` : ''}`,
+      req.user?.name,
+    );
+    res.json(userRow(u));
+  }),
+);
+
+/** Hand every open case of one staff member to another (asked for before deactivating). */
+usersRouter.post(
+  '/:id/reassign',
+  requireRole('ADMIN'),
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const { toUserId } = parse(userReassignSchema, req.body);
+    if (toUserId === id)
+      throw badRequest('Validation failed', { fieldErrors: { toUserId: ['Choose another staff member'] } });
+    const [from, to] = await Promise.all([
+      prisma.user.findUnique({ where: { id } }),
+      prisma.user.findUnique({ where: { id: toUserId } }),
+    ]);
+    if (!from) throw new HttpError(404, 'User not found');
+    if (!to || to.status !== 'ACTIVE' || to.role === 'OWNER')
+      throw badRequest('Validation failed', { fieldErrors: { toUserId: ['Choose an active staff member'] } });
+    const open = await openCasesOf(id);
+    await prisma.$transaction(async (tx) => {
+      for (const c of open) {
+        await tx.diseaseCase.update({ where: { id: c.id }, data: { assignedToId: to.id } });
+        await logActivity(
+          'case',
+          c.id,
+          'reassigned',
+          `${c.code} reassigned from ${from.name} to ${to.name}`,
+          req.user?.name,
+          tx,
+        );
+      }
+      await logActivity(
+        'user',
+        id,
+        'reassigned',
+        `${open.length} open case(s) of ${from.name} reassigned to ${to.name}`,
+        req.user?.name,
+        tx,
+      );
+    });
+    res.json({ reassigned: open.length });
+  }),
+);
+
+/** A forgotten password: the administrator gives a new temporary one (also unlocks the account). */
+usersRouter.post(
+  '/:id/reset-password',
+  requireRole('ADMIN'),
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const u = await prisma.user.findUnique({ where: { id } });
+    if (!u) throw new HttpError(404, 'User not found');
+    const temp = temporaryPassword();
+    await prisma.user.update({
+      where: { id },
+      data: {
+        passwordHash: await bcrypt.hash(temp, 10),
+        mustChangePassword: true,
+        failedLogins: 0,
+        lockedUntil: null,
+      },
+    });
+    await prisma.refreshToken.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    forgetUserState(id);
+    await audit({
+      tableName: 'User',
+      recordId: id,
+      action: 'PASSWORD_RESET',
+      note: `Temporary password issued for ${u.email}`,
+    });
+    await logActivity(
+      'user',
+      id,
+      'password-reset',
+      `Password of ${u.email} reset by the administrator`,
+      req.user?.name,
+    );
+    res.json({ temporaryPassword: temp });
+  }),
+);
+
+/** Lift a lock early (the account locked itself after too many wrong passwords). */
+usersRouter.post(
+  '/:id/unlock',
+  requireRole('ADMIN'),
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const u = await prisma.user.findUnique({ where: { id } });
+    if (!u) throw new HttpError(404, 'User not found');
+    await prisma.user.update({ where: { id }, data: { failedLogins: 0, lockedUntil: null } });
+    await audit({ tableName: 'User', recordId: id, action: 'UNLOCKED', note: `Lock on ${u.email} lifted` });
+    res.json({ ok: true });
   }),
 );
 
@@ -615,7 +878,7 @@ metricsRouter.get(
         orderBy: { id: 'asc' },
       }),
       prisma.user.findMany({
-        where: { active: true, role: { in: ['ADMIN', 'STAFF'] } },
+        where: { status: 'ACTIVE', role: { not: 'OWNER' } },
         orderBy: { name: 'asc' },
       }),
     ]);
@@ -687,7 +950,7 @@ settingsRouter.get(
   requireRole('ADMIN'),
   ah(async (req, res) => {
     const users = await prisma.user.findMany({
-      select: { id: true, email: true, name: true, title: true, role: true, active: true, createdAt: true },
+      select: { id: true, email: true, name: true, title: true, role: true, status: true, createdAt: true },
     });
     const data = {
       exportedAt: new Date().toISOString(),
@@ -708,9 +971,16 @@ settingsRouter.get(
       responseActivities: await prisma.responseActivity.findMany(),
       vaccinations: await prisma.vaccination.findMany(),
       activityLog: await prisma.activityLog.findMany(),
+      auditEntries: await prisma.auditEntry.findMany(),
       settings: await prisma.setting.findMany(),
     };
     await logActivity('settings', 0, 'backup', 'Data backup downloaded', req.user?.name);
+    await audit({
+      tableName: 'Backup',
+      recordId: today(),
+      action: 'EXPORT',
+      note: 'Full data backup downloaded',
+    });
     // Decimal values (PCIC amounts) serialise as strings.
     const json = JSON.stringify(data, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');

@@ -14,7 +14,7 @@ export interface MoreItem {
 }
 
 /**
- * "More" on every record: Archive / Restore, Void and Delete live here, in the same place on each page.
+ * "More" on every record: Archive / Restore and Void live here, in the same place on each page.
  * Items that do not apply are simply left out by the page.
  */
 export function MoreMenu({

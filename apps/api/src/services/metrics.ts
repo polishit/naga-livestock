@@ -52,7 +52,7 @@ export async function loadFarms(f: Filters = {}) {
         },
         orderBy: { id: 'asc' },
       },
-      visits: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
+      visits: { where: { voidedAt: null }, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
     },
     orderBy: { id: 'asc' },
   });
@@ -462,6 +462,7 @@ export async function radiusAnalysis(caseId: number, radiusMeters?: number) {
   // Monitoring: each nearby farm is checked individually after the case is reported.
   const visits = await prisma.farmVisit.findMany({
     where: {
+      voidedAt: null,
       farmId: { in: within.map((r) => r.farm.id) },
       OR: [{ caseId: c.id }, { date: { gte: c.reportedAt } }],
     },

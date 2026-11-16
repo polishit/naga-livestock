@@ -53,25 +53,42 @@ test('analytics renders all charts', async ({ page }) => {
   }
 });
 
-test('admin creates a user who can then sign in', async ({ page, browser }) => {
+test('admin creates a staff account; the temporary password must be changed at first sign-in', async ({
+  page,
+  browser,
+}) => {
   await page.goto('/users');
-  await page.getByRole('button', { name: 'Add user' }).click();
+  await page.getByRole('button', { name: 'Add staff account' }).click();
   const d = dialog(page);
   await d.getByLabel('Full name').fill('Dr. Ana Field');
   await d.getByLabel('Email').fill('ana@nagacityvet.gov.ph');
-  await d.getByLabel('Role').selectOption('STAFF');
-  await d.getByLabel('Password').fill('short');
-  await d.getByRole('button', { name: 'Create user' }).click();
-  await expect(d.getByText('At least 8 characters')).toBeVisible();
-  await d.getByLabel('Password').fill('FieldVet#2026');
-  await d.getByRole('button', { name: 'Create user' }).click();
-  await expectToast(page, 'User created.');
-  await expect(page.getByRole('cell', { name: 'ana@nagacityvet.gov.ph' })).toBeVisible();
+  await d.getByLabel('Role').selectOption('VETERINARIAN');
+  await d.getByRole('button', { name: 'Create account' }).click();
+  const made = dialog(page);
+  await expect(made.getByText('Account created')).toBeVisible();
+  const temp = (await made.locator('code').textContent())!.trim();
+  await made.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('row', { name: /Dr\. Ana Field/ })).toContainText('Temporary password');
 
   const ctx = await browser.newContext();
   const p2 = await ctx.newPage();
-  await login(p2, 'ana@nagacityvet.gov.ph', 'FieldVet#2026');
-  await expect(p2.getByRole('heading', { name: /Dr\. Ana/ })).toBeVisible();
+  await p2.goto('/login');
+  await p2.getByLabel('Email').fill('ana@nagacityvet.gov.ph');
+  await p2.getByLabel('Password', { exact: true }).fill(temp);
+  await p2.getByRole('button', { name: 'Sign in' }).click();
+  // Nothing opens until she sets her own password.
+  await expect(p2.getByRole('heading', { name: 'Set your own password' })).toBeVisible();
+  await p2.goto('/owners');
+  await expect(p2.getByRole('heading', { name: 'Set your own password' })).toBeVisible();
+  await p2.getByLabel('Temporary password').fill(temp);
+  await p2.getByLabel('New password *').fill('short');
+  await p2.getByLabel('Type the new password again').fill('short');
+  await p2.getByRole('button', { name: 'Save and continue' }).click();
+  await expect(p2.getByText('At least 8 characters', { exact: true })).toBeVisible();
+  await p2.getByLabel('New password *').fill('FieldVet#2026');
+  await p2.getByLabel('Type the new password again').fill('FieldVet#2026');
+  await p2.getByRole('button', { name: 'Save and continue' }).click();
+  await expect(p2.getByRole('heading', { name: 'Livestock Owners' })).toBeVisible();
   await ctx.close();
 });
 

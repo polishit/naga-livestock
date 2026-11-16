@@ -16,8 +16,10 @@ interface Help {
 /** How records are removed, explained the same way wherever it applies. */
 const REMOVE_TERMS: [string, string][] = [
   ['Archive', 'Put away a record that is no longer active. It can be restored.'],
-  ['Remove / Void', 'Cross out a wrong entry with the reason (administrators only). It no longer counts.'],
-  ['Delete', 'Remove for good. Only for a record entered by mistake that nothing depends on.'],
+  [
+    'Remove / Void',
+    'Cross out a wrong entry with the reason (veterinarian or administrator). It stays on record but no longer counts. Nothing is ever deleted.',
+  ],
 ];
 
 /** "How to use this page", keyed by route ("/farms", "/farms/:id", "/cases/new"). */
@@ -278,13 +280,32 @@ const HELP: Record<string, Help> = {
     title: 'User management',
     purpose: 'Who can sign in and what they can do.',
     steps: [
-      'Add a user and choose the role.',
-      'Edit a user and set the status to Deactivated when they leave the office.',
+      'Select "Add staff account", enter the name and email, and choose the role.',
+      'Give the temporary password shown to the staff member. They must change it the first time they sign in.',
+      'Use the ⋯ menu on a row to edit, reset a forgotten password, unlock, suspend or deactivate.',
+      'Before deactivating someone with open cases, the system asks who takes the cases over.',
     ],
     terms: [
-      ['Administrator', 'Everything, including users, settings and targets.'],
-      ['Staff', 'Can add and edit records.'],
-      ['Viewer', 'Can only look and print.'],
+      ['System Administrator', 'Everything, including accounts, settings, targets and the audit log.'],
+      ['Veterinarian (reviewer)', 'Records and reviews: closes and reopens cases and voids wrong entries.'],
+      ['Field Technician', 'Records field work. Cannot review, void or manage accounts.'],
+      ['Suspended', 'Temporarily blocked from signing in.'],
+      ['Deactivated', 'Left the office. The account is kept so every record keeps its author.'],
+      ['Locked', 'Too many wrong passwords. It unlocks by itself after a while, or you can unlock it.'],
+    ],
+  },
+  '/audit-log': {
+    title: 'Audit log',
+    purpose: 'Who did what and when, with the old and new values. It cannot be edited or deleted.',
+    steps: [
+      'Filter by record type, action, person or dates to find a change.',
+      'For a change, the old value is crossed out in red and the new value is in green.',
+      'Sign-ins, wrong passwords, locked accounts, password resets and exports are listed too.',
+    ],
+    terms: [
+      ['Created', 'A new record, with the values it started with.'],
+      ['Changed', 'An edit, with the old and new value of each field.'],
+      ['CVO system / Owner app / Automatic', 'Where the change came from.'],
     ],
   },
   '/settings': {
@@ -293,6 +314,7 @@ const HELP: Record<string, Help> = {
     steps: [
       'Edit the office name and letterhead lines used on printed reports.',
       'Set how many days before a head count is overdue, and how far ahead vaccinations are listed.',
+      'Set the sign-in security: wrong passwords before an account locks, how long it stays locked, and the idle time before sign-out.',
       'Download a backup of all records.',
     ],
   },

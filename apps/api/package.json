@@ -11,8 +11,9 @@
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-        "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "db:seed:empty": "tsx --env-file-if-exists=.env prisma/seed.ts --empty",
+    "db:seed:basic": "tsx --env-file-if-exists=.env prisma/seed-basic.ts",
     "db:reset": "prisma migrate reset --force",
     "generate": "prisma generate",
     "db:seed:prod": "node dist/prisma/seed.js"
@@ -31,6 +32,7 @@
     "express-rate-limit": "7.4.1",
     "helmet": "8.0.0",
     "jsonwebtoken": "9.0.2",
+    "mariadb": "3.4.5",
     "morgan": "1.10.0",
     "multer": "1.4.5-lts.1",
     "prisma": "7.8.0",

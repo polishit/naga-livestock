@@ -17,7 +17,7 @@ async function agentFor(email: string) {
 
 beforeAll(async () => {
   admin = await agentFor('admin@nagacityvet.gov.ph');
-  viewer = await agentFor('viewer@nagacityvet.gov.ph');
+  viewer = await agentFor('tech@nagacityvet.gov.ph');
 });
 
 afterAll(async () => {
@@ -56,9 +56,16 @@ describe('health & auth', () => {
   });
 
   it('enforces role-based access', async () => {
+    // A field technician records field work but cannot review or manage accounts.
     expect((await viewer.get('/api/owners')).status).toBe(200);
-    expect((await viewer.post('/api/owners').send({ fullName: 'X', barangay: 'Pacol' })).status).toBe(403);
     expect((await viewer.get('/api/users')).status).toBe(403);
+    expect((await viewer.get('/api/audit')).status).toBe(403);
+    expect((await viewer.post('/api/cases/1/close').send({})).status).toBe(403);
+    expect((await viewer.post('/api/cases/1/void').send({ reason: 'x' })).status).toBe(403);
+    // A veterinarian reviews, but accounts and the audit log are the administrator's.
+    const vet = await agentFor('mark@nagacityvet.gov.ph');
+    expect((await vet.get('/api/users')).status).toBe(403);
+    expect((await vet.get('/api/audit')).status).toBe(403);
   });
 });
 
@@ -488,7 +495,7 @@ describe('logic fixes: vaccination, registry and corrections', () => {
     expect(await prisma.ownershipTransfer.count()).toBe(before + r.body.transferredAnimals);
   });
 
-  it('admins can void a record with a reason; it leaves the figures', async () => {
+  it('reviewers can void a record with a reason; it leaves the figures', async () => {
     const v = await admin.post('/api/vaccinations').send({
       farmId: 13,
       target: 'GROUP',
@@ -498,12 +505,10 @@ describe('logic fixes: vaccination, registry and corrections', () => {
       doseNumber: 1,
     });
     expect((await viewer.post(`/api/vaccinations/${v.body.id}/void`).send({ reason: 'x' })).status).toBe(403);
+    // Reviewers (veterinarian, administrator) can void; a reason is required.
     const mark = await agentFor('mark@nagacityvet.gov.ph');
-    expect((await mark.post(`/api/vaccinations/${v.body.id}/void`).send({ reason: 'typo' })).status).toBe(
-      403,
-    );
-    expect((await admin.post(`/api/vaccinations/${v.body.id}/void`).send({ reason: '' })).status).toBe(400);
-    const ok = await admin
+    expect((await mark.post(`/api/vaccinations/${v.body.id}/void`).send({ reason: '' })).status).toBe(400);
+    const ok = await mark
       .post(`/api/vaccinations/${v.body.id}/void`)
       .send({ reason: 'Entered on the wrong farm' });
     expect(ok.status).toBe(200);
@@ -918,9 +923,9 @@ describe('logic audit: corrections, reminders and record integrity', () => {
     const cookies = login.headers['set-cookie'] as unknown as string[];
     const refresh = cookies.find((c) => c.startsWith('refresh_token='))!.split(';')[0];
     const mark = await prisma.user.findUnique({ where: { email: 'mark@nagacityvet.gov.ph' } });
-    await admin.patch(`/api/users/${mark!.id}`).send({ role: 'READONLY' });
+    await admin.patch(`/api/users/${mark!.id}`).send({ role: 'TECHNICIAN' });
     expect((await request(app).post('/api/auth/refresh').set('Cookie', refresh)).status).toBe(401);
-    await admin.patch(`/api/users/${mark!.id}`).send({ role: 'STAFF' });
+    await admin.patch(`/api/users/${mark!.id}`).send({ role: 'VETERINARIAN' });
   });
 });
 
@@ -1391,45 +1396,30 @@ describe('reports & analytics insights and the task list', () => {
 describe('removing and correcting records', () => {
   const today = isoDate();
 
-  it('deletes an owner entered by mistake, but not one with records', async () => {
+  it('has no delete: wrong entries are archived, voided or marked instead', async () => {
     const o = await admin.post('/api/owners').send({ fullName: 'Typo Owner', barangay: 'Pacol' });
-    expect((await viewer.delete(`/api/owners/${o.body.id}`)).status).toBe(403);
-    const blocked = await admin.delete('/api/owners/1');
-    expect(blocked.status).toBe(400);
-    expect(blocked.body.error).toMatch(/cannot be deleted: has \d+ farm/);
-    expect(blocked.body.error).toMatch(/Archive the owner instead/);
-    expect((await admin.delete(`/api/owners/${o.body.id}`)).status).toBe(200);
-    expect((await admin.get(`/api/owners/${o.body.id}`)).status).toBe(404);
-  });
-
-  it('deletes an empty farm and an animal with no history; refuses farms with records', async () => {
-    const o = await admin.post('/api/owners').send({ fullName: 'Delete Test Owner', barangay: 'Pacol' });
     const f = await admin
-      .post('/api/farms')
-      .send({ ownerId: o.body.id, name: 'Empty Farm', type: 'backyard', barangay: 'Pacol' });
-    expect((await admin.delete(`/api/farms/${f.body.id}`)).status).toBe(200);
-    const busy = await admin.delete('/api/farms/1');
-    expect(busy.body.error).toMatch(/Archive the farm instead/);
-
-    const f2 = await admin
       .post('/api/farms')
       .send({ ownerId: o.body.id, name: 'Tag Farm', type: 'backyard', barangay: 'Pacol' });
     const g = await admin
       .post('/api/population/groups')
-      .send({ farmId: f2.body.id, species: 'Cattle', count: 2 });
+      .send({ farmId: f.body.id, species: 'Cattle', count: 2 });
     const a = await admin.post('/api/animals').send({ groupId: g.body.id, sex: 'Female', earTag: 'DEL-1' });
-    expect((await admin.delete(`/api/animals/${a.body.id}`)).status).toBe(200);
-    const a2 = await admin.post('/api/animals').send({ groupId: g.body.id, sex: 'Female', earTag: 'DEL-2' });
-    await admin.post('/api/vaccinations').send({
-      farmId: f2.body.id,
-      target: 'ANIMAL',
-      animalId: a2.body.id,
-      count: 1,
-      vaccine: 'Hemosep',
-      doseNumber: 1,
-    });
-    const kept = await admin.delete(`/api/animals/${a2.body.id}`);
-    expect(kept.body.error).toMatch(/has 1 vaccination record.*Change its status instead/);
+    // No delete route exists for any record.
+    for (const url of [
+      `/api/owners/${o.body.id}`,
+      `/api/farms/${f.body.id}`,
+      `/api/animals/${a.body.id}`,
+      '/api/strays/1',
+      '/api/pcic/1',
+      '/api/farm-visits/1',
+      '/api/users/2',
+    ])
+      expect((await admin.delete(url)).status, url).toBe(404);
+    // The records are all still there.
+    expect((await admin.get(`/api/owners/${o.body.id}`)).status).toBe(200);
+    expect((await admin.get(`/api/farms/${f.body.id}`)).status).toBe(200);
+    expect((await admin.get(`/api/animals/${a.body.id}`)).status).toBe(200);
   });
 
   it('voids a duplicate case: it leaves the lists and figures; reopening undoes it', async () => {
@@ -1468,7 +1458,7 @@ describe('removing and correcting records', () => {
     await admin.post(`/api/cases/${c.body.id}/void`).send({ reason: 'Duplicate' });
   });
 
-  it('deletes a fresh stray report; one acted on can only be voided', async () => {
+  it('voids a stray report entered in error; it stays on record', async () => {
     const mk = () =>
       admin.post('/api/strays').send({
         species: 'Goat',
@@ -1477,12 +1467,8 @@ describe('removing and correcting records', () => {
         // Yesterday morning: never in the future, whatever the time of the test.
         discoveredAt: `${isoDate(new Date(Date.now() - 86_400_000))}T08:00`,
       });
-    const s1 = await mk();
-    expect((await admin.delete(`/api/strays/${s1.body.id}`)).status).toBe(200);
     const s2 = await mk();
     await admin.patch(`/api/strays/${s2.body.id}`).send({ status: 'CLOSED' });
-    const refused = await admin.delete(`/api/strays/${s2.body.id}`);
-    expect(refused.body.error).toMatch(/Void it instead/);
     expect((await admin.post(`/api/strays/${s2.body.id}/void`).send({ reason: 'Wrong animal' })).status).toBe(
       200,
     );
@@ -1613,9 +1599,27 @@ describe('CVO revisions: masterlist, deworming, farm visits, monthly report', ()
       .post('/api/farm-visits')
       .send({ farmId: 13, date: '2099-01-01', purpose: 'ROUTINE' });
     expect(future.status).toBe(400);
-    expect((await viewer.delete(`/api/farm-visits/${v.body.id}`)).status).toBe(403);
     const edited = await admin.patch(`/api/farm-visits/${v.body.id}`).send({ findings: 'SICK_ANIMALS' });
     expect(edited.body.findingsLabel).toBe('Sick animals found');
+    // A visit entered by mistake is voided with a reason (reviewers only), never deleted.
+    const wrong = await admin
+      .post('/api/farm-visits')
+      .send({ farmId: 13, date: isoDate(), purpose: 'ROUTINE' });
+    expect(wrong.status, JSON.stringify(wrong.body)).toBe(201);
+    expect((await viewer.post(`/api/farm-visits/${wrong.body.id}/void`).send({ reason: 'x' })).status).toBe(
+      403,
+    );
+    expect((await admin.post(`/api/farm-visits/${wrong.body.id}/void`).send({ reason: '' })).status).toBe(
+      400,
+    );
+    expect(
+      (await admin.post(`/api/farm-visits/${wrong.body.id}/void`).send({ reason: 'Wrong farm' })).status,
+    ).toBe(200);
+    const after = (await admin.get('/api/farm-visits?farmId=13')).body;
+    expect(after.some((x: { id: number }) => x.id === wrong.body.id)).toBe(false);
+    expect((await prisma.farmVisit.findUnique({ where: { id: wrong.body.id } }))?.voidReason).toBe(
+      'Wrong farm',
+    );
 
     const area = await admin.get('/api/radius?caseId=1&radius=1000');
     expect(area.status).toBe(200);
@@ -1855,5 +1859,207 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     const pacolPigs = (await admin.get('/api/search?barangay=Pacol&species=Pig&limit=100')).body;
     expect(pacolPigs.length).toBeGreaterThan(0);
     expect(pacolPigs.every((x: { barangay?: string }) => x.barangay === 'Pacol')).toBe(true);
+  });
+});
+
+describe('accounts, roles and the audit trail', () => {
+  const fresh = () => request.agent(app);
+  const login = (agent: request.Agent, email: string, password: string) =>
+    agent.post('/api/auth/login').send({ email, password });
+
+  it('creates a staff account with a temporary password that must be changed at first sign-in', async () => {
+    const bad = await admin
+      .post('/api/users')
+      .send({ name: 'X', email: 'x@nagacityvet.gov.ph', role: 'OWNER' });
+    expect(bad.status).toBe(400);
+    const made = await admin.post('/api/users').send({
+      name: 'Nena Field',
+      email: 'nena@nagacityvet.gov.ph',
+      role: 'TECHNICIAN',
+      title: 'Field Technician',
+    });
+    expect(made.status).toBe(201);
+    const temp = made.body.temporaryPassword as string;
+    expect(temp).toMatch(/[A-Za-z]/);
+    expect(made.body.mustChangePassword).toBe(true);
+
+    const nena = fresh();
+    const first = await login(nena, 'nena@nagacityvet.gov.ph', temp);
+    expect(first.status).toBe(200);
+    expect(first.body.user.mustChangePassword).toBe(true);
+    // Nothing else works until the temporary password is changed.
+    const blocked = await nena.get('/api/owners');
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.code).toBe('PASSWORD_CHANGE_REQUIRED');
+    // The new password must follow the rule and differ from the temporary one.
+    const weak = await nena
+      .post('/api/auth/change-password')
+      .send({ current: temp, password: 'short', confirm: 'short' });
+    expect(weak.status).toBe(400);
+    const sameAgain = await nena
+      .post('/api/auth/change-password')
+      .send({ current: temp, password: temp, confirm: temp });
+    expect(sameAgain.status).toBe(400);
+    const wrongCurrent = await nena
+      .post('/api/auth/change-password')
+      .send({ current: 'nope', password: 'Bagong#2026', confirm: 'Bagong#2026' });
+    expect(wrongCurrent.body.fieldErrors.current[0]).toMatch(/not correct/);
+    const ok = await nena
+      .post('/api/auth/change-password')
+      .send({ current: temp, password: 'Bagong#2026', confirm: 'Bagong#2026' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.user.mustChangePassword).toBe(false);
+    expect((await nena.get('/api/owners')).status).toBe(200);
+    expect((await login(fresh(), 'nena@nagacityvet.gov.ph', temp)).status).toBe(401);
+  });
+
+  it('locks an account after repeated wrong passwords; the administrator unlocks or resets it', async () => {
+    const email = 'nena@nagacityvet.gov.ph';
+    const nena = await prisma.user.findUnique({ where: { email } });
+    await prisma.user.update({ where: { id: nena!.id }, data: { failedLogins: 0 } });
+    for (let i = 1; i <= 4; i++) {
+      const r = await login(fresh(), email, 'wrong-password');
+      expect(r.status).toBe(401);
+      expect(r.body.error).toContain(`${5 - i} more wrong`);
+    }
+    const fifth = await login(fresh(), email, 'wrong-password');
+    expect(fifth.status).toBe(423);
+    expect(fifth.body.error).toMatch(/locked/);
+    // Even the right password is refused while the account is locked.
+    expect((await login(fresh(), email, 'Bagong#2026')).status).toBe(423);
+    const list = (await admin.get('/api/users')).body;
+    expect(list.find((u: { id: number }) => u.id === nena!.id)).toMatchObject({ locked: true });
+    expect((await admin.post(`/api/users/${nena!.id}/unlock`)).status).toBe(200);
+    expect((await login(fresh(), email, 'Bagong#2026')).status).toBe(200);
+
+    // A forgotten password: a new temporary one, to be changed at the next sign-in.
+    const reset = await admin.post(`/api/users/${nena!.id}/reset-password`);
+    expect(reset.status).toBe(200);
+    expect((await login(fresh(), email, 'Bagong#2026')).status).toBe(401);
+    const again = await login(fresh(), email, reset.body.temporaryPassword);
+    expect(again.body.user.mustChangePassword).toBe(true);
+    // Sign-in failures, the lock and the reset are all in the audit log.
+    const log = (await admin.get(`/api/audit?table=User&recordId=${nena!.id}`)).body;
+    const actions = log.rows.map((r: { action: string }) => r.action);
+    for (const a of ['LOGIN_FAILED', 'LOCKED', 'UNLOCKED', 'PASSWORD_RESET', 'LOGIN', 'PASSWORD_CHANGED'])
+      expect(actions, a).toContain(a);
+  });
+
+  it('suspends and deactivates accounts instead of deleting; open cases must be reassigned first', async () => {
+    const mark = await prisma.user.findUnique({ where: { email: 'mark@nagacityvet.gov.ph' } });
+    const joy = await prisma.user.findUnique({ where: { email: 'joy@nagacityvet.gov.ph' } });
+    const me = await prisma.user.findUnique({ where: { email: 'admin@nagacityvet.gov.ph' } });
+    expect((await admin.patch(`/api/users/${me!.id}`).send({ status: 'DEACTIVATED' })).status).toBe(400);
+    expect((await admin.patch(`/api/users/${me!.id}`).send({ role: 'TECHNICIAN' })).status).toBe(400);
+
+    // Give Mark an open case, then try to deactivate him.
+    const open = await prisma.diseaseCase.findFirst({ where: { closedAt: null, voidedAt: null } });
+    await prisma.diseaseCase.update({ where: { id: open!.id }, data: { assignedToId: mark!.id } });
+    const refused = await admin.patch(`/api/users/${mark!.id}`).send({ status: 'DEACTIVATED' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe('REASSIGN_REQUIRED');
+    expect(refused.body.openCases.some((c: { id: number }) => c.id === open!.id)).toBe(true);
+    expect((await admin.post(`/api/users/${mark!.id}/reassign`).send({ toUserId: mark!.id })).status).toBe(
+      400,
+    );
+    const moved = await admin.post(`/api/users/${mark!.id}/reassign`).send({ toUserId: joy!.id });
+    expect(moved.body.reassigned).toBeGreaterThanOrEqual(1);
+    expect((await prisma.diseaseCase.findUnique({ where: { id: open!.id } }))?.assignedToId).toBe(joy!.id);
+
+    const off = await admin.patch(`/api/users/${mark!.id}`).send({ status: 'DEACTIVATED' });
+    expect(off.body.status).toBe('DEACTIVATED');
+    const denied = await login(fresh(), 'mark@nagacityvet.gov.ph', 'Livestock@2026');
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toMatch(/deactivated/);
+    // The account and everything recorded under the name are still there.
+    expect(await prisma.user.findUnique({ where: { id: mark!.id } })).not.toBeNull();
+    // Suspended is temporary; both can be made active again.
+    expect((await admin.patch(`/api/users/${mark!.id}`).send({ status: 'SUSPENDED' })).body.status).toBe(
+      'SUSPENDED',
+    );
+    expect((await login(fresh(), 'mark@nagacityvet.gov.ph', 'Livestock@2026')).body.error).toMatch(
+      /suspended/,
+    );
+    expect((await admin.patch(`/api/users/${mark!.id}`).send({ status: 'ACTIVE' })).body.status).toBe(
+      'ACTIVE',
+    );
+    expect((await login(fresh(), 'mark@nagacityvet.gov.ph', 'Livestock@2026')).status).toBe(200);
+  });
+
+  it('writes every change to the audit log with who, when, and the old and new values', async () => {
+    const o = await admin
+      .post('/api/owners')
+      .send({ fullName: 'Audit Trail Owner', barangay: 'Pacol', contact: '09170000001' });
+    await admin
+      .patch(`/api/owners/${o.body.id}`)
+      .send({ fullName: 'Audit Trail Owner', barangay: 'Carolina', contact: '09170000002' });
+    const hist = (await admin.get(`/api/audit/record/Owner/${o.body.id}`)).body;
+    expect(hist[0]).toMatchObject({ action: 'CREATE', byName: 'Dr. Liza Admin', source: 'web' });
+    expect(hist[0].changes.fullName).toBe('Audit Trail Owner');
+    const upd = hist.find((h: { action: string }) => h.action === 'UPDATE');
+    expect(upd.changes.barangay).toEqual(['Pacol', 'Carolina']);
+    expect(upd.changes.contact).toEqual(['09170000001', '09170000002']);
+    expect(upd.userId).toBeGreaterThan(0);
+    // A password never appears in the log.
+    const all = JSON.stringify((await admin.get('/api/audit?table=User')).body.rows);
+    expect(all).not.toMatch(/\$2[aby]\$/);
+  });
+
+  it('refuses to edit or delete audit entries, even directly in the database', async () => {
+    const before = (await admin.get('/api/audit')).body;
+    expect(before.databaseLock).toBe('on');
+    expect(before.total).toBeGreaterThan(0);
+    const id = before.rows[0].id;
+    expect((await admin.delete(`/api/audit/${id}`)).status).toBe(404);
+    expect((await admin.patch(`/api/audit/${id}`).send({ note: 'x' })).status).toBe(404);
+    const { basePrisma } = await import('../src/db');
+    await expect(
+      basePrisma.auditEntry.update({ where: { id }, data: { note: 'tampered' } }),
+    ).rejects.toThrow();
+    await expect(basePrisma.auditEntry.delete({ where: { id } })).rejects.toThrow();
+    await expect(basePrisma.activityLog.deleteMany()).rejects.toThrow();
+    expect((await basePrisma.auditEntry.findUnique({ where: { id } }))?.note).not.toBe('tampered');
+  });
+
+  it('logs exports and filters the log', async () => {
+    expect(
+      (await admin.post('/api/audit/export').send({ report: 'Owner Registry', format: 'XLSX', rows: 20 }))
+        .status,
+    ).toBe(201);
+    const exp = (await admin.get('/api/audit?action=EXPORT')).body;
+    expect(exp.rows[0].note).toMatch(/Owner Registry exported as XLSX \(20 rows\)/);
+    expect(exp.tables).toContain('Owner');
+    const mine = (await admin.get('/api/audit?q=Liza')).body;
+    expect(mine.total).toBeGreaterThan(0);
+  });
+
+  it('keeps livestock owner logins out of the CVO system', async () => {
+    const { default: bcrypt } = await import('bcryptjs');
+    const owner = await prisma.owner.findFirst();
+    await prisma.user.create({
+      data: {
+        name: owner!.fullName,
+        email: 'owner.test@example.com',
+        role: 'OWNER',
+        ownerId: owner!.id,
+        passwordHash: await bcrypt.hash('Owner#2026', 10),
+      },
+    });
+    const agent = fresh();
+    const r = await login(agent, 'owner.test@example.com', 'Owner#2026');
+    expect(r.status).toBe(200);
+    expect(r.body.user).toMatchObject({ role: 'OWNER', ownerId: owner!.id });
+    for (const url of [
+      '/api/owners',
+      '/api/farms',
+      '/api/cases',
+      '/api/dashboard',
+      '/api/users',
+      '/api/audit',
+    ])
+      expect((await agent.get(url)).status, url).toBe(403);
+    // Owner logins are not listed with the staff accounts.
+    const staff = (await admin.get('/api/users')).body;
+    expect(staff.some((u: { email: string }) => u.email === 'owner.test@example.com')).toBe(false);
   });
 });

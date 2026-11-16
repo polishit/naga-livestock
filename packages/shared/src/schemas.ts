@@ -8,7 +8,8 @@ import {
   OWNER_STATUSES,
   PCIC_STATUSES,
   RESPONSE_TYPES,
-  ROLES,
+  STAFF_ROLES,
+  USER_STATUSES,
   SPECIES,
   STRAY_STATUSES,
   TRANSFER_TYPES,
@@ -193,20 +194,45 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** A new password: at least 8 characters with a letter and a number. */
+export const newPassword = z
+  .string({ required_error: 'Required' })
+  .min(8, 'At least 8 characters')
+  .max(100, 'Too long')
+  .refine((v) => /[A-Za-z]/.test(v) && /\d/.test(v), 'Include a letter and a number');
+
+/** The administrator never types a password: the system gives a temporary one to hand over. */
 export const userCreateSchema = z.object({
   name: reqText(120),
   email: z.string().trim().email('Enter a valid email'),
-  role: z.enum(ROLES),
+  role: z.enum(STAFF_ROLES, { errorMap: () => ({ message: 'Select a role' }) }),
   title: optText(120),
-  password: z.string().min(8, 'At least 8 characters'),
 });
 export const userUpdateSchema = z.object({
   name: reqText(120).optional(),
-  role: z.enum(ROLES).optional(),
+  role: z.enum(STAFF_ROLES).optional(),
   title: optText(120),
-  active: z.boolean().optional(),
-  password: z.preprocess(blankToUndefined, z.string().min(8, 'At least 8 characters').optional()),
+  status: z.enum(USER_STATUSES).optional(),
 });
+/** Hand the open cases of one staff member to another (needed before deactivating). */
+export const userReassignSchema = z.object({
+  toUserId: z.coerce
+    .number({ invalid_type_error: 'Select a staff member' })
+    .int()
+    .positive('Select a staff member'),
+});
+export const changePasswordSchema = z
+  .object({
+    current: z.string().min(1, 'Enter your current password'),
+    password: newPassword,
+    confirm: z.string().min(1, 'Type the new password again'),
+  })
+  .refine((d) => d.password === d.confirm, { path: ['confirm'], message: 'The two passwords do not match' })
+  .refine((d) => d.password !== d.current, {
+    path: ['password'],
+    message: 'Choose a password different from the current one',
+  });
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 /* ---------- owners ---------- */
 
@@ -701,6 +727,12 @@ export const settingsSchema = z.object({
   officeAddress: optText(200),
   officeContact: optText(60),
   officeEmail: optText(120),
+  /** Wrong passwords in a row before an account locks */
+  lockoutAttempts: intField(3, 'At least 3', 20),
+  /** How long a locked account stays locked */
+  lockoutMinutes: intField(1, 'At least 1 minute', 1440),
+  /** A signed-in user with no activity for this long is signed out */
+  idleTimeoutMinutes: intField(5, 'At least 5 minutes', 720),
 });
 export type SettingsInput = z.infer<typeof settingsSchema>;
 

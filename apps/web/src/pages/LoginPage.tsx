@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { loginSchema, type LoginInput } from '@livestock/shared';
 import { ApiError } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { SIGNED_OUT_NOTE, useAuth } from '@/lib/auth';
 import { Button, Input } from '@/components/ui';
 
 /**
@@ -31,6 +31,16 @@ export default function LoginPage() {
   const location = useLocation();
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Why the user landed here (for example signed out after no activity); shown once.
+  const [note] = useState(() => {
+    try {
+      const n = sessionStorage.getItem(SIGNED_OUT_NOTE);
+      sessionStorage.removeItem(SIGNED_OUT_NOTE);
+      return n;
+    } catch {
+      return null;
+    }
+  });
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '' },
@@ -74,14 +84,17 @@ export default function LoginPage() {
         {/* Card anchored to the artwork on large screens */}
         {wide && (
           <div className="absolute" style={{ left: '31.5%', top: '16.1%', width: '33.45%', height: '65.8%' }}>
-            <LoginCard {...{ form, onSubmit, e, show, setShow, error }} className="h-full w-full" />
+            <LoginCard {...{ form, onSubmit, e, show, setShow, error, note }} className="h-full w-full" />
           </div>
         )}
       </div>
       {/* Small screens: centred card */}
       {!wide && (
         <div className="relative z-10 flex min-h-[100dvh] items-center justify-center px-4 py-10">
-          <LoginCard {...{ form, onSubmit, e, show, setShow, error }} className="w-full max-w-[440px]" />
+          <LoginCard
+            {...{ form, onSubmit, e, show, setShow, error, note }}
+            className="w-full max-w-[440px]"
+          />
         </div>
       )}
     </div>
@@ -95,6 +108,7 @@ function LoginCard({
   show,
   setShow,
   error,
+  note,
   className,
 }: {
   form: ReturnType<typeof useForm<LoginInput>>;
@@ -103,6 +117,7 @@ function LoginCard({
   show: boolean;
   setShow: (v: boolean) => void;
   error: string | null;
+  note: string | null;
   className?: string;
 }) {
   return (
@@ -111,7 +126,15 @@ function LoginCard({
     >
       <h1 className="text-[24px] font-semibold tracking-tight text-slate-900">Sign in</h1>
       <p className="mt-1 text-[15px] text-slate-600">Livestock Monitoring System with GIS Integration.</p>
-      <form className="mt-8 space-y-4" onSubmit={onSubmit} noValidate>
+      {note && !error && (
+        <p
+          role="status"
+          className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[14px] text-amber-900"
+        >
+          {note}
+        </p>
+      )}
+      <form className={`${note && !error ? 'mt-4' : 'mt-8'} space-y-4`} onSubmit={onSubmit} noValidate>
         <div>
           <label htmlFor="email" className="mb-1.5 block text-[15px] text-slate-800">
             Email

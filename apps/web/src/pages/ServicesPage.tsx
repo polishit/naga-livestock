@@ -68,7 +68,7 @@ const speciesRank = (s: string) => {
 };
 
 export default function ServicesPage() {
-  const { canEdit, isAdmin } = useAuth();
+  const { canEdit, isReviewer } = useAuth();
   const navigate = useNavigate();
   const lh = useLetterhead();
   const [params, setParams] = useSearchParams();
@@ -89,6 +89,7 @@ export default function ServicesPage() {
   const [visitOpen, setVisitOpen] = useState(false);
   const [editing, setEditing] = useState<VaccinationRow | null>(null);
   const [voiding, setVoiding] = useState<VaccinationRow | null>(null);
+  const [voidVisit, setVoidVisit] = useState<VisitRecord | null>(null);
   const [editVisit, setEditVisit] = useState<VisitRecord | null>(null);
   // "+ New" links (?new=1 / ?visit=1) open the form even when this page is already open.
   useEffect(() => {
@@ -172,7 +173,7 @@ export default function ServicesPage() {
                 <Button size="xs" variant="ghost" onClick={() => setEditing(r)}>
                   Edit
                 </Button>
-                {isAdmin && (
+                {isReviewer && (
                   <Button size="xs" variant="ghost" onClick={() => setVoiding(r)}>
                     Remove
                   </Button>
@@ -512,9 +513,16 @@ export default function ServicesPage() {
                     </>
                   ),
                   actions: canEdit ? (
-                    <Button size="xs" variant="ghost" onClick={() => setEditVisit(v)}>
-                      Edit
-                    </Button>
+                    <span className="inline-flex gap-1">
+                      <Button size="xs" variant="ghost" onClick={() => setEditVisit(v)}>
+                        Edit
+                      </Button>
+                      {isReviewer && (
+                        <Button size="xs" variant="ghost" onClick={() => setVoidVisit(v)}>
+                          Void
+                        </Button>
+                      )}
+                    </span>
                   ) : undefined,
                 }))}
                 empty="No farm visits for this selection."
@@ -623,6 +631,14 @@ export default function ServicesPage() {
           onOpenChange={(o) => !o && setEditVisit(null)}
           farm={{ id: editVisit.farmId, name: editVisit.farmName ?? '' }}
           visit={editVisit}
+        />
+      )}
+      {voidVisit && (
+        <VoidDialog
+          open
+          onOpenChange={(o) => !o && setVoidVisit(null)}
+          url={`/api/farm-visits/${voidVisit.id}/void`}
+          what={`farm visit ${voidVisit.code}`}
         />
       )}
       {voiding && (

@@ -10,10 +10,20 @@ datasource db {
   provider = "mysql"
 }
 
+/// ADMIN = System Administrator, VETERINARIAN = reviewer, TECHNICIAN = field technician,
+/// OWNER = livestock owner (owner app only; sees only their own records)
 enum Role {
   ADMIN
-  STAFF
-  READONLY
+  VETERINARIAN
+  TECHNICIAN
+  OWNER
+}
+
+/// Accounts are never deleted: they are suspended (temporary) or deactivated (left the office).
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
 }
 
 enum OwnerStatus {
@@ -28,6 +38,8 @@ enum AnimalStatus {
   DECEASED
   MISSING
   SLAUGHTERED
+  /// Registered by mistake: kept and marked, never deleted
+  VOIDED
 }
 
 /// Set automatically from the case's laboratory samples (see deriveCaseStatus in packages/shared).
@@ -66,9 +78,18 @@ model User {
   email         String         @unique @db.VarChar(191)
   name          String         @db.VarChar(120)
   title         String?        @db.VarChar(120)
-  role          Role           @default(STAFF)
+  role          Role           @default(TECHNICIAN)
   passwordHash  String         @db.VarChar(100)
-  active        Boolean        @default(true)
+  status        UserStatus     @default(ACTIVE)
+  /// A temporary password (set by the administrator) must be changed at the next sign-in
+  mustChangePassword Boolean   @default(false)
+  passwordChangedAt  DateTime?
+  /// Wrong passwords in a row; the account locks when it reaches the limit in the settings
+  failedLogins  Int            @default(0)
+  lockedUntil   DateTime?
+  /// The owner record this login belongs to (role OWNER only)
+  ownerId       Int?           @unique
+  owner         Owner?         @relation(fields: [ownerId], references: [id])
   lastLoginAt   DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -109,6 +130,7 @@ model Owner {
   transfersOut OwnershipTransfer[] @relation("FromOwner")
   transfersIn  OwnershipTransfer[] @relation("ToOwner")
   pcicPolicies PcicPolicy[]
+  account      User?
 
   @@index([barangay])
 }
@@ -537,6 +559,10 @@ model FarmVisit {
   visitedBy String?      @db.VarChar(120)
   remarks   String?      @db.Text
   createdBy String?      @db.VarChar(120)
+  /// Entered in error: kept and marked, never deleted
+  voidedAt   DateTime?
+  voidedBy   String?     @db.VarChar(120)
+  voidReason String?     @db.VarChar(300)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
   farm      Farm         @relation(fields: [farmId], references: [id])
@@ -559,6 +585,29 @@ model ActivityLog {
 
   @@index([entity, entityId])
   @@index([createdAt])
+}
+
+/// Field-level audit trail: one row per create, change or security event, with the old and new
+/// values. Rows are never edited or deleted (the database refuses, see lib/audit.ts).
+model AuditEntry {
+  id        Int      @id @default(autoincrement())
+  /// The table (model) and the record changed
+  tableName String   @db.VarChar(40)
+  recordId  String   @db.VarChar(60)
+  /// CREATE, UPDATE, LOGIN, LOGIN_FAILED, LOCKED, PASSWORD_CHANGED, PASSWORD_RESET, LOGOUT, EXPORT
+  action    String   @db.VarChar(30)
+  /// { field: [old, new] } for an update; the new values for a create
+  changes   Json?
+  note      String?  @db.VarChar(300)
+  userId    Int?
+  byName    String?  @db.VarChar(120)
+  /// web (CVO system), owner (owner app) or system (automatic)
+  source    String   @default("web") @db.VarChar(20)
+  createdAt DateTime @default(now())
+
+  @@index([tableName, recordId])
+  @@index([createdAt])
+  @@index([userId])
 }
 
 model Setting {

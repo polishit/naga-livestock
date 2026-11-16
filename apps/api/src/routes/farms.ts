@@ -109,12 +109,12 @@ farmsRouter.get(
             },
             orderBy: { id: 'asc' },
           },
-          visits: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
+          visits: { where: { voidedAt: null }, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
         },
       })
     )[0];
     const visits = await prisma.farmVisit.findMany({
-      where: { farmId: id },
+      where: { farmId: id, voidedAt: null },
       include: { case: { select: { code: true, disease: true } } },
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
     });

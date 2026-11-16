@@ -1,9 +1,10 @@
 /**
- * Removing and correcting records.
+ * Retiring and correcting records.
  *
- * The rule: records that others depend on are never erased. Registry records are archived (and can be
- * restored); records of things that happened are voided with a reason (kept, struck through, left out of
- * every figure). A record entered by mistake can be deleted for good only while nothing depends on it.
+ * Nothing is ever deleted. Registry records are archived or set inactive (and can be restored);
+ * records of things that happened are voided with a reason (kept, struck through, left out of every
+ * figure); an animal registered by mistake gets the status Voided. Every change is written to the
+ * audit trail with the old and new values.
  */
 import { Router } from 'express';
 import {
@@ -17,7 +18,7 @@ import {
   voidSchema,
   type CaseStatus,
 } from '@livestock/shared';
-import { requireRole } from '../auth/auth';
+import { requireReviewer } from '../auth/auth';
 import { prisma } from '../db';
 import { logActivity } from '../lib/activity';
 import { assertNotFuture, dateOnly, ymd } from '../lib/dates';
@@ -27,178 +28,11 @@ import { deathsFromVisit } from './cases';
 
 export const recordActionsRouter = Router();
 
-/** Refuse a delete, saying what depends on the record and what to do instead. */
-function cannotDelete(what: string, reasons: string[], instead: string) {
-  return badRequest(`${what} cannot be deleted: ${reasons.join('; ')}. ${instead}`);
-}
-const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
-
-/* ---------------- delete: entered by mistake (admin) ---------------- */
-
-recordActionsRouter.delete(
-  '/owners/:id',
-  requireRole('ADMIN'),
-  ah(async (req, res) => {
-    const id = idParam(req);
-    const o = await prisma.owner.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: {
-            farms: true,
-            cases: true,
-            strays: true,
-            transfersIn: true,
-            transfersOut: true,
-            pcicPolicies: true,
-          },
-        },
-      },
-    });
-    if (!o) throw notFound('Owner');
-    const c = o._count;
-    const reasons = [
-      c.farms && `has ${n(c.farms, 'farm')}`,
-      c.cases && `has ${n(c.cases, 'disease case')}`,
-      c.strays && `has ${n(c.strays, 'stray incident')}`,
-      c.transfersIn + c.transfersOut && `has ${n(c.transfersIn + c.transfersOut, 'ownership transfer')}`,
-      c.pcicPolicies && `has ${n(c.pcicPolicies, 'PCIC policy', 'PCIC policies')}`,
-    ].filter(Boolean) as string[];
-    if (reasons.length) throw cannotDelete(`${o.fullName}`, reasons, 'Archive the owner instead.');
-    await prisma.owner.delete({ where: { id } });
-    await logActivity(
-      'owner',
-      id,
-      'deleted',
-      `Owner ${o.code} (${o.fullName}) deleted — entered by mistake`,
-      req.user?.name,
-    );
-    res.json({ ok: true });
-  }),
-);
-
-recordActionsRouter.delete(
-  '/farms/:id',
-  requireRole('ADMIN'),
-  ah(async (req, res) => {
-    const id = idParam(req);
-    const f = await prisma.farm.findUnique({
-      where: { id },
-      include: { _count: { select: { groups: true, cases: true, vaccinations: true, visits: true } } },
-    });
-    if (!f) throw notFound('Farm');
-    const transfers = await prisma.ownershipTransfer.count({
-      where: { OR: [{ fromFarmId: id }, { toFarmId: id }] },
-    });
-    const c = f._count;
-    const reasons = [
-      c.groups && `has ${n(c.groups, 'animal group')} with head-count history`,
-      c.cases && `has ${n(c.cases, 'disease case')}`,
-      c.vaccinations && `has ${n(c.vaccinations, 'service record')}`,
-      c.visits && `has ${n(c.visits, 'farm visit')}`,
-      transfers && `has ${n(transfers, 'ownership transfer')}`,
-    ].filter(Boolean) as string[];
-    if (reasons.length) throw cannotDelete(f.name, reasons, 'Archive the farm instead.');
-    await prisma.farm.delete({ where: { id } });
-    await logActivity(
-      'farm',
-      id,
-      'deleted',
-      `Farm ${f.code} (${f.name}) deleted — entered by mistake`,
-      req.user?.name,
-    );
-    res.json({ ok: true });
-  }),
-);
-
-recordActionsRouter.delete(
-  '/animals/:id',
-  requireRole('ADMIN'),
-  ah(async (req, res) => {
-    const id = idParam(req);
-    const a = await prisma.animal.findUnique({
-      where: { id },
-      include: { _count: { select: { vaccinations: true, transfers: true, pcicPolicies: true } } },
-    });
-    if (!a) throw notFound('Animal');
-    const strays = await prisma.strayIncident.count({ where: { animalId: id } });
-    const c = a._count;
-    const reasons = [
-      c.vaccinations && `has ${n(c.vaccinations, 'vaccination record')}`,
-      c.transfers && `has ${n(c.transfers, 'ownership transfer')}`,
-      c.pcicPolicies && 'is insured under a PCIC policy',
-      strays && `appears in ${n(strays, 'stray incident')}`,
-    ].filter(Boolean) as string[];
-    if (reasons.length)
-      throw cannotDelete(a.code, reasons, 'Change its status instead (for example Sold or Died).');
-    await prisma.animal.delete({ where: { id } });
-    await logActivity(
-      'animal',
-      id,
-      'deleted',
-      `Animal ${a.code}${a.earTag ? ` (tag ${a.earTag})` : ''} deleted — entered by mistake`,
-      req.user?.name,
-    );
-    res.json({ ok: true });
-  }),
-);
-
-recordActionsRouter.delete(
-  '/strays/:id',
-  requireRole('ADMIN'),
-  ah(async (req, res) => {
-    const id = idParam(req);
-    const s = await prisma.strayIncident.findUnique({ where: { id } });
-    if (!s) throw notFound('Incident');
-    // Once the office acted on it (closed), the report is part of the record: void it instead.
-    const reasons = [
-      s.status !== 'REPORTED' && `its status is ${s.status.toLowerCase()}`,
-      s.voidedAt && 'it is already voided',
-    ].filter(Boolean) as string[];
-    if (reasons.length) throw cannotDelete(s.code, reasons, 'Void it instead, with the reason.');
-    await prisma.strayIncident.delete({ where: { id } });
-    await logActivity(
-      'stray',
-      id,
-      'deleted',
-      `Stray report ${s.code} deleted — entered by mistake`,
-      req.user?.name,
-    );
-    res.json({ ok: true });
-  }),
-);
-
-recordActionsRouter.delete(
-  '/pcic/:id',
-  requireRole('ADMIN'),
-  ah(async (req, res) => {
-    const id = idParam(req);
-    const p = await prisma.pcicPolicy.findUnique({ where: { id } });
-    if (!p) throw notFound('Policy');
-    if (p.status === 'CLAIMED')
-      throw cannotDelete(
-        `Policy ${p.policyNo}`,
-        ['a claim was made on it'],
-        'Keep it as a record of the claim.',
-      );
-    // The links to insured animals go with it; the animals stay.
-    await prisma.pcicPolicy.delete({ where: { id } });
-    await logActivity(
-      'owner',
-      p.ownerId,
-      'pcic-deleted',
-      `PCIC policy ${p.policyNo} deleted — entered by mistake`,
-      req.user?.name,
-    );
-    res.json({ ok: true });
-  }),
-);
-
-/* ---------------- void: reported in error or a duplicate (admin) ---------------- */
+/* ---------------- void: reported in error or a duplicate (reviewers) ---------------- */
 
 recordActionsRouter.post(
   '/cases/:id/void',
-  requireRole('ADMIN'),
+  requireReviewer,
   ah(async (req, res) => {
     const id = idParam(req);
     const { reason } = parse(voidSchema, req.body);
@@ -231,7 +65,7 @@ recordActionsRouter.post(
 
 recordActionsRouter.post(
   '/strays/:id/void',
-  requireRole('ADMIN'),
+  requireReviewer,
   ah(async (req, res) => {
     const id = idParam(req);
     const { reason } = parse(voidSchema, req.body);

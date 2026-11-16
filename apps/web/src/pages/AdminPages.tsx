@@ -1,103 +1,12 @@
-import { Download, Pencil, Plus } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
-import { ROLE_LABELS, fmtDateTime, settingsSchema, type Role, type SettingsInput } from '@livestock/shared';
+import { settingsSchema, type SettingsInput } from '@livestock/shared';
 import { useAuth } from '@/lib/auth';
 import { useApi, useResetOnOpen, useSave } from '@/lib/hooks';
-import { DataTable } from '@/components/DataTable';
 import { err, useZodForm } from '@/components/forms';
-import { ErrorBox, Loading, PageHeader } from '@/components/page';
-import { Badge, Button, Card, CardHeader, Field, Input } from '@/components/ui';
-import { UserDialog, type UserRecord } from '@/dialogs/surveillance';
-
-export function UsersPage() {
-  const { user: me } = useAuth();
-  const [editing, setEditing] = useState<UserRecord | undefined>();
-  const [open, setOpen] = useState(false);
-  const { data, isLoading, error } = useApi<(UserRecord & { lastLoginAt: string | null })[]>('/api/users');
-  return (
-    <div>
-      <PageHeader
-        title="User Management"
-        subtitle="Accounts and roles. Administrators manage users; staff record data; read-only users can view and export."
-        actions={
-          <Button
-            onClick={() => {
-              setEditing(undefined);
-              setOpen(true);
-            }}
-          >
-            <Plus /> Add user
-          </Button>
-        }
-      />
-      {error ? (
-        <ErrorBox error={error} />
-      ) : (
-        <Card>
-          <DataTable
-            rows={data}
-            loading={isLoading}
-            rowKey={(r) => r.id}
-            searchText={(r) => `${r.name} ${r.email} ${r.role}`}
-            pageSize={0}
-            columns={[
-              {
-                key: 'name',
-                header: 'Name',
-                cell: (r) => (
-                  <span className="font-medium text-slate-900">
-                    {r.name}
-                    {r.id === me?.id && <span className="ml-2 text-xs text-slate-400">(you)</span>}
-                  </span>
-                ),
-              },
-              { key: 'email', header: 'Email' },
-              { key: 'title', header: 'Title' },
-              {
-                key: 'role',
-                header: 'Role',
-                cell: (r) => (
-                  <Badge tone={r.role === 'ADMIN' ? 'violet' : r.role === 'STAFF' ? 'green' : 'slate'}>
-                    {ROLE_LABELS[r.role as Role]}
-                  </Badge>
-                ),
-              },
-              {
-                key: 'active',
-                header: 'Status',
-                cell: (r) => (r.active ? <Badge tone="green">Active</Badge> : <Badge>Deactivated</Badge>),
-              },
-              {
-                key: 'lastLoginAt',
-                header: 'Last sign-in',
-                cell: (r) => (r.lastLoginAt ? fmtDateTime(r.lastLoginAt) : 'Never'),
-              },
-              {
-                key: 'actions',
-                header: '',
-                sort: false,
-                cell: (r) => (
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => {
-                      setEditing(r);
-                      setOpen(true);
-                    }}
-                  >
-                    <Pencil /> Edit
-                  </Button>
-                ),
-              },
-            ]}
-          />
-        </Card>
-      )}
-      <UserDialog open={open} onOpenChange={setOpen} user={editing} />
-    </div>
-  );
-}
+import { Loading, PageHeader } from '@/components/page';
+import { Button, Card, CardHeader, Field, Input } from '@/components/ui';
 
 /** Download every record as one JSON file (admin). Retries once after refreshing an expired login. */
 async function downloadBackup() {
@@ -207,6 +116,32 @@ export function SettingsPage() {
             </Field>
           </fieldset>
         </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader title="Sign-in security" />
+          <fieldset disabled={!isAdmin} className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
+            <Field
+              label="Wrong passwords before lock"
+              error={err(e, 'lockoutAttempts')}
+              hint="An account locks itself after this many wrong passwords in a row"
+            >
+              <Input type="number" min={3} max={20} {...form.register('lockoutAttempts')} />
+            </Field>
+            <Field
+              label="Lock lasts (minutes)"
+              error={err(e, 'lockoutMinutes')}
+              hint="The administrator can unlock it sooner"
+            >
+              <Input type="number" min={1} {...form.register('lockoutMinutes')} />
+            </Field>
+            <Field
+              label="Sign out when idle for (minutes)"
+              error={err(e, 'idleTimeoutMinutes')}
+              hint="No tap, key press or scroll for this long"
+            >
+              <Input type="number" min={5} {...form.register('idleTimeoutMinutes')} />
+            </Field>
+          </fieldset>
+        </Card>
         {isAdmin ? (
           <div className="flex justify-end lg:col-span-2">
             <Button type="submit" loading={save.isPending}>
@@ -214,7 +149,9 @@ export function SettingsPage() {
             </Button>
           </div>
         ) : (
-          <p className="text-sm text-slate-500 lg:col-span-2">Only administrators can change settings.</p>
+          <p className="text-sm text-slate-500 lg:col-span-2">
+            Only the System Administrator can change settings.
+          </p>
         )}
       </form>
     </div>

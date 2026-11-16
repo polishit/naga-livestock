@@ -1064,7 +1064,7 @@ function CaseNav({ id }: { id: number }) {
 function CaseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit: canWrite, isAdmin, user } = useAuth();
+  const { canEdit: canWrite, isReviewer, user } = useAuth();
   const lh = useLetterhead();
   const [params] = useSearchParams();
   const tabParam = params.get('tab') ?? '';
@@ -1238,7 +1238,7 @@ function CaseDetail() {
                 <MapIcon /> View on Map
               </Button>
             )}
-            {c.closed && isAdmin && (
+            {c.closed && isReviewer && (
               <Button variant="outline" loading={reopen.isPending} onClick={() => reopen.mutate({})}>
                 <RotateCcw /> {c.voided ? 'Undo void' : 'Reopen case'}
               </Button>
@@ -1257,7 +1257,7 @@ function CaseDetail() {
                   hint: 'The disease spread to another farm',
                   onSelect: () => navigate(`/cases/new?from=${c.id}`),
                 },
-                isAdmin &&
+                isReviewer &&
                   !c.voided && {
                     label: 'Void case (reported in error)',
                     icon: Ban,
@@ -1280,7 +1280,7 @@ function CaseDetail() {
             <b className="font-medium">Voided</b>
             {c.voidedBy ? ` by ${c.voidedBy}` : ''}: {c.voidReason}. This report does not count in any figure,
             map or report.
-            {isAdmin && (
+            {isReviewer && (
               <div className="mt-0.5 text-[13px]">If it was voided by mistake, select “Undo void”.</div>
             )}
           </div>
@@ -1303,7 +1303,7 @@ function CaseDetail() {
               </div>
             )}
             {c.closureNote && <div className="mt-0.5 text-slate-600">{c.closureNote}</div>}
-            {isAdmin && (
+            {isReviewer && (
               <div className="mt-0.5 text-[13px] text-slate-500">
                 To correct a record, reopen the case; the reopening and every change are kept in the Timeline.
               </div>
@@ -1392,14 +1392,14 @@ function CaseDetail() {
                           <div className="text-slate-600">{v.notes}</div>
                         </VoidAware>
                       </div>
-                      {!v.voided && (canEdit || (isAdmin && !c.closed)) && (
+                      {!v.voided && (canEdit || (isReviewer && !c.closed)) && (
                         <span className="flex gap-1">
                           {canEdit && (
                             <Button size="xs" variant="ghost" onClick={() => openVisit(v)}>
                               Edit
                             </Button>
                           )}
-                          {isAdmin && !c.closed && (
+                          {isReviewer && !c.closed && (
                             <Button
                               size="xs"
                               variant="ghost"
@@ -1502,7 +1502,7 @@ function CaseDetail() {
                             {l.result !== 'PENDING' ? 'Edit' : l.sentAt ? 'Enter result' : 'Enter date sent'}
                           </Button>
                         )}
-                        {!l.voided && isAdmin && !c.closed && (
+                        {!l.voided && isReviewer && !c.closed && (
                           <Button
                             size="xs"
                             variant="ghost"
@@ -1580,7 +1580,7 @@ function CaseDetail() {
                 onLog={canEdit ? (t) => openResponse(t) : undefined}
                 onEdit={canEdit ? (r) => openResponse(undefined, r) : undefined}
                 onVoid={
-                  isAdmin && !c.closed
+                  isReviewer && !c.closed
                     ? (r) => voidIt(`/api/responses/${r.id}/void`, `${r.typeLabel} record`)
                     : undefined
                 }
@@ -1673,7 +1673,12 @@ function CaseDetail() {
                   ))}
                 </ul>
               )}
-              {canEdit && (
+              {canEdit && !isReviewer && (
+                <p className="text-[13px] text-slate-500">
+                  A veterinarian or the administrator closes the case.
+                </p>
+              )}
+              {canEdit && isReviewer && (
                 <StepActions>
                   <Button
                     size="sm"

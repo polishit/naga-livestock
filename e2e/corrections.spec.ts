@@ -14,36 +14,19 @@ test.beforeEach(async ({ page }) => {
 
 const more = (page: import('@playwright/test').Page) => page.getByRole('button', { name: 'More actions' });
 
-test('delete is refused for an owner with records, and works for one entered by mistake', async ({
-  page,
-}) => {
+test('there is no delete: an owner is archived, never removed', async ({ page }) => {
   await page.goto('/owners/1');
   await more(page).click();
-  await page.getByRole('menuitem', { name: /Delete \(entered by mistake\)/ }).click();
-  await dialog(page).getByRole('button', { name: 'Delete permanently' }).click();
-  await expect(dialog(page).getByRole('alert')).toContainText('cannot be deleted');
-  await expect(dialog(page).getByRole('alert')).toContainText('Archive the owner instead');
-  await shot(page, 'delete-refused');
-  await dialog(page).getByRole('button', { name: 'Close', exact: true }).last().click();
-
-  await page.goto('/owners');
-  await page.getByRole('button', { name: 'Add Owner', exact: true }).click();
-  const d = dialog(page);
-  await d.getByLabel('Full name').fill('Mistaken Entry');
-  await d.getByLabel('Barangay').selectOption('Pacol');
-  await d.getByRole('button', { name: 'Next' }).click();
-  // Add Owner continues to the farm step; Cancel there keeps the owner and closes the guide.
-  await expect(dialog(page).getByText('Step 2 of 3: Farm')).toBeVisible();
-  await dialog(page).getByRole('button', { name: 'Cancel' }).click();
-  await expectToast(page, 'Owner saved. Add the farm later from the owner page.');
-  await page.getByLabel('Search table').fill('Mistaken Entry');
-  await page.getByRole('row', { name: /Mistaken Entry/ }).click();
-  await expect(page.getByRole('heading', { name: 'Mistaken Entry' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Archive owner/ })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Delete/ })).toHaveCount(0);
+  await shot(page, 'no-delete-owner');
+  await page.keyboard.press('Escape');
+  await page.goto('/farms/1');
   await more(page).click();
-  await page.getByRole('menuitem', { name: /Delete \(entered by mistake\)/ }).click();
-  await dialog(page).getByRole('button', { name: 'Delete permanently' }).click();
-  await expectToast(page, 'Mistaken Entry deleted.');
-  await expect(page).toHaveURL(/\/owners$/);
+  await expect(page.getByRole('menuitem', { name: /Delete/ })).toHaveCount(0);
+  // The server has no delete route either.
+  expect((await page.request.delete('/api/owners/1')).status()).toBe(404);
+  expect((await page.request.delete('/api/farms/1')).status()).toBe(404);
 });
 
 test('void a duplicate case; it leaves the lists and can be undone', async ({ page }) => {
@@ -107,7 +90,7 @@ test('archived farms are listed and can be restored', async ({ page }) => {
   await expectToast(page, 'Farm restored.');
 });
 
-test('a fresh stray report can be deleted; a closed one only voided', async ({ page }) => {
+test('a stray report is voided with a reason, never deleted', async ({ page }) => {
   await page.goto('/strays');
   await page.getByLabel('Status').selectOption('CLOSED');
   await page.getByRole('row').nth(1).click();

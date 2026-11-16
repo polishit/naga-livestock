@@ -788,7 +788,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
     }
     case 'farm-visits': {
       const visits = await prisma.farmVisit.findMany({
-        where: { ...(p.barangay ? { farm: { barangay: p.barangay } } : {}) },
+        where: { voidedAt: null, ...(p.barangay ? { farm: { barangay: p.barangay } } : {}) },
         include: { farm: { include: { owner: true } }, case: { select: { code: true, disease: true } } },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
       });

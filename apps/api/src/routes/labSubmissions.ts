@@ -8,6 +8,7 @@ import {
   type LabPurpose,
   type LabSampleInput,
 } from '@livestock/shared';
+import { requireReviewer } from '../auth/auth';
 import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, ymd } from '../lib/dates';
@@ -330,6 +331,7 @@ labSubmissionsRouter.post(
 /** Void a sample sent in a batch (entered in error); it stays listed, struck through. */
 labSubmissionsRouter.post(
   '/samples/:id/void',
+  requireReviewer,
   ah(async (req, res) => {
     const id = idParam(req);
     const { reason } = parse(voidSchema, req.body);

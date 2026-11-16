@@ -1,4 +1,17 @@
 import type { ReportResult } from '@livestock/shared';
+import { api } from './api';
+
+/** Every export or print of a report is written to the audit log (who, when, what). */
+function logExport(r: ReportResult, format: 'XLSX' | 'CSV' | 'PDF' | 'PRINT') {
+  void api
+    .post('/api/audit/export', {
+      report: r.title.slice(0, 120),
+      format,
+      rows: r.rows.length,
+      filters: r.subtitle?.slice(0, 200),
+    })
+    .catch(() => undefined);
+}
 
 export interface Letterhead {
   line1?: string | null;
@@ -49,10 +62,12 @@ export function toCsv(r: ReportResult): string {
 }
 
 export function exportCsv(r: ReportResult) {
+  logExport(r, 'CSV');
   download(new Blob([toCsv(r)], { type: 'text/csv;charset=utf-8' }), `${safeName(r.title)}.csv`);
 }
 
 export async function exportXlsx(r: ReportResult, lh: Letterhead) {
+  logExport(r, 'XLSX');
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = lh.office;
@@ -91,6 +106,7 @@ export async function exportXlsx(r: ReportResult, lh: Letterhead) {
 }
 
 export async function exportPdf(r: ReportResult, lh: Letterhead) {
+  logExport(r, 'PDF');
   const { jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
   const landscape = r.columns.length > 6;
@@ -161,6 +177,7 @@ const html = (s: unknown) =>
 export function printReport(r: ReportResult, lh: Letterhead) {
   const w = window.open('', '_blank', 'width=1000,height=800');
   if (!w) return;
+  logExport(r, 'PRINT');
   w.document.write(`<!doctype html><html><head><title>${html(r.title)}</title>
   <style>body{font-family:Inter,Arial,sans-serif;color:#0f172a;margin:32px}h1{font-size:18px;margin:16px 0 2px}.sub{color:#64748b;font-size:12px}
   .lh{text-align:center;font-size:11px;color:#475569}.lh b{display:block;color:#166534;font-size:14px;margin-top:2px}

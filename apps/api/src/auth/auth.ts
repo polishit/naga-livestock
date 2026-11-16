@@ -5,6 +5,7 @@ import type { Role } from '@livestock/shared';
 import { prisma } from '../db';
 import { env } from '../env';
 import { HttpError } from '../lib/http';
+import { getSettings } from '../services/settings';
 
 export interface AuthUser {
   id: number;
@@ -12,6 +13,10 @@ export interface AuthUser {
   email: string;
   role: Role;
   title: string | null;
+  /** The owner record of a livestock owner's login (role OWNER) */
+  ownerId: number | null;
+  /** A temporary password is still in use: only the change-password step is allowed */
+  mustChangePassword: boolean;
 }
 
 declare global {
@@ -79,7 +84,12 @@ export async function rotateRefreshToken(token: string): Promise<AuthUser | null
     where: { tokenHash: hashToken(token) },
     include: { user: true },
   });
-  if (!row || row.revokedAt || row.expiresAt < new Date() || !row.user.active) {
+  // Idle timeout: the token is renewed every few minutes while the user works, so a token that
+  // was last renewed longer ago than the idle limit (plus one access-token lifetime) means the
+  // user was away.
+  const idleMs = ((await getSettings()).idleTimeoutMinutes + 15) * 60_000;
+  const idle = !!row && Date.now() - row.createdAt.getTime() > idleMs;
+  if (!row || row.revokedAt || row.expiresAt < new Date() || row.user.status !== 'ACTIVE' || idle) {
     // Reuse of a revoked token: revoke the whole family for safety.
     if (row?.revokedAt)
       await prisma.refreshToken.updateMany({
@@ -106,15 +116,31 @@ export function toAuthUser(u: {
   email: string;
   role: Role;
   title: string | null;
+  ownerId: number | null;
+  mustChangePassword: boolean;
 }): AuthUser {
-  return { id: u.id, name: u.name, email: u.email, role: u.role, title: u.title };
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    title: u.title,
+    ownerId: u.ownerId,
+    mustChangePassword: u.mustChangePassword,
+  };
 }
 
-/** Current role/active state per user, cached briefly so every request doesn't hit the database. */
-const userState = new Map<
-  number,
-  { at: number; active: boolean; role: Role; name: string; title: string | null }
->();
+/** Current role/status per user, cached briefly so every request doesn't hit the database. */
+interface UserState {
+  at: number;
+  active: boolean;
+  role: Role;
+  name: string;
+  title: string | null;
+  ownerId: number | null;
+  mustChangePassword: boolean;
+}
+const userState = new Map<number, UserState>();
 const USER_STATE_TTL = 10_000;
 
 /** Forget the cached state after an administrator changes a user. */
@@ -122,23 +148,39 @@ export function forgetUserState(id: number) {
   userState.delete(id);
 }
 
-async function currentState(id: number) {
+async function currentState(id: number): Promise<UserState> {
   const hit = userState.get(id);
   if (hit && Date.now() - hit.at < USER_STATE_TTL) return hit;
   const u = await prisma.user.findUnique({
     where: { id },
-    select: { active: true, role: true, name: true, title: true },
+    select: { status: true, role: true, name: true, title: true, ownerId: true, mustChangePassword: true },
   });
-  const state = u
-    ? { at: Date.now(), ...u }
-    : { at: Date.now(), active: false, role: 'READONLY' as Role, name: '', title: null };
+  const state: UserState = u
+    ? {
+        at: Date.now(),
+        active: u.status === 'ACTIVE',
+        role: u.role,
+        name: u.name,
+        title: u.title,
+        ownerId: u.ownerId,
+        mustChangePassword: u.mustChangePassword,
+      }
+    : {
+        at: Date.now(),
+        active: false,
+        role: 'OWNER' as Role,
+        name: '',
+        title: null,
+        ownerId: null,
+        mustChangePassword: false,
+      };
   userState.set(id, state);
   return state;
 }
 
 /**
- * Attach req.user when a valid access cookie (or Bearer token) is present. The role and active flag
- * come from the database, so deactivating or demoting a user takes effect immediately.
+ * Attach req.user when a valid access cookie (or Bearer token) is present. The role and status
+ * come from the database, so suspending, deactivating or changing a user takes effect at once.
  */
 export function authenticate(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
@@ -153,7 +195,16 @@ export function authenticate(req: Request, _res: Response, next: NextFunction) {
   const id = Number(p.sub);
   currentState(id)
     .then((s) => {
-      if (s.active) req.user = { id, name: s.name, email: p.email, role: s.role, title: s.title };
+      if (s.active)
+        req.user = {
+          id,
+          name: s.name,
+          email: p.email,
+          role: s.role,
+          title: s.title,
+          ownerId: s.ownerId,
+          mustChangePassword: s.mustChangePassword,
+        };
       next();
     })
     .catch(next);
@@ -173,10 +224,24 @@ export const requireRole =
     next();
   };
 
-/** Read-only users may only issue safe (GET/HEAD) requests. */
-export function writeGuard(req: Request, _res: Response, next: NextFunction) {
-  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
-  if (req.user?.role === 'READONLY')
-    return next(new HttpError(403, 'Read-only accounts cannot make changes'));
+/**
+ * The CVO system is for staff accounts only. A livestock owner's login is refused here: owners use
+ * the owner app routes (/api/my/…), which only ever return their own records.
+ */
+export function staffOnly(req: Request, _res: Response, next: NextFunction) {
+  if (req.user?.role === 'OWNER')
+    return next(new HttpError(403, 'This page is for City Veterinary Office staff'));
   next();
 }
+
+/** A temporary password must be changed before anything else can be done. */
+export function passwordChanged(req: Request, _res: Response, next: NextFunction) {
+  if (req.user?.mustChangePassword)
+    return next(
+      new HttpError(403, 'Change your temporary password first', { code: 'PASSWORD_CHANGE_REQUIRED' }),
+    );
+  next();
+}
+
+/** Reviewers (System Administrator, Veterinarian) decide; field technicians only record. */
+export const requireReviewer = requireRole('ADMIN', 'VETERINARIAN');

@@ -23,7 +23,7 @@ import {
   type CaseStatus,
   type ResponseType,
 } from '@livestock/shared';
-import { requireRole } from '../auth/auth';
+import { requireReviewer } from '../auth/auth';
 import { prisma, type Prisma } from '../db';
 import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, today, ymd } from '../lib/dates';
@@ -682,8 +682,10 @@ casesRouter.post(
   }),
 );
 
+/** Closing a case is a reviewer's decision (System Administrator or Veterinarian). */
 casesRouter.post(
   '/:id/close',
+  requireReviewer,
   ah(async (req, res) => {
     const id = idParam(req);
     const d = parse(caseCloseSchema, req.body);
@@ -741,7 +743,7 @@ casesRouter.post(
 
 casesRouter.post(
   '/:id/reopen',
-  requireRole('ADMIN'),
+  requireReviewer,
   ah(async (req, res) => {
     const id = idParam(req);
     const c = await prisma.diseaseCase.findUnique({ where: { id } });
@@ -1101,7 +1103,7 @@ for (const [path, label] of [
 ] as const) {
   recordsRouter.post(
     `/${path}/:id/void`,
-    requireRole('ADMIN'),
+    requireReviewer,
     ah(async (req, res) => {
       const id = idParam(req);
       const { reason } = parse(voidSchema, req.body);

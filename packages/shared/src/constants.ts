@@ -232,7 +232,8 @@ export const HEALTH_STATUSES = ['Healthy', 'Sick', 'Under treatment', 'Quarantin
 export const OWNER_STATUSES = ['ACTIVE', 'INACTIVE', 'ARCHIVED'] as const;
 export type OwnerStatus = (typeof OWNER_STATUSES)[number];
 
-export const ANIMAL_STATUSES = ['ACTIVE', 'SOLD', 'DECEASED', 'MISSING', 'SLAUGHTERED'] as const;
+/** VOIDED = registered by mistake (records are never deleted). */
+export const ANIMAL_STATUSES = ['ACTIVE', 'SOLD', 'DECEASED', 'MISSING', 'SLAUGHTERED', 'VOIDED'] as const;
 export type AnimalStatus = (typeof ANIMAL_STATUSES)[number];
 
 export const CASE_STATUSES = [
@@ -606,13 +607,48 @@ export const STRAY_VIOLATION_TYPES = [
 export const TRANSFER_TYPES = ['TRANSFER', 'REVERSAL'] as const;
 export const VACCINATION_TARGETS = ['GROUP', 'ANIMAL'] as const;
 
-export const ROLES = ['ADMIN', 'STAFF', 'READONLY'] as const;
+/**
+ * ADMIN = System Administrator (accounts, settings, everything else).
+ * VETERINARIAN = reviewer: verifies registrations, validates reports, closes cases, voids records.
+ * TECHNICIAN = field technician: records visits, services, counts and samples.
+ * OWNER = livestock owner: uses the owner app and sees only their own records.
+ */
+export const ROLES = ['ADMIN', 'VETERINARIAN', 'TECHNICIAN', 'OWNER'] as const;
 export type Role = (typeof ROLES)[number];
 export const ROLE_LABELS: Record<Role, string> = {
-  ADMIN: 'Administrator',
-  STAFF: 'Staff',
-  READONLY: 'Read-only',
+  ADMIN: 'System Administrator',
+  VETERINARIAN: 'Veterinarian (reviewer)',
+  TECHNICIAN: 'Field Technician',
+  OWNER: 'Livestock Owner',
 };
+/** The roles an administrator can give to a CVO staff account. */
+export const STAFF_ROLES = ['ADMIN', 'VETERINARIAN', 'TECHNICIAN'] as const;
+export type StaffRole = (typeof STAFF_ROLES)[number];
+export const isStaffRole = (r: Role | null | undefined): r is StaffRole =>
+  !!r && (STAFF_ROLES as readonly string[]).includes(r);
+/** Reviewers decide: verify, validate, close, reopen and void. Field technicians only record. */
+export const REVIEWER_ROLES = ['ADMIN', 'VETERINARIAN'] as const;
+export const isReviewerRole = (r: Role | null | undefined) =>
+  !!r && (REVIEWER_ROLES as readonly string[]).includes(r);
+export const ROLE_HELP: Record<StaffRole, string> = {
+  ADMIN: 'Everything, including user accounts, system settings and the audit log.',
+  VETERINARIAN:
+    'Records and reviews: verifies, validates, closes and reopens cases, and voids wrong entries.',
+  TECHNICIAN:
+    'Records field work (visits, services, head counts, samples). Cannot review, void or manage accounts.',
+};
+
+/** Accounts are never deleted. Suspended = temporarily blocked; Deactivated = left the office. */
+export const USER_STATUSES = ['ACTIVE', 'SUSPENDED', 'DEACTIVATED'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+export const USER_STATUS_LABELS: Record<UserStatus, string> = {
+  ACTIVE: 'Active',
+  SUSPENDED: 'Suspended',
+  DEACTIVATED: 'Deactivated',
+};
+
+/** Password rule, shown beside every new-password field. */
+export const PASSWORD_RULE = 'At least 8 characters, with a letter and a number';
 
 export const PCIC_STATUSES = ['ACTIVE', 'EXPIRED', 'CLAIMED', 'CANCELLED'] as const;
 

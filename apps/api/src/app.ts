@@ -6,7 +6,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { MulterError } from 'multer';
 import { MAX_PHOTO_MB } from '@livestock/shared';
-import { authenticate, requireAuth, requireRole, writeGuard } from './auth/auth';
+import { authenticate, passwordChanged, requireAuth, requireRole, staffOnly } from './auth/auth';
+import { auditContext, ensureAuditLock } from './lib/audit';
 import { prisma } from './db';
 import { env } from './env';
 import { HttpError } from './lib/http';
@@ -28,9 +29,12 @@ import { ownersRouter } from './routes/owners';
 import { populationRouter } from './routes/population';
 import { visitsRouter } from './routes/visits';
 import { vaccinationsRouter } from './routes/vaccinations';
+import { auditRouter } from './routes/audit';
 
 export function createApp() {
   const app = express();
+  // Make the audit tables append-only in the database (once; does nothing if already done).
+  void ensureAuditLock(env.DATABASE_URL);
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
@@ -57,10 +61,13 @@ export function createApp() {
   });
 
   app.use(authenticate);
+  // Everything after this runs with the signed-in user as the author of the audit trail.
+  app.use(auditContext);
   app.use('/api/auth', authRouter);
 
   const api = express.Router();
-  api.use(requireAuth, writeGuard);
+  // The CVO system: staff accounts only, and never with a temporary password still in use.
+  api.use(requireAuth, staffOnly, passwordChanged);
   // Delete (entered by mistake), void, restore and edit actions on the records below.
   api.use('/', recordActionsRouter);
   api.use('/owners', ownersRouter);
@@ -78,6 +85,7 @@ export function createApp() {
   api.use('/farm-visits', visitsRouter);
   api.use('/users', requireRole('ADMIN'), usersRouter);
   api.use('/settings', settingsRouter);
+  api.use('/audit', auditRouter);
   api.use('/insights', insightsRouter);
   api.use('/uploads', uploadsRouter);
   api.use('/files', filesRouter);

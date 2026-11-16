@@ -587,7 +587,7 @@ export function LabSubmissionFormPage() {
 export function LabSubmissionDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canEdit, isAdmin, user } = useAuth();
+  const { canEdit, isReviewer, user } = useAuth();
   const lh = useLetterhead();
   const { data: s, isLoading, error } = useApi<LabSubmission>(`/api/lab-submissions/${id}`);
   const [entering, setEntering] = useState(false);
@@ -715,7 +715,7 @@ export function LabSubmissionDetailPage() {
         ) : (
           <span className="flex items-center gap-2">
             <span className="text-slate-400">—</span>
-            {isAdmin && !entering && (
+            {isReviewer && !entering && (
               <Button size="xs" variant="ghost" onClick={() => setVoidRow(r)}>
                 Void
               </Button>

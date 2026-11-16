@@ -48,7 +48,7 @@ export async function monthlySummary(month = isoMonth(), barangay?: string) {
       orderBy: { date: 'asc' },
     }),
     prisma.farmVisit.findMany({
-      where: { date: range, ...(barangay ? { farm: { barangay } } : {}) },
+      where: { voidedAt: null, date: range, ...(barangay ? { farm: { barangay } } : {}) },
       include: { farm: { select: { name: true, barangay: true } } },
       orderBy: { date: 'asc' },
     }),
@@ -127,7 +127,11 @@ export async function monthlySummary(month = isoMonth(), barangay?: string) {
       select: { date: true, serviceType: true, count: true },
     }),
     prisma.farmVisit.findMany({
-      where: { date: { gte: trendFrom, lt: range.lt }, ...(barangay ? { farm: { barangay } } : {}) },
+      where: {
+        voidedAt: null,
+        date: { gte: trendFrom, lt: range.lt },
+        ...(barangay ? { farm: { barangay } } : {}),
+      },
       select: { date: true },
     }),
   ]);
