@@ -10,7 +10,7 @@ import {
   SIGNUP_STATUS_LABELS,
   SPECIES,
   VACCINE_PRODUCTS,
-  ZONE_RADII,
+  RADIUS_OPTIONS,
   activitySchema,
   announcementSchema,
   fmtDate,
@@ -450,7 +450,7 @@ export function ZonesPage() {
             <Select {...form.register('radiusM')}>
               {[
                 ...new Set([
-                  ...ZONE_RADII,
+                  ...RADIUS_OPTIONS,
                   editing?.radiusM ?? 1000,
                   settings.data?.defaultRadiusMeters ?? 1000,
                 ]),

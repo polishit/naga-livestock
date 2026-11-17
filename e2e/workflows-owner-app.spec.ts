@@ -266,9 +266,13 @@ test('the owner reports sick pigs; the office validates, confirms and alerts; th
   await expect(p.getByText('Keep the pigs inside. We will visit tomorrow.')).toBeVisible();
   await expect(p.getByText('Positive')).toBeVisible();
   await shot(p, 'owner-report-confirmed');
-  await p.getByRole('link', { name: /notifications/i }).click();
-  await expect(p.getByText(/confirmed at Belen Piggery/)).toBeVisible();
-  await shot(p, 'owner-notifications');
+  // Messages: the office's updates on her report are in the conversation; she writes to the office.
+  await p.getByRole('link', { name: /new in Messages/i }).click();
+  await expect(p.getByText(/confirmed at Belen Piggery/).first()).toBeVisible();
+  await p.getByLabel('Message', { exact: true }).fill('Can someone check the other pigs tomorrow?');
+  await p.getByRole('button', { name: 'Send' }).click();
+  await expect(p.getByText('Can someone check the other pigs tomorrow?')).toBeVisible();
+  await shot(p, 'owner-messages');
   await ctx.close();
 });
 
@@ -316,11 +320,8 @@ test('vaccination schedule and announcements reach the owner; the public page sh
   await p.getByRole('button', { name: 'Sign Up', exact: true }).click();
   await expectToast(p, 'You are signed up.');
   await expect(p.getByText('You signed up 10 Pig')).toBeVisible();
-  await p.getByRole('link', { name: 'Alerts' }).click();
-  await expect(
-    p.getByRole('heading', { name: /African Swine Fever \(ASF\) confirmed near your farm/i }),
-  ).toHaveCount(0);
-  await p.getByRole('tab', { name: 'Announcements' }).click();
+  // Announcements are on the home screen.
+  await p.getByRole('link', { name: 'Home', exact: true }).click();
   await expect(p.getByRole('heading', { name: 'ASF advisory for Pacol' })).toBeVisible();
   await shot(p, 'owner-announcements');
   // The owner cannot open the CVO system.
@@ -330,6 +331,16 @@ test('vaccination schedule and announcements reach the owner; the public page sh
   await expect(p.getByRole('heading', { name: 'Livestock Owner and Farm Summary' })).toBeVisible();
   await shot(p, 'owner-summary');
   await ctx.close();
+
+  // The office reads the owner's message and replies from Messages.
+  await page.goto('/messages');
+  await page.getByRole('button', { name: /Lorna Belen/ }).click();
+  await expect(page.getByText('Can someone check the other pigs tomorrow?')).toBeVisible();
+  await expect(page.getByText(/Disease report sent: RPT-/).first()).toBeVisible();
+  await page.getByLabel('Message', { exact: true }).fill('Yes, Dr. Cruz will visit at 9 AM.');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('Yes, Dr. Cruz will visit at 9 AM.')).toBeVisible();
+  await shot(page, 'staff-messages');
 
   // Attendance puts the vaccination on the farm's record.
   await page.goto('/vaccination-activities');

@@ -1000,14 +1000,29 @@ function FarmDetail({
           <div className="space-y-2">
             <Suspense fallback={<div className="h-64 rounded-xl bg-slate-100" />}>
               <div className="isolate h-64 overflow-hidden rounded-xl border border-slate-200">
-                <MapView farms={[{ id: f.id, lat: f.lat, lng: f.lng, name: f.name }]} className="h-full" />
+                <MapView
+                  className="h-full"
+                  pin={{ lat: f.lat, lng: f.lng, accuracy: f.gpsAccuracy, label: f.name }}
+                  focusCircle={{ lat: f.lat, lng: f.lng, radius: Math.max(60, f.gpsAccuracy ?? 0) }}
+                  fitKey={`${f.id}-${f.lat}-${f.lng}`}
+                />
               </div>
             </Suspense>
-            <p className="text-[14px] text-slate-600">
-              {f.lat.toFixed(5)}, {f.lng.toFixed(5)} ·{' '}
-              {f.gpsAccuracy != null
-                ? `phone GPS, about ${Math.round(f.gpsAccuracy)} m`
-                : 'pin placed on the map by the owner'}
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] text-slate-600">
+              <span>
+                {f.lat.toFixed(5)}, {f.lng.toFixed(5)} ·{' '}
+                {f.gpsAccuracy != null
+                  ? `phone GPS, about ${Math.round(f.gpsAccuracy)} m (blue circle)`
+                  : 'pin placed on the map by the owner'}
+              </span>
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${f.lat},${f.lng}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-medium text-brand-dark underline"
+              >
+                Open in Google Maps <ExternalLink className="h-3.5 w-3.5" />
+              </a>
             </p>
           </div>
         ) : (

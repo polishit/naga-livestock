@@ -15,9 +15,11 @@ import {
   User,
   Map as MapIcon,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { useWatch } from 'react-hook-form';
-import { NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   BARANGAYS,
   ID_TYPES,
@@ -27,7 +29,6 @@ import {
   CASE_STAGE_LABELS,
   CLINICAL_SIGNS,
   CLINICAL_SIGN_LABELS,
-  NOTIFICATION_TYPE_LABELS,
   OPTIONAL_NOTIFICATION_TYPES,
   OWNER_VACC_STATUS_LABELS,
   SERVICE_REQUEST_STATUS_LABELS,
@@ -44,7 +45,6 @@ import {
   signupSchema,
   type CaseStage,
   type ClinicalSign,
-  type NotificationType,
   type OwnerVaccStatus,
   type ServiceRequestStatus,
   type SignupStatus,
@@ -58,7 +58,8 @@ import { ErrorBox, Loading } from '@/components/page';
 import { Badge, Button, Checkbox, Field, Input, Select, Tabs, Textarea } from '@/components/ui';
 import { ChangePasswordDialog } from '@/pages/AccountPages';
 import { IdPhotoInput } from '@/components/IdPhotoInput';
-import { AlertCard, OfficeContact, VerificationSteps, useHome } from './OwnerApp';
+import { MessageThread, type ThreadItem } from '@/components/MessageThread';
+import { OfficeContact, VerificationSteps, useHome } from './OwnerApp';
 import {
   LocateButton,
   Panel,
@@ -584,116 +585,96 @@ function ReportScreen() {
 }
 
 /* =====================================================================================
- * Alerts, notifications, announcements
+ * Messages and announcements
  * ===================================================================================== */
 
-interface Note {
-  id: number;
-  type: NotificationType;
-  title: string;
-  body: string;
-  link: string | null;
-  readAt: string | null;
-  createdAt: string;
+/** Messages with the City Veterinary Office: the conversation and the owner's transactions. */
+export function MessagesScreen() {
+  const home = useHome();
+  const { data, isLoading, error, refetch } = useApi<{ items: ThreadItem[] }>('/api/my/messages', {
+    refetchInterval: 30_000,
+  });
+  const qc = useQueryClient();
+  // Opening the thread marks it read: refresh the badge.
+  useEffect(() => {
+    if (data) void qc.invalidateQueries({ queryKey: ['/api/my/home'] });
+  }, [data, qc]);
+  if (isLoading) return <Loading />;
+  if (error || !data) return <ErrorBox error={error} />;
+  return (
+    <Screen
+      title="Messages"
+      sub="Your conversation with the City Veterinary Office and updates on what you sent"
+    >
+      <Panel className="flex h-[calc(100dvh-250px)] min-h-[420px] flex-col p-2 md:h-[calc(100dvh-210px)]">
+        <MessageThread
+          big
+          me="owner"
+          items={data.items}
+          onSend={async (text, files) => {
+            try {
+              const photoKeys = files.length ? await uploadAll(files, 'messages') : [];
+              await api.post('/api/my/messages', { text, photoKeys });
+              await refetch();
+              return true;
+            } catch (x) {
+              toast.error(x instanceof Error ? x.message : 'Could not send. Try again.');
+              return false;
+            }
+          }}
+        />
+      </Panel>
+      {home.data?.office.contact && (
+        <p className="text-[13px] text-slate-500">
+          The office replies during office hours. For an emergency, call {home.data.office.contact}.
+        </p>
+      )}
+    </Screen>
+  );
 }
 
-export function AlertsScreen() {
-  const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') ?? 'alerts') as 'alerts' | 'inbox' | 'announcements';
-  const home = useHome();
-  const notes = useApi<Note[]>('/api/my/notifications', { refetchInterval: 60_000 });
+/** The office's latest announcements, on the home screen. */
+export function AnnouncementsSection() {
   const anns =
     useApi<{ id: number; code: string; title: string; body: string; publishedAt: string }[]>(
       '/api/my/announcements',
     );
-  const { run } = useSubmit();
-  const navigate = useNavigate();
-  const unread = notes.data?.filter((n) => !n.readAt).length ?? 0;
+  const [all, setAll] = useState(false);
+  if (!anns.data?.length) return null;
+  const list = all ? anns.data : anns.data.slice(0, 2);
   return (
-    <Screen title="Alerts">
-      <Tabs
-        value={tab}
-        onChange={(t) => setParams({ tab: t }, { replace: true })}
-        tabs={[
-          {
-            id: 'alerts',
-            label: `Disease alerts${home.data?.alerts.length ? ` (${home.data.alerts.length})` : ''}`,
-          },
-          { id: 'inbox', label: `Notifications${unread ? ` (${unread})` : ''}` },
-          { id: 'announcements', label: 'Announcements' },
-        ]}
-      />
-      {tab === 'alerts' && (
-        <div className="space-y-3">
-          {home.data?.alerts.length ? (
-            home.data.alerts.map((a) => <AlertCard key={`${a.zoneId}-${a.farmId}`} a={a} />)
-          ) : (
-            <Panel tone="green">
-              <p className="text-[15px]">There is no confirmed disease near your farms right now.</p>
-            </Panel>
-          )}
-        </div>
-      )}
-      {tab === 'inbox' && (
-        <div className="space-y-2">
-          {unread > 0 && (
-            <Button
-              variant="outline"
-              className="h-11"
-              onClick={() => run(null, () => api.post('/api/my/notifications/read', {}))}
-            >
-              Mark All as Read
-            </Button>
-          )}
-          {notes.isLoading && <Loading />}
-          {notes.data?.length === 0 && <p className="text-[15px] text-slate-500">No notifications yet.</p>}
-          {notes.data?.map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              onClick={async () => {
-                if (!n.readAt) await run(null, () => api.post('/api/my/notifications/read', { ids: [n.id] }));
-                if (n.link) navigate(n.link);
-              }}
-              className={cn(
-                'block w-full rounded-2xl border p-4 text-left active:bg-slate-50',
-                n.readAt ? 'border-slate-200 bg-white' : 'border-brand/50 bg-brand-light',
-              )}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <Badge tone={n.type === 'ALERT' ? 'red' : 'slate'}>
-                  {NOTIFICATION_TYPE_LABELS[n.type] ?? n.type}
-                </Badge>
-                <span className="text-[12px] text-slate-500">{when(n.createdAt)}</span>
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <SectionTitle className="mb-0">Announcements</SectionTitle>
+        {anns.data.length > 2 && (
+          <button
+            type="button"
+            className="text-[14px] font-medium text-brand-dark underline"
+            onClick={() => setAll(!all)}
+          >
+            {all ? 'Show Less' : `See All (${anns.data.length})`}
+          </button>
+        )}
+      </div>
+      <div className="space-y-2">
+        {list.map((a) => (
+          <Panel key={a.id}>
+            <div className="flex items-start gap-3">
+              <Megaphone className="mt-0.5 h-5 w-5 shrink-0 text-brand-dark" />
+              <div className="min-w-0">
+                <h3 className="text-[16px] font-semibold">{a.title}</h3>
+                <p className="text-[12px] text-slate-500">
+                  City Veterinary Office · {fmtDate(a.publishedAt)}
+                </p>
+                <p className={cn('mt-1.5 whitespace-pre-line text-[15px]', !all && 'line-clamp-4')}>
+                  {a.body}
+                </p>
               </div>
-              <div className={cn('mt-1.5 text-[16px]', n.readAt ? 'font-medium' : 'font-semibold')}>
-                {n.title}
-              </div>
-              <p className="mt-0.5 whitespace-pre-line text-[14px] text-slate-700">{n.body}</p>
-            </button>
-          ))}
-        </div>
-      )}
-      {tab === 'announcements' && (
-        <div className="space-y-2">
-          {anns.data?.length === 0 && <p className="text-[15px] text-slate-500">No announcements.</p>}
-          {anns.data?.map((a) => (
-            <Panel key={a.id}>
-              <div className="flex items-start gap-3">
-                <Megaphone className="mt-0.5 h-5 w-5 shrink-0 text-brand-dark" />
-                <div>
-                  <h2 className="text-[16px] font-semibold">{a.title}</h2>
-                  <p className="text-[12px] text-slate-500">
-                    City Veterinary Office · {fmtDate(a.publishedAt)}
-                  </p>
-                  <p className="mt-2 whitespace-pre-line text-[15px]">{a.body}</p>
-                </div>
-              </div>
-            </Panel>
-          ))}
-        </div>
-      )}
-    </Screen>
+            </div>
+          </Panel>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1158,35 +1139,34 @@ function MoreMenuScreen() {
   const [pw, setPw] = useState(false);
   return (
     <Screen title="Account and Settings">
-      <Panel>
-        <div className="text-[17px] font-semibold">{user?.name}</div>
-        <div className="text-[14px] text-slate-500">Livestock Owner</div>
-      </Panel>
+      <RowLink
+        to="/app/more/profile"
+        icon={<User className="h-5 w-5" />}
+        title={user?.name ?? 'My Profile'}
+        sub="Livestock Owner · View and edit my profile"
+      />
       <div className="space-y-2">
-        <RowLink
-          to="/app/more/verification"
-          icon={<BadgeCheck className="h-5 w-5" />}
-          title="My Verification"
-          sub="Status of your registration and your ID"
-        />
-        <RowLink
-          to="/app/more/profile"
-          icon={<User className="h-5 w-5" />}
-          title="My Details"
-          sub="Name, address, RSBSA number"
-        />
-        <RowLink
-          to="/app/vaccination"
-          icon={<Syringe className="h-5 w-5" />}
-          title="Vaccination and Services"
-          sub="Schedule, records, requests"
-        />
-        <RowLink
-          to="/app/map"
-          icon={<MapIcon className="h-5 w-5" />}
-          title="Disease Map"
-          sub="Confirmed cases and monitoring areas"
-        />
+        {/* On a phone there is no side menu, so these pages are reached from here. */}
+        <div className="space-y-2 md:hidden">
+          <RowLink
+            to="/app/more/verification"
+            icon={<BadgeCheck className="h-5 w-5" />}
+            title="My Verification"
+            sub="Status of your registration and your ID"
+          />
+          <RowLink
+            to="/app/vaccination"
+            icon={<Syringe className="h-5 w-5" />}
+            title="Vaccination and Services"
+            sub="Schedule, records, requests"
+          />
+          <RowLink
+            to="/app/map"
+            icon={<MapIcon className="h-5 w-5" />}
+            title="Disease Map"
+            sub="Confirmed cases and monitoring areas"
+          />
+        </div>
         <RowLink
           to="/app/more/summary"
           icon={<FileText className="h-5 w-5" />}
@@ -1240,7 +1220,7 @@ function ProfileScreen() {
   if (!o) return <Loading />;
   const e = form.formState.errors;
   return (
-    <Screen title="My Details" back="/app/more">
+    <Screen title="My Profile" back="/app/more">
       {o.status === 'PENDING' && o.returnReason && (
         <Panel tone="amber">
           <b>The office asks you to correct this:</b> {o.returnReason}
@@ -1554,7 +1534,7 @@ function VerificationScreen() {
 
       <Panel>
         <div className="mb-2 flex items-center justify-between gap-2">
-          <SectionTitle className="mb-0">My Details</SectionTitle>
+          <SectionTitle className="mb-0">My Profile</SectionTitle>
           {!verified && (
             <NavLink to="/app/more/profile" className="text-[14px] font-medium text-brand-dark underline">
               Edit

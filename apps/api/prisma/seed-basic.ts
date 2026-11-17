@@ -75,6 +75,7 @@ async function wipe() {
   await prisma.activityLog.deleteMany();
   // The owner side (registrations, reports, notifications, zones, activities, announcements).
   await prisma.notification.deleteMany();
+  await prisma.ownerMessage.deleteMany();
   await prisma.reportMessage.deleteMany();
   await prisma.diseaseReport.deleteMany();
   await prisma.farmRegistration.deleteMany();

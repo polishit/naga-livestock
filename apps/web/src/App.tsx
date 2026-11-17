@@ -50,6 +50,7 @@ const OwnerApp = lazy(() => import('@/owner/OwnerApp').then((m) => ({ default: m
 const RegisterPage = lazy(() => import('@/pages/PublicPages').then((m) => ({ default: m.RegisterPage })));
 const PublicPage = lazy(() => import('@/pages/PublicPages').then((m) => ({ default: m.PublicPage })));
 const ReviewPage = lazy(() => import('@/pages/ReviewPages').then((m) => ({ default: m.ReviewPage })));
+const MessagesPage = lazy(() => import('@/pages/MessagesPage').then((m) => ({ default: m.MessagesPage })));
 const ZonesPage = lazy(() => import('@/pages/OutreachPages').then((m) => ({ default: m.ZonesPage })));
 const ActivitiesPage = lazy(() =>
   import('@/pages/OutreachPages').then((m) => ({ default: m.ActivitiesPage })),
@@ -184,6 +185,7 @@ export default function App() {
             }
           />
           <Route path="review" element={<ReviewPage />} />
+          <Route path="messages" element={<MessagesPage />} />
           <Route path="zones" element={<ZonesPage />} />
           <Route path="vaccination-activities" element={<ActivitiesPage />} />
           <Route path="announcements" element={<AnnouncementsPage />} />

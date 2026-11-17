@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/node';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { autoZones } from './services/ownerSide';
+import { messagesRouter } from './routes/messages';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -109,6 +110,7 @@ export function createApp() {
   api.use('/settings', settingsRouter);
   api.use('/audit', auditRouter);
   api.use('/review', reviewRouter);
+  api.use('/messages', messagesRouter);
   api.use('/zones', zonesRouter);
   api.use('/activities', activitiesRouter);
   api.use('/announcements', announcementsRouter);

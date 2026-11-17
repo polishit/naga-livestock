@@ -148,6 +148,7 @@ model Owner {
   reviewedAt        DateTime?
   farmRegistrations FarmRegistration[]
   diseaseReports    DiseaseReport[]
+  messages          OwnerMessage[]
   /// Valid ID sent for verification (owner app): type, number and photo keys (front, back)
   idType            String?             @db.VarChar(40)
   idNumber          String?             @db.VarChar(60)
@@ -779,6 +780,26 @@ model Notification {
 
   @@unique([userId, refKey])
   @@index([userId, readAt])
+}
+
+/// A message between a livestock owner and the City Veterinary Office (the owner's Messages thread).
+/// The owner sees staff replies as coming from the office; staff see who wrote them.
+model OwnerMessage {
+  id        Int       @id @default(autoincrement())
+  ownerId   Int
+  fromOwner Boolean
+  /// The owner's name, or the staff member who replied
+  byName    String    @db.VarChar(120)
+  byUserId  Int?
+  text      String    @db.Text
+  photoKeys Json?
+  /// When the other side read it
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  owner     Owner     @relation(fields: [ownerId], references: [id])
+
+  @@index([ownerId, createdAt])
+  @@index([fromOwner, readAt])
 }
 
 /// An epicenter with a monitoring radius, set by the CVO for a confirmed case. Owners of the farms

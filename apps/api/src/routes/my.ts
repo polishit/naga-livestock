@@ -11,6 +11,7 @@ import {
   nearestBarangay,
   isoDate,
   notifPrefsSchema,
+  ownerMessageSchema,
   ownerProfileSchema,
   ownerVerificationSchema,
   ownerVaccinationSchema,
@@ -33,6 +34,7 @@ import {
   requestedDelta,
   stageOfCase,
 } from '../services/ownerSide';
+import { THREAD_TYPES, ownerThread } from '../services/messages';
 import { getSettings } from '../services/settings';
 import { filesRouter, reverseGeocode, uploadsRouter } from './misc';
 
@@ -67,6 +69,7 @@ const PENDING_OK: [string, RegExp][] = [
   ['PATCH', /^\/registrations\/\d+$/],
   ['POST', /^\/uploads\/?$/],
   ['POST', /^\/notifications\/read$/],
+  ['POST', /^\/messages$/],
   ['PUT', /^\/settings$/],
 ];
 const CLOSED_OK: [string, RegExp][] = [
@@ -179,6 +182,15 @@ async function sendReminders(ownerId: number) {
     });
 }
 
+/** New in Messages: office replies and answers to the owner's transactions not read yet. */
+async function unreadCount(userId: number, ownerId: number) {
+  const [notes, msgs] = await Promise.all([
+    prisma.notification.count({ where: { userId, readAt: null, type: { in: THREAD_TYPES } } }),
+    prisma.ownerMessage.count({ where: { ownerId, fromOwner: false, readAt: null } }),
+  ]);
+  return notes + msgs;
+}
+
 /* ---------------- home ---------------- */
 
 myRouter.get(
@@ -198,7 +210,7 @@ myRouter.get(
         where: { ownerId, status: { not: 'APPROVED' } },
         orderBy: { id: 'desc' },
       }),
-      prisma.notification.count({ where: { userId: req.user!.id, readAt: null } }),
+      unreadCount(req.user!.id, ownerId),
       myAlerts(ownerId),
       prisma.diseaseReport.count({ where: { ownerId, status: { in: ['REPORTED', 'INFO_REQUESTED'] } } }),
       prisma.populationRequest.count({ where: { ownerId, status: 'PENDING' } }),
@@ -905,6 +917,48 @@ myRouter.post(
       data: { readAt: new Date() },
     });
     res.json({ read: r.count });
+  }),
+);
+
+/* ---------------- messages with the office ---------------- */
+
+/** The thread: messages and the owner's transactions. Opening it marks everything in it as read. */
+myRouter.get(
+  '/messages',
+  ah(async (req, res) => {
+    const ownerId = me(req);
+    const items = await ownerThread(ownerId, 'owner');
+    await Promise.all([
+      prisma.ownerMessage.updateMany({
+        where: { ownerId, fromOwner: false, readAt: null },
+        data: { readAt: new Date() },
+      }),
+      prisma.notification.updateMany({
+        where: { userId: req.user!.id, readAt: null, type: { in: THREAD_TYPES } },
+        data: { readAt: new Date() },
+      }),
+    ]);
+    res.json({ items });
+  }),
+);
+
+myRouter.post(
+  '/messages',
+  ah(async (req, res) => {
+    const d = parse(ownerMessageSchema, req.body);
+    if (d.photoKeys.some((k) => k.startsWith('ids/')))
+      throw badRequest('Validation failed', { fieldErrors: { photoKeys: ['Attach the photo again'] } });
+    const m = await prisma.ownerMessage.create({
+      data: {
+        ownerId: me(req),
+        fromOwner: true,
+        byName: req.user!.name,
+        byUserId: req.user!.id,
+        text: d.text,
+        photoKeys: d.photoKeys,
+      },
+    });
+    res.status(201).json(m);
   }),
 );
 

@@ -225,6 +225,8 @@ export interface MapViewProps {
   focusArea?: GeoJSON.Feature | null;
   /** Cases drawn with a pulsing ring (e.g. newly reported this month on the timeline). */
   highlightCaseIds?: number[];
+  /** A read-only location pin (e.g. where an owner stood with the phone GPS), with its accuracy. */
+  pin?: (LatLng & { accuracy?: number | null; label?: string }) | null;
 }
 
 export function MapView({
@@ -245,6 +247,7 @@ export function MapView({
   areas,
   focusArea,
   highlightCaseIds,
+  pin,
 }: MapViewProps) {
   const [version, setVersion] = useState(0);
   const focusBounds = useMemo(() => (focusArea ? L.geoJSON(focusArea).getBounds() : null), [focusArea]);
@@ -419,6 +422,22 @@ export function MapView({
               </Tooltip>
             </Marker>
           ))}
+        {pin && pin.accuracy != null && pin.accuracy > 0 && (
+          <Circle
+            center={[pin.lat, pin.lng]}
+            radius={pin.accuracy}
+            pathOptions={{ color: '#2563eb', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.15 }}
+          />
+        )}
+        {pin && (
+          <Marker position={[pin.lat, pin.lng]} icon={pinIcon} zIndexOffset={1000}>
+            {pin.label && (
+              <Tooltip direction="top" offset={[0, -38]} permanent>
+                {pin.label}
+              </Tooltip>
+            )}
+          </Marker>
+        )}
         {groundZero && (
           <Marker position={[groundZero.lat, groundZero.lng]} icon={gzIcon} zIndexOffset={800} />
         )}

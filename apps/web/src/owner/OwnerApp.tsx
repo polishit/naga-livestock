@@ -1,4 +1,6 @@
 import {
+  ChevronRight,
+  MessageSquare,
   AlertTriangle,
   BadgeCheck,
   Bell,
@@ -51,7 +53,13 @@ import { Badge, Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { DiseaseMapLegend } from '@/components/DiseaseMapLegend';
 import type { MapCase, MapFarm, MapZone } from '@/components/DiseaseMap';
 import { LocateButton, Panel, RowLink, Screen, SectionTitle, big, useSubmit, when } from './kit';
-import { AlertsScreen, MoreRoutes, ReportRoutes, VaccinationScreen } from './OwnerPages';
+import {
+  AnnouncementsSection,
+  MessagesScreen,
+  MoreRoutes,
+  ReportRoutes,
+  VaccinationScreen,
+} from './OwnerPages';
 
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 const DiseaseMap = lazy(() => import('@/components/DiseaseMap'));
@@ -135,7 +143,7 @@ const TABS = [
   { to: '/app', label: 'Home', icon: Home, end: true },
   { to: '/app/farms', label: 'My Farms', icon: Tractor },
   { to: '/app/reports', label: 'Report', icon: Stethoscope },
-  { to: '/app/alerts', label: 'Alerts', icon: Bell },
+  { to: '/app/messages', label: 'Messages', icon: MessageSquare },
   { to: '/app/more', label: 'More', icon: Menu },
 ];
 /** On a tablet or computer the side menu has room for the longer names and two more links. */
@@ -143,7 +151,7 @@ const SIDE = [
   { to: '/app', label: 'Home', icon: Home, end: true },
   { to: '/app/farms', label: 'My Farms', icon: Tractor },
   { to: '/app/reports', label: 'Disease Reports', icon: Stethoscope },
-  { to: '/app/alerts', label: 'Alerts and Messages', icon: Bell },
+  { to: '/app/messages', label: 'Messages', icon: MessageSquare },
   { to: '/app/map', label: 'Disease Map', icon: MapIcon },
   { to: '/app/vaccination', label: 'Vaccination and Services', icon: Syringe },
   { to: '/app/more/verification', label: 'My Verification', icon: BadgeCheck },
@@ -177,12 +185,19 @@ export function OwnerApp() {
               Owner Portal · City Veterinary Office
             </div>
           </div>
-          <span className="hidden max-w-[220px] truncate text-[14px] text-white/90 md:block">
-            {user.name}
-          </span>
           <NavLink
-            to="/app/alerts?tab=inbox"
-            aria-label={unread ? `${unread} unread notifications` : 'Notifications'}
+            to="/app/more/profile"
+            title="My Profile"
+            className="hidden max-w-[240px] items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-white/10 md:flex"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-[13px] font-semibold">
+              {initials(user.name)}
+            </span>
+            <span className="truncate text-[14px] text-white/95">{user.name}</span>
+          </NavLink>
+          <NavLink
+            to="/app/messages"
+            aria-label={unread ? `${unread} new in Messages` : 'Messages'}
             className="relative flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 active:bg-white/15"
           >
             <Bell className="h-6 w-6" />
@@ -213,8 +228,16 @@ export function OwnerApp() {
               >
                 <t.icon className="h-5 w-5 shrink-0" />
                 <span className="flex-1 truncate">{t.label}</span>
-                {t.to === '/app/alerts' && alertCount > 0 && (
-                  <span className="h-2.5 w-2.5 rounded-full bg-red-600" aria-label="Active alert" />
+                {t.to === '/app/messages' && unread > 0 && (
+                  <span className="min-w-[20px] rounded-full bg-red-600 px-1 text-center text-[12px] font-semibold leading-5 text-white">
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
+                {t.to === '/app/map' && alertCount > 0 && (
+                  <span
+                    className="h-2.5 w-2.5 rounded-full bg-red-600"
+                    aria-label="Disease alert near your farm"
+                  />
                 )}
               </NavLink>
             ))}
@@ -240,7 +263,8 @@ export function OwnerApp() {
                 <Route path="farms/:id" element={<FarmScreen />} />
                 <Route path="farms/:id/update" element={<HeadCountForm />} />
                 <Route path="reports/*" element={<ReportRoutes />} />
-                <Route path="alerts" element={<AlertsScreen />} />
+                <Route path="messages" element={<MessagesScreen />} />
+                <Route path="alerts" element={<Navigate to="/app/map" replace />} />
                 <Route path="map" element={<OwnerMapScreen />} />
                 <Route path="vaccination" element={<VaccinationScreen />} />
                 <Route path="more/*" element={<MoreRoutes />} />
@@ -269,8 +293,10 @@ export function OwnerApp() {
             >
               <t.icon className="h-6 w-6" />
               {t.label}
-              {t.label === 'Alerts' && alertCount > 0 && (
-                <span className="absolute right-[26%] top-2 h-2.5 w-2.5 rounded-full bg-red-600" />
+              {t.label === 'Messages' && unread > 0 && (
+                <span className="absolute right-[22%] top-1.5 min-w-[18px] rounded-full bg-red-600 px-1 text-center text-[11px] font-semibold leading-[18px] text-white">
+                  {unread > 99 ? '99+' : unread}
+                </span>
               )}
             </NavLink>
           ))}
@@ -279,6 +305,14 @@ export function OwnerApp() {
     </div>
   );
 }
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
 
 /** The office's contact, shown wherever an owner cannot go further in the app. */
 export function OfficeContact({ office }: { office: OwnerHome['office'] }) {
@@ -401,15 +435,7 @@ export function AlertCard({ a }: { a: OwnerAlert }) {
             <li>Do not move, sell or slaughter sick animals.</li>
             <li>Report any sick animal in this app right away.</li>
           </ul>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[13px] text-red-800">Since {fmtDate(a.since)}</p>
-            <NavLink
-              to="/app/map"
-              className="inline-flex items-center gap-1 text-[14px] font-medium text-red-900 underline"
-            >
-              <MapIcon className="h-4 w-4" /> See it on the map
-            </NavLink>
-          </div>
+          <p className="mt-2 text-[13px] text-red-800">Since {fmtDate(a.since)}</p>
         </div>
       </div>
     </Panel>
@@ -495,9 +521,23 @@ function HomeScreen() {
 
       <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6 lg:space-y-0">
         <div className="space-y-4">
-          {data.alerts.map((a) => (
-            <AlertCard key={`${a.zoneId}-${a.farmId}`} a={a} />
-          ))}
+          {data.alerts.length > 0 && (
+            <NavLink
+              to="/app/map"
+              className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-900 hover:shadow-sm"
+            >
+              <Siren className="h-6 w-6 shrink-0 text-red-700" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[16px] font-semibold">
+                  {[...new Set(data.alerts.map((a) => a.disease))].join(', ')} Confirmed Near Your Farm
+                </span>
+                <span className="block text-[14px]">
+                  Open the Disease Map to see where it is and what to do.
+                </span>
+              </span>
+              <ChevronRight className="h-5 w-5 shrink-0" />
+            </NavLink>
+          )}
 
           {owner.status === 'PENDING' && (
             <Panel tone={owner.returnReason ? 'amber' : 'blue'}>
@@ -599,6 +639,7 @@ function HomeScreen() {
               </ul>
             </Panel>
           )}
+          <AnnouncementsSection />
         </div>
 
         <div className="space-y-4">
@@ -702,10 +743,14 @@ function HomeMapCard() {
 
 function OwnerMapScreen() {
   const { data, isLoading, error } = useOwnerMap();
+  const home = useHome();
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
   return (
     <Screen title="Disease Map" wide sub="Confirmed cases and monitoring areas in Naga City, and your farms">
+      {(home.data?.alerts ?? []).map((a) => (
+        <AlertCard key={`${a.zoneId}-${a.farmId}`} a={a} />
+      ))}
       <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-6 lg:space-y-0">
         <div className="space-y-2">
           <Suspense fallback={<div className="h-[60vh] rounded-xl bg-slate-100" />}>

@@ -655,6 +655,8 @@ export const PCIC_STATUSES = ['ACTIVE', 'EXPIRED', 'CLAIMED', 'CANCELLED'] as co
 
 /** Default assessment radii offered on radius analysis (metres). */
 export const RADIUS_PRESETS = [500, 1000, 3000, 5000] as const;
+/** Every radius picker in the system offers these, in one dropdown. */
+export const RADIUS_OPTIONS = [100, 250, 500, 1000, 2000, 3000, 5000, 10000] as const;
 
 export const OFFICE_NAME = 'City Veterinary Office — Naga City';
 

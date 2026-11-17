@@ -1,4 +1,4 @@
-import { Archive, IdCard, Pencil, Plus, Printer, RotateCcw, UserPlus } from 'lucide-react';
+import { Archive, IdCard, MessageSquare, Pencil, Plus, Printer, RotateCcw, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -330,6 +330,11 @@ export function OwnerDetailPage() {
         }
         actions={
           <>
+            <Button variant="outline" asChild>
+              <Link to={`/messages?owner=${o.id}`}>
+                <MessageSquare /> Message
+              </Link>
+            </Button>
             {!archived && (
               <Button
                 variant="outline"

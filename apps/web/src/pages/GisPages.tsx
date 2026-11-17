@@ -18,7 +18,6 @@ import {
   CASE_STATUS_LABELS,
   LIVESTOCK_RAISED,
   MONITORED_DISEASES,
-  RADIUS_PRESETS,
   SPECIES,
   addMonths,
   caseMarkerKind,
@@ -36,6 +35,7 @@ import { cn, qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { ExportButtons } from '@/components/ExportButtons';
 import { MapView } from '@/components/MapView';
+import { RadiusSelect } from '@/components/RadiusSelect';
 import { ErrorBox, FilterSelect, PageHeader, StatCard } from '@/components/page';
 import { CaseLegend, CaseStatusBadge, MapLegend, SpeciesChip } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Checkbox, Input, Tabs } from '@/components/ui';
@@ -258,26 +258,7 @@ export function GisMapPage() {
             checked={layers.radius}
             onChange={(v) => setLayers((l) => ({ ...l, radius: v }))}
           />
-          {layers.radius && (
-            <span className="inline-flex flex-wrap gap-1" role="group" aria-label="Radius">
-              {RADIUS_PRESETS.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  aria-pressed={radius === r}
-                  onClick={() => setRadius(r)}
-                  className={cn(
-                    'h-8 rounded-lg border px-2.5 text-[13px]',
-                    radius === r
-                      ? 'border-brand-strong bg-brand-strong text-white'
-                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
-                  )}
-                >
-                  {formatRadius(r)}
-                </button>
-              ))}
-            </span>
-          )}
+          {layers.radius && <RadiusSelect value={radius} onChange={setRadius} className="h-8 text-[13px]" />}
           <Checkbox
             label="Stray Incidents"
             checked={layers.strays}
@@ -1140,7 +1121,6 @@ export function RadiusPage() {
     (geocoded.find((c) => c.status === 'POSITIVE' && !c.closed) ?? geocoded[0])?.id?.toString() ??
     '';
   const [radius, setRadius] = useState(Number(params.get('radius')) || 1000);
-  const [custom, setCustom] = useState(String(radius));
   const [bq, setBq] = useState('');
   const [bBarangay, setBBarangay] = useState('');
   const [bSpecies, setBSpecies] = useState('');
@@ -1202,41 +1182,7 @@ export function RadiusPage() {
           </div>
           <div>
             <div className="mb-1.5 text-[14px] font-medium text-slate-700">Radius</div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {RADIUS_PRESETS.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => {
-                    setRadius(r);
-                    setCustom(String(r));
-                  }}
-                  className={cn(
-                    'h-9 rounded-lg border px-3 text-[14px]',
-                    radius === r
-                      ? 'border-brand-strong bg-brand-strong text-white'
-                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
-                  )}
-                >
-                  {formatRadius(r)}
-                </button>
-              ))}
-              <Input
-                value={custom}
-                onChange={(e) => setCustom(e.target.value.replace(/\D/g, ''))}
-                className="h-9 w-24"
-                inputMode="numeric"
-                aria-label="Custom radius in metres"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                onClick={() => Number(custom) >= 50 && setRadius(Math.min(50000, Number(custom)))}
-              >
-                Apply (m)
-              </Button>
-            </div>
+            <RadiusSelect value={radius} onChange={setRadius} className="h-10" />
           </div>
           {data?.case && (
             <Link to={`/cases/${data.case.id}`} className="link text-[14px] lg:ml-auto lg:pb-2">

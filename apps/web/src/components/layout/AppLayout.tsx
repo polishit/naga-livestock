@@ -43,6 +43,8 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
   const current = sectionFor(location.pathname)?.id;
   const waiting =
     useApi<{ total: number }>('/api/review/summary', { refetchInterval: 60_000 }).data?.total ?? 0;
+  const unreadMsgs =
+    useApi<{ unread: number }>('/api/messages/summary', { refetchInterval: 30_000 }).data?.unread ?? 0;
   // Only the module you are working in is open; the others fold away to keep the menu short.
   const [open, setOpen] = useState<Record<string, boolean>>(() => (current ? { [current]: true } : {}));
   useEffect(() => {
@@ -68,6 +70,17 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
     >
       <item.icon className={cn('shrink-0', nested ? 'h-4 w-4' : 'h-[18px] w-[18px]')} strokeWidth={1.9} />
       {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+      {item.to === '/messages' && !!unreadMsgs && (
+        <span
+          aria-label={`${unreadMsgs} unread messages`}
+          className={cn(
+            'rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white',
+            collapsed && 'absolute ml-5 -mt-5',
+          )}
+        >
+          {unreadMsgs > 99 ? '99+' : unreadMsgs}
+        </span>
+      )}
       {/* How many items owners sent that still wait for the office */}
       {item.to === '/review' && !!waiting && (
         <span
@@ -124,12 +137,12 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
                 {Icon && <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />}
                 <span className="flex-1 truncate">{section.label}</span>
                 {/* Shown while the section is folded, so waiting items are never missed */}
-                {section.id === 'owners-app' && !isOpen && !!waiting && (
+                {section.id === 'owners-app' && !isOpen && !!(waiting + unreadMsgs) && (
                   <span
-                    aria-label={`${waiting} waiting for review`}
+                    aria-label={`${waiting} waiting for review, ${unreadMsgs} unread messages`}
                     className="rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white"
                   >
-                    {waiting > 99 ? '99+' : waiting}
+                    {waiting + unreadMsgs > 99 ? '99+' : waiting + unreadMsgs}
                   </span>
                 )}
                 <ChevronDown

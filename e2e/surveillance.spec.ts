@@ -131,7 +131,7 @@ test('radius analysis matches the outbreak figures', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole('cell', { name: /^210 m/i })).toBeVisible();
   await expect(page.getByRole('cell', { name: /^910 m/i })).toBeVisible();
-  await page.getByRole('button', { name: '500 m' }).click();
+  await page.getByLabel('Radius', { exact: true }).selectOption('500');
   await expect(page.getByText('Farms to monitor within 500 m')).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'CSV' }).click();

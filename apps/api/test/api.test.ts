@@ -2790,6 +2790,42 @@ describe('the owner app: registration, head counts, reports, alerts', () => {
     ).toBe(false);
   });
 
+  it('owners and the office message each other; the thread also shows their transactions', async () => {
+    expect((await ana.post('/api/my/messages').send({ text: '  ' })).status).toBe(400);
+    expect((await ana.post('/api/my/messages').send({ text: 'When is the next deworming?' })).status).toBe(
+      201,
+    );
+    expect((await admin.get('/api/messages/summary')).body.unread).toBeGreaterThanOrEqual(1);
+    const list = (await admin.get('/api/messages')).body;
+    expect(list[0]).toMatchObject({ ownerId: anaOwnerId, unread: 1 });
+    // Any staff member can read and reply; opening the thread marks it read.
+    const t = (await viewer.get(`/api/messages/${anaOwnerId}`)).body;
+    expect(
+      t.items.some(
+        (i: { kind: string; title?: string }) =>
+          i.kind === 'event' && /Farm registration sent/.test(i.title ?? ''),
+      ),
+    ).toBe(true);
+    expect((await admin.get('/api/messages/summary')).body.unread).toBe(0);
+    expect(
+      (await viewer.post(`/api/messages/${anaOwnerId}`).send({ text: 'Next Tuesday at the barangay hall.' }))
+        .status,
+    ).toBe(201);
+    expect((await ana.get('/api/my/home')).body.unread).toBeGreaterThanOrEqual(1);
+    const mine = (await ana.get('/api/my/messages')).body.items;
+    const reply = mine.filter((i: { kind: string }) => i.kind === 'message').at(-1);
+    // The owner sees the office, not the staff member's name.
+    expect(reply).toMatchObject({
+      fromOwner: false,
+      by: 'City Veterinary Office',
+      text: 'Next Tuesday at the barangay hall.',
+    });
+    expect((await ana.get('/api/my/home')).body.unread).toBe(0);
+    // Owners cannot open the staff side, and see only their own thread.
+    expect((await ana.get('/api/messages')).status).toBe(403);
+    expect(JSON.stringify((await ben.get('/api/my/messages')).body)).not.toMatch(/deworming/);
+  });
+
   it('a registration that is not accepted closes the app, with the reason and the office contact', async () => {
     const carl = fresh();
     const c = await signUp(carl, reg({ fullName: 'Carl Diaz', phone: '09175550909' }));

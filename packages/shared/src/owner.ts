@@ -526,4 +526,12 @@ export const announcementSchema = z
   });
 export const withdrawSchema = z.object({ reason });
 
+/** A message in the Messages thread between an owner and the office (text, photos or both). */
+export const ownerMessageSchema = z
+  .object({
+    text: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().max(2000).default('')),
+    photoKeys: z.array(z.string().max(200)).max(5, 'At most 5 photos').default([]),
+  })
+  .refine((d) => !!d.text || d.photoKeys.length > 0, { path: ['text'], message: 'Write a message' });
+
 export const notifPrefsSchema = z.object({ muted: z.array(z.enum(OPTIONAL_NOTIFICATION_TYPES)).default([]) });
