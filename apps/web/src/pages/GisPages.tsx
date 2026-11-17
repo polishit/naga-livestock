@@ -213,7 +213,7 @@ export function GisMapPage() {
             className="w-[calc(50%-4px)] sm:w-36"
           />
           <FilterSelect
-            label="Farm (livestock raised)"
+            label="Farm (Livestock Raised)"
             value={raised}
             onChange={setRaised}
             options={LIVESTOCK_RAISED}
@@ -225,14 +225,14 @@ export function GisMapPage() {
             value={caseState}
             onChange={(v) => setCaseState((v || 'open') as 'open' | 'all')}
             options={[
-              { value: 'open', label: 'Open reports' },
+              { value: 'open', label: 'Open Reports' },
               { value: 'all', label: 'All reports (incl. closed)' },
             ]}
             className="w-full sm:w-52"
           />
           {anyFilter && (
             <Button variant="ghost" size="sm" onClick={clearFilters}>
-              <X /> Clear filters
+              <X /> Clear Filters
             </Button>
           )}
         </div>
@@ -244,17 +244,17 @@ export function GisMapPage() {
             onChange={(v) => setLayers((l) => ({ ...l, farms: v }))}
           />
           <Checkbox
-            label="Disease reports"
+            label="Disease Reports"
             checked={layers.cases}
             onChange={(v) => setLayers((l) => ({ ...l, cases: v }))}
           />
           <Checkbox
-            label="Livestock population (by barangay)"
+            label="Livestock Population (By Barangay)"
             checked={layers.population}
             onChange={(v) => setLayers((l) => ({ ...l, population: v }))}
           />
           <Checkbox
-            label="Radius rings"
+            label="Radius Rings"
             checked={layers.radius}
             onChange={(v) => setLayers((l) => ({ ...l, radius: v }))}
           />
@@ -279,7 +279,7 @@ export function GisMapPage() {
             </span>
           )}
           <Checkbox
-            label="Stray incidents"
+            label="Stray Incidents"
             checked={layers.strays}
             onChange={(v) => setLayers((l) => ({ ...l, strays: v }))}
           />
@@ -382,10 +382,10 @@ export function GisMapPage() {
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button variant="outline" size="xs" onClick={() => navigate(`/cases/${selCase.id}`)}>
-                    Open report
+                    Open Report
                   </Button>
                   <Button size="xs" onClick={() => navigate(`/radius?case=${selCase.id}&radius=${radius}`)}>
-                    <Radar /> Farms to monitor
+                    <Radar /> Farms to Monitor
                   </Button>
                 </div>
               </div>
@@ -460,19 +460,19 @@ export function GisMapPage() {
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button variant="outline" size="xs" onClick={() => navigate(`/farms/${selFarm.id}`)}>
-                    Open farm
+                    Open Farm
                   </Button>
                   {canEdit && (
                     <>
                       <Button size="xs" onClick={() => setVisitFarm({ id: selFarm.id })}>
-                        <ClipboardCheck /> Record visit
+                        <ClipboardCheck /> Record Visit
                       </Button>
                       <Button
                         size="xs"
                         variant="outline"
                         onClick={() => navigate(`/cases/new?farm=${selFarm.id}`)}
                       >
-                        <Plus /> Report disease
+                        <Plus /> Report Disease
                       </Button>
                     </>
                   )}
@@ -639,10 +639,10 @@ function CurrentOutbreakMap() {
                 </div>
                 <div className="flex gap-2 pt-1">
                   <Button variant="outline" size="xs" onClick={() => navigate(`/cases/${selected.id}`)}>
-                    Open case
+                    Open Case
                   </Button>
                   <Button size="xs" onClick={() => navigate(`/radius?case=${selected.id}`)}>
-                    <Radar /> Analyze radius
+                    <Radar /> Analyze Radius
                   </Button>
                 </div>
               </div>
@@ -674,7 +674,7 @@ function CurrentOutbreakMap() {
             </ul>
           </Card>
           <Card>
-            <CardHeader title="Unmapped cases (awaiting geotagging)" />
+            <CardHeader title="Unmapped Cases (Awaiting Geotagging)" />
             <ul>
               {unmapped.map((c) => (
                 <li
@@ -686,7 +686,7 @@ function CurrentOutbreakMap() {
                   </Link>
                   {canEdit && (
                     <Button variant="outline" size="xs" onClick={() => setLocate(c)}>
-                      Add location
+                      Add Location
                     </Button>
                   )}
                 </li>
@@ -873,13 +873,13 @@ function OutbreakTimeline() {
         </div>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <StatCard label="New this month" value={fresh.length} />
-            <StatCard label="Active cases" value={active.length} />
+            <StatCard label="New This Month" value={fresh.length} />
+            <StatCard label="Active Cases" value={active.length} />
             <StatCard
-              label="Positive (active)"
+              label="Positive (Active)"
               value={active.filter((c) => c.status === 'POSITIVE').length}
             />
-            <StatCard label="Closed this month" value={closedNow.length} />
+            <StatCard label="Closed This Month" value={closedNow.length} />
           </div>
           <Card className="flex max-h-[360px] flex-col overflow-hidden">
             <CardHeader title={`Reported in ${fmtMonth(month)}`} />
@@ -909,14 +909,14 @@ function OutbreakTimeline() {
 type BarangayMetric = 'livestock' | 'farms' | 'openCases' | 'allCases' | 'positive' | 'strays';
 
 const METRICS: { value: BarangayMetric; label: string; unit: string; palette: string[] }[] = [
-  { value: 'livestock', label: 'Livestock (head)', unit: 'head', palette: GREENS() },
-  { value: 'farms', label: 'Registered farms', unit: 'farms', palette: GREENS() },
-  { value: 'openCases', label: 'Open disease cases', unit: 'cases', palette: REDS() },
+  { value: 'livestock', label: 'Livestock (Head)', unit: 'head', palette: GREENS() },
+  { value: 'farms', label: 'Registered Farms', unit: 'farms', palette: GREENS() },
+  { value: 'openCases', label: 'Open Disease Cases', unit: 'cases', palette: REDS() },
   { value: 'allCases', label: 'All disease cases (incl. closed)', unit: 'cases', palette: REDS() },
-  { value: 'positive', label: 'Positive cases', unit: 'cases', palette: REDS() },
+  { value: 'positive', label: 'Positive Cases', unit: 'cases', palette: REDS() },
   {
     value: 'strays',
-    label: 'Stray incidents',
+    label: 'Stray Incidents',
     unit: 'incidents',
     palette: ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'],
   },
@@ -1191,7 +1191,7 @@ export function RadiusPage() {
           <div className="w-full lg:w-96">
             <div className="mb-1.5 text-[14px] font-medium text-slate-700">Disease report (ground zero)</div>
             <FilterSelect
-              label="Ground-zero case"
+              label="Ground-Zero Case"
               value={caseId}
               onChange={setCase}
               options={geocoded.map((c) => ({
@@ -1251,14 +1251,14 @@ export function RadiusPage() {
           {/* Four boxes of the same size; each one filters the list below (click again to show all). */}
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
-              label="Farms within radius"
+              label="Farms Within Radius"
               value={data.totals.farms}
               sub={`Ground-zero farm + ${data.totals.nearby} nearby · ${fmtNumber(data.totals.livestock)} head`}
               onClick={() => setMonitor('')}
               active={!monitor}
             />
             <StatCard
-              label="Not yet visited"
+              label="Not Yet Visited"
               value={data.totals.notVisited}
               sub="Nearby farms with no visit since the report"
               tone="orange"
@@ -1266,14 +1266,14 @@ export function RadiusPage() {
               active={monitor === 'NOT_VISITED'}
             />
             <StatCard
-              label="Visited — no signs"
+              label="Visited — No Signs"
               value={Math.max(0, data.totals.nearby - data.totals.notVisited - data.totals.sick)}
               sub="Nearby farms checked with no signs of disease"
               onClick={() => setMonitor(monitor === 'NO_SIGNS' ? '' : 'NO_SIGNS')}
               active={monitor === 'NO_SIGNS'}
             />
             <StatCard
-              label="Sick animals found"
+              label="Sick Animals Found"
               value={data.totals.sick}
               sub="Visited farms that need a report"
               tone="red"
@@ -1329,7 +1329,7 @@ export function RadiusPage() {
               <CardHeader title={`Farms to monitor within ${formatRadius(data.radius)}`} />
               {groundZeroFarm && (
                 <p className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">
-                  <Badge tone="violet">Ground zero</Badge> {groundZeroFarm.name} · {groundZeroFarm.ownerName}{' '}
+                  <Badge tone="violet">Ground Zero</Badge> {groundZeroFarm.name} · {groundZeroFarm.ownerName}{' '}
                   — the farm with the case, not in the list to monitor.
                 </p>
               )}
@@ -1398,7 +1398,7 @@ export function RadiusPage() {
                     header: 'Distance',
                     cell: (r) =>
                       r.role === 'Ground-zero farm' ? (
-                        <Badge tone="violet">Ground zero</Badge>
+                        <Badge tone="violet">Ground Zero</Badge>
                       ) : (
                         `${r.distance} m`
                       ),
@@ -1445,7 +1445,7 @@ export function RadiusPage() {
                                     setVisitFarm(r.id);
                                   }}
                                 >
-                                  <ClipboardCheck /> Record visit
+                                  <ClipboardCheck /> Record Visit
                                 </Button>
                                 {r.monitoring === 'SICK_ANIMALS' && (
                                   <Button

@@ -186,7 +186,7 @@ export function AnimalDialog({
       >
         {!editing && (
           <Field
-            label="Population group *"
+            label="Population Group *"
             error={err(e, 'groupId')}
             hint={
               selectedGroup
@@ -208,7 +208,7 @@ export function AnimalDialog({
             </Select>
           </Field>
         )}
-        <Field label="Ear tag (optional, unique)" error={err(e, 'earTag')}>
+        <Field label="Ear Tag (Optional, Unique)" error={err(e, 'earTag')}>
           <Input {...form.register('earTag')} placeholder="ET-0000" />
         </Field>
         <Field label="Breed" error={err(e, 'breed')}>
@@ -220,24 +220,24 @@ export function AnimalDialog({
             <option>Male</option>
           </Select>
         </Field>
-        <Field label="Date of birth" error={err(e, 'dob')}>
+        <Field label="Date of Birth" error={err(e, 'dob')}>
           <Input type="date" min={MIN_DOB} max={isoDate()} {...form.register('dob')} />
         </Field>
-        <Field label="Estimated age" error={err(e, 'estimatedAge')}>
+        <Field label="Estimated Age" error={err(e, 'estimatedAge')}>
           <Input {...form.register('estimatedAge')} placeholder="e.g. 3 yrs" />
         </Field>
-        <Field label="Life stage" error={err(e, 'lifeStage')}>
+        <Field label="Life Stage" error={err(e, 'lifeStage')}>
           <Input {...form.register('lifeStage')} />
         </Field>
-        <Field label="Color & markings" error={err(e, 'markings')} className="sm:col-span-2">
+        <Field label="Color & Markings" error={err(e, 'markings')} className="sm:col-span-2">
           <Input {...form.register('markings')} />
         </Field>
-        <Field label="Health status" error={err(e, 'health')}>
+        <Field label="Health Status" error={err(e, 'health')}>
           <Input {...form.register('health')} />
         </Field>
         {showCowlick && (
           <Field
-            label="Cowlick (hair whorl) pattern"
+            label="Cowlick (Hair Whorl) Pattern"
             hint="Number and position of the whorls, as on the ownership certificate"
             error={err(e, 'cowlick')}
             className="sm:col-span-2"
@@ -264,17 +264,17 @@ export function AnimalDialog({
             >
               <Input {...form.register('colcNo')} />
             </Field>
-            <Field label="Date issued" error={err(e, 'colcDate')}>
+            <Field label="Date Issued" error={err(e, 'colcDate')}>
               <Input type="date" min={MIN_DOB} max={isoDate()} {...form.register('colcDate')} />
             </Field>
-            <Field label="Scanned certificate" className="sm:col-span-3">
+            <Field label="Scanned Certificate" className="sm:col-span-3">
               <DocumentPicker
                 files={colcFiles}
                 onFilesChange={setColcFiles}
                 existing={colcKept}
                 onExistingChange={setColcKept}
                 max={2}
-                label="Attach certificate"
+                label="Attach Certificate"
               />
             </Field>
           </>
@@ -332,7 +332,7 @@ export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { 
             Cancel
           </Button>
           <Button form="move-form" type="submit" loading={save.isPending} disabled={!choices.length}>
-            Move animal
+            Move Animal
           </Button>
         </>
       }
@@ -348,7 +348,7 @@ export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { 
           {animal.farmName}.
         </p>
         {choices.length ? (
-          <Field label="New group *" error={err(e, 'groupId')}>
+          <Field label="New Group *" error={err(e, 'groupId')}>
             <Select {...form.register('groupId')} aria-invalid={!!e.groupId}>
               <option value="">Select...</option>
               {choices.map((g) => (
@@ -443,7 +443,7 @@ export function TransferDialog({ open, onOpenChange, animal }: DialogProps & { a
             Cancel
           </Button>
           <Button form="transfer-form" type="submit" loading={save.isPending}>
-            Record transfer
+            Record Transfer
           </Button>
         </>
       }
@@ -457,7 +457,7 @@ export function TransferDialog({ open, onOpenChange, animal }: DialogProps & { a
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-[14px] text-slate-600 sm:col-span-2">
           Current: <b className="font-medium text-slate-900">{animal.ownerName}</b> · {animal.farmName}
         </div>
-        <Field label="Receiving farm (new owner) *" error={err(e, 'toFarmId')} className="sm:col-span-2">
+        <Field label="Receiving Farm (New Owner) *" error={err(e, 'toFarmId')} className="sm:col-span-2">
           <Select {...form.register('toFarmId')} aria-invalid={!!e.toFarmId}>
             <option value="">Select farm...</option>
             {lookups?.farms
@@ -469,7 +469,7 @@ export function TransferDialog({ open, onOpenChange, animal }: DialogProps & { a
               ))}
           </Select>
         </Field>
-        <Field label="Transfer date *" error={err(e, 'date')}>
+        <Field label="Transfer Date *" error={err(e, 'date')}>
           <Input type="date" min={animal.dob ?? MIN_DATE} max={isoDate()} {...form.register('date')} />
         </Field>
         <Field label="Type" error={err(e, 'type')}>
@@ -555,7 +555,7 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Report stray livestock"
+      title="Report Stray Livestock"
       size="lg"
       footer={
         <>
@@ -563,7 +563,7 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
             Cancel
           </Button>
           <Button form="stray-form" type="submit" loading={save.isPending}>
-            Save report
+            Save Report
           </Button>
         </>
       }
@@ -576,7 +576,7 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field
-            label="Ear tag / Animal ID (if any)"
+            label="Ear Tag / Animal ID (If Any)"
             error={err(e, 'earTag')}
             hint={tagHint ?? 'If the animal is registered, its species and owner are filled in.'}
             className="sm:col-span-2"
@@ -584,7 +584,7 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
             <Input {...form.register('earTag', { onBlur: (ev) => lookupTag(ev.target.value) })} />
           </Field>
           <Field
-            label="Owner (if known)"
+            label="Owner (If Known)"
             error={err(e, 'ownerId')}
             hint="Leave blank if the owner is unknown."
             className="sm:col-span-2"
@@ -608,7 +608,7 @@ export function StrayDialog({ open, onOpenChange }: DialogProps) {
               ))}
             </Select>
           </Field>
-          <Field label="Date & time discovered" error={err(e, 'discoveredAt')}>
+          <Field label="Date & Time Discovered" error={err(e, 'discoveredAt')}>
             <Input
               type="datetime-local"
               min={`${MIN_DATE}T00:00`}
@@ -729,7 +729,7 @@ export function StrayUpdateDialog({
         <>
           {isReviewer && !stray.voided && (
             <Button variant="ghost" className="text-red-600 sm:mr-auto" onClick={() => setAction('void')}>
-              Void (reported in error)
+              Void (Reported in Error)
             </Button>
           )}
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -737,7 +737,7 @@ export function StrayUpdateDialog({
           </Button>
           {canEdit && (
             <Button form="stray-update" type="submit" loading={save.isPending}>
-              Save changes
+              Save Changes
             </Button>
           )}
         </>
@@ -791,7 +791,7 @@ export function StrayUpdateDialog({
               ))}
             </Select>
           </Field>
-          <Field label="Violation type" error={err(e, 'violationType')}>
+          <Field label="Violation Type" error={err(e, 'violationType')}>
             <Select {...form.register('violationType')}>
               <option value="">Not recorded</option>
               {STRAY_VIOLATION_TYPES.map((t) => (
@@ -809,14 +809,14 @@ export function StrayUpdateDialog({
               ))}
             </Select>
           </Field>
-          <Field label="Number of violations" error={err(e, 'violations')}>
+          <Field label="Number of Violations" error={err(e, 'violations')}>
             <Input type="number" min={0} {...form.register('violations')} />
           </Field>
           <div className="sm:col-span-2 empty:hidden">
             <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />
           </div>
 
-          <Field label="Remarks / actions taken" error={err(e, 'remarks')} className="sm:col-span-2">
+          <Field label="Remarks / Actions Taken" error={err(e, 'remarks')} className="sm:col-span-2">
             <Textarea rows={3} {...form.register('remarks')} />
           </Field>
         </fieldset>

@@ -24,8 +24,8 @@ test('user management shows the three roles, and accounts are suspended or deact
 
   // Suspend the field technician: he cannot sign in until made active again.
   await moreOn(page, /Ramil Bautista/).click();
-  await expect(page.getByRole('menuitem', { name: /Delete/ })).toHaveCount(0);
-  await page.getByRole('menuitem', { name: /Suspend/ }).click();
+  await expect(page.getByRole('menuitem', { name: /^Delete/i })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: /Suspend/i }).click();
   await dialog(page).getByRole('button', { name: 'Suspend' }).click();
   await expectToast(page, 'Ramil Bautista was suspended.');
   await expect(row(page, /Ramil Bautista/)).toContainText('Suspended');
@@ -67,7 +67,7 @@ test('an account locks after repeated wrong passwords; the administrator resets 
   await page.goto('/users');
   await expect(row(page, /Ramil Bautista/)).toContainText('Locked');
   await moreOn(page, /Ramil Bautista/).click();
-  await page.getByRole('menuitem', { name: /Reset password/ }).click();
+  await page.getByRole('menuitem', { name: /Reset password/i }).click();
   await dialog(page).getByRole('button', { name: 'Reset password' }).click();
   const shown = dialog(page);
   await expect(shown.getByText('Password reset')).toBeVisible();
@@ -107,7 +107,7 @@ test('a staff member with open cases must hand them over before being deactivate
 
   await page.goto('/users');
   await moreOn(page, /Dr\. Mark/).click();
-  await page.getByRole('menuitem', { name: /Deactivate/ }).click();
+  await page.getByRole('menuitem', { name: /Deactivate/i }).click();
   const d = dialog(page);
   await expect(d.getByText(/Open work cannot stay with an account that can no longer sign in/)).toBeVisible();
   await d.getByRole('button', { name: 'Reassign and deactivate' }).click();
@@ -147,7 +147,7 @@ test('the audit log shows who changed what, with the old and new values, and can
   await expect(entry).toContainText('CVO system');
   await shot(page, 'audit-log');
   // There is no edit or delete control on the page, and no such route on the server.
-  await expect(page.getByRole('button', { name: /Delete|Edit|Remove/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Delete|Edit|Remove/i })).toHaveCount(0);
   expect((await page.request.delete('/api/audit/1')).status()).toBe(404);
 
   // Sign-ins are in the log too.
@@ -165,7 +165,7 @@ test('a veterinarian reviews but has no account management; anyone can change th
   await expect(page).toHaveURL(/\/$/);
   // Change password from the user menu, then put it back.
   const change = async (from: string, to: string) => {
-    await page.getByRole('button', { name: /Dr\. Mark/ }).click();
+    await page.getByRole('button', { name: /Dr\. Mark/i }).click();
     await page.getByRole('menuitem', { name: 'Change password' }).click();
     const d = dialog(page);
     await d.getByLabel('Current password').fill(from);

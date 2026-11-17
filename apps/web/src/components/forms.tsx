@@ -102,7 +102,7 @@ export function PhotoPicker({
           disabled={total >= max}
           onClick={() => ref.current?.click()}
         >
-          <Upload /> {total ? 'Add more photos' : 'Choose images'}
+          <Upload /> {total ? 'Add More Photos' : 'Choose Images'}
         </Button>
         <span className="text-[13px] text-slate-500">
           {total} / {max} photos · JPG, PNG or WEBP · max {maxMb} MB each
@@ -151,7 +151,7 @@ export function AddressLookupHint({
         <>
           Kept the address you typed. Map address: “{state.suggestion}”
           <button type="button" className="font-medium text-brand-dark underline" onClick={onApplySuggestion}>
-            Use it
+            Use It
           </button>
         </>
       )}

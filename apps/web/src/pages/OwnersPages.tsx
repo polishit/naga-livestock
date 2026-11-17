@@ -143,7 +143,7 @@ export function OwnersPage() {
         actions={
           <>
             <Button variant="outline" onClick={print} disabled={!data?.length}>
-              <Printer /> Print list
+              <Printer /> Print List
             </Button>
             {canEdit && (
               // One guided flow: owner → farm → livestock, with Back and Next.
@@ -196,7 +196,7 @@ export function OwnersPage() {
                   className="w-[calc(50%-4px)] sm:w-40"
                 />
                 <FilterSelect
-                  label="Livestock raised"
+                  label="Livestock Raised"
                   value={species}
                   onChange={setSpecies}
                   options={SPECIES}
@@ -204,7 +204,7 @@ export function OwnersPage() {
                   className="w-[calc(50%-4px)] sm:w-40"
                 />
                 <FilterSelect
-                  label="Farm type"
+                  label="Farm Type"
                   value={farmType}
                   onChange={setFarmType}
                   options={FARM_TYPES.map((t) => ({ value: t, label: FARM_TYPE_LABELS[t] }))}
@@ -217,7 +217,7 @@ export function OwnersPage() {
                   onChange={setInsured}
                   options={[
                     { value: 'yes', label: 'Insured (PCIC)' },
-                    { value: 'no', label: 'Not insured' },
+                    { value: 'no', label: 'Not Insured' },
                   ]}
                   all="Insurance: all"
                   className="w-[calc(50%-4px)] sm:w-40"
@@ -230,7 +230,7 @@ export function OwnersPage() {
                   all="Any source"
                   className="w-[calc(50%-4px)] sm:w-44"
                 />
-                <Checkbox label="Show archived" checked={archived} onChange={setArchived} />
+                <Checkbox label="Show Archived" checked={archived} onChange={setArchived} />
               </>
             }
             columns={[
@@ -340,7 +340,7 @@ export function OwnerDetailPage() {
                   )
                 }
               >
-                <IdCard /> Print ID card
+                <IdCard /> Print ID Card
               </Button>
             )}
             {canEdit && (
@@ -358,7 +358,7 @@ export function OwnerDetailPage() {
                   items={[
                     archived
                       ? {
-                          label: 'Restore owner',
+                          label: 'Restore Owner',
                           icon: RotateCcw,
                           onSelect: async () => {
                             await api.post(`/api/owners/${o.id}/restore`);
@@ -367,7 +367,7 @@ export function OwnerDetailPage() {
                           },
                         }
                       : {
-                          label: 'Archive owner',
+                          label: 'Archive Owner',
                           icon: Archive,
                           hint: 'No longer raising livestock; kept for history',
                           onSelect: () => setArchive(true),
@@ -381,9 +381,9 @@ export function OwnerDetailPage() {
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MiniStat label="Farms" value={data.stats.farms} />
-        <MiniStat label="Total livestock" value={`${data.stats.livestock} head`} />
+        <MiniStat label="Total Livestock" value={`${data.stats.livestock} head`} />
         <MiniStat label="Insured (PCIC)" value={data.pcic.filter((p) => p.status === 'ACTIVE').length} />
-        <MiniStat label="Disease cases" value={data.stats.cases} />
+        <MiniStat label="Disease Cases" value={data.stats.cases} />
       </div>
       <Tabs
         className="mt-5"
@@ -583,7 +583,7 @@ export function OwnerDetailPage() {
                   </div>
                   {!f.mapped && (
                     <div className="mt-2">
-                      <Badge tone="red">No map location</Badge>
+                      <Badge tone="red">No Map Location</Badge>
                     </div>
                   )}
                 </Link>

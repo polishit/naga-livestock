@@ -15,12 +15,12 @@ test.beforeEach(async ({ page }) => {
 test('dashboard shows the guide and My tasks; a task opens the right form', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'How the system works' })).toBeVisible();
   const tasks = page.locator('.card').filter({ hasText: 'My tasks' });
-  await expect(tasks.getByRole('button', { name: /^Field visits/ })).toBeVisible();
+  await expect(tasks.getByRole('button', { name: /^Field visits/i })).toBeVisible();
   await shot(page, 'dashboard-tasks');
   // Only field visits, then do the first one: the case opens with the visit form.
-  await tasks.getByRole('button', { name: /^Field visits/ }).click();
+  await tasks.getByRole('button', { name: /^Field visits/i }).click();
   await tasks
-    .getByRole('button', { name: /Record visit/ })
+    .getByRole('button', { name: /Record visit/i })
     .first()
     .click();
   await expect(page).toHaveURL(/\/cases\/\d+\?tab=investigation&do=visit/);
@@ -57,7 +57,7 @@ test('add owner: owner, farm and livestock with Back and Next, then one success 
     route.fulfill({ json: { address: 'Purok 2, Mabolo, Naga', barangay: 'Mabolo' } }),
   );
   await page.getByRole('button', { name: 'New' }).click();
-  await page.getByRole('menuitem', { name: /Add an owner/ }).click();
+  await page.getByRole('menuitem', { name: /Add an owner/i }).click();
   let d = dialog(page);
   await expect(d.getByText('Step 1 of 3: Livestock Owner')).toBeVisible();
   await expect(d.getByRole('button', { name: 'Back' })).toHaveCount(0);
@@ -94,16 +94,16 @@ test('add owner: owner, farm and livestock with Back and Next, then one success 
   await expect(dialog(page)).toHaveCount(0);
   await page.goto('/farms');
   await page.getByLabel('Search table').fill('Wayfinder');
-  await expect(page.getByRole('row', { name: /Wayfinder Backyard/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Wayfinder Backyard/i })).toBeVisible();
 });
 
 test('reports open on the monthly report; analytics compares periods and links to records', async ({
   page,
 }) => {
   await page.goto('/reports');
-  await expect(page.getByRole('heading', { name: /Monthly Livestock Monitoring Report/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Monthly Livestock Monitoring Report/i })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Total livestock (heads)' })).toBeVisible();
-  await page.getByLabel('Report type', { exact: true }).selectOption({ label: 'Accomplishment Report' });
+  await page.getByLabel('Report Type', { exact: true }).selectOption({ label: 'Accomplishment Report' });
   await expect(page.getByRole('heading', { name: 'Accomplishment Report' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Vaccine doses given' })).toBeVisible();
   await shot(page, 'accomplishment');

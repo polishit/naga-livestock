@@ -26,10 +26,13 @@ enum UserStatus {
   DEACTIVATED
 }
 
+/// PENDING = registered by the owner in the owner app, waiting for the CVO to verify.
+/// ACTIVE = verified. INACTIVE / ARCHIVED = retired (never deleted).
 enum OwnerStatus {
   ACTIVE
   INACTIVE
   ARCHIVED
+  PENDING
 }
 
 enum AnimalStatus {
@@ -74,27 +77,32 @@ enum VaccinationTarget {
 }
 
 model User {
-  id            Int            @id @default(autoincrement())
-  email         String         @unique @db.VarChar(191)
-  name          String         @db.VarChar(120)
-  title         String?        @db.VarChar(120)
-  role          Role           @default(TECHNICIAN)
-  passwordHash  String         @db.VarChar(100)
-  status        UserStatus     @default(ACTIVE)
+  id                 Int            @id @default(autoincrement())
+  email              String         @unique @db.VarChar(191)
+  name               String         @db.VarChar(120)
+  title              String?        @db.VarChar(120)
+  role               Role           @default(TECHNICIAN)
+  passwordHash       String         @db.VarChar(100)
+  status             UserStatus     @default(ACTIVE)
   /// A temporary password (set by the administrator) must be changed at the next sign-in
-  mustChangePassword Boolean   @default(false)
+  mustChangePassword Boolean        @default(false)
   passwordChangedAt  DateTime?
   /// Wrong passwords in a row; the account locks when it reaches the limit in the settings
-  failedLogins  Int            @default(0)
-  lockedUntil   DateTime?
+  failedLogins       Int            @default(0)
+  lockedUntil        DateTime?
   /// The owner record this login belongs to (role OWNER only)
-  ownerId       Int?           @unique
-  owner         Owner?         @relation(fields: [ownerId], references: [id])
-  lastLoginAt   DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  refreshTokens RefreshToken[]
-  assignedCases DiseaseCase[]  @relation("AssignedInspector")
+  ownerId            Int?           @unique
+  /// Mobile number an owner can sign in with (digits only, 09…)
+  phone              String?        @unique @db.VarChar(20)
+  /// Notification types the owner turned off (optional ones only)
+  notifPrefs         Json?
+  notifications      Notification[]
+  owner              Owner?         @relation(fields: [ownerId], references: [id])
+  lastLoginAt        DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  refreshTokens      RefreshToken[]
+  assignedCases      DiseaseCase[]  @relation("AssignedInspector")
 }
 
 model RefreshToken {
@@ -110,27 +118,44 @@ model RefreshToken {
 }
 
 model Owner {
-  id           Int                 @id @default(autoincrement())
-  code         String              @unique @db.VarChar(20)
-  fullName     String              @db.VarChar(150)
-  barangay     String              @db.VarChar(60)
-  zone         String?             @db.VarChar(60)
-  street       String?             @db.VarChar(200)
-  contact      String?             @db.VarChar(40)
-  rsbsa        String?             @db.VarChar(60)
+  id                Int                 @id @default(autoincrement())
+  code              String              @unique @db.VarChar(20)
+  fullName          String              @db.VarChar(150)
+  barangay          String              @db.VarChar(60)
+  zone              String?             @db.VarChar(60)
+  street            String?             @db.VarChar(200)
+  contact           String?             @db.VarChar(40)
+  rsbsa             String?             @db.VarChar(60)
   /// Where the office got the record: DA_LIST, FARM_VISIT, BARANGAY, OTHER
-  source       String?             @db.VarChar(20)
-  remarks      String?             @db.Text
-  status       OwnerStatus         @default(ACTIVE)
-  registeredAt DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  farms        Farm[]
-  cases        DiseaseCase[]
-  strays       StrayIncident[]
-  transfersOut OwnershipTransfer[] @relation("FromOwner")
-  transfersIn  OwnershipTransfer[] @relation("ToOwner")
-  pcicPolicies PcicPolicy[]
-  account      User?
+  source            String?             @db.VarChar(20)
+  remarks           String?             @db.Text
+  status            OwnerStatus         @default(ACTIVE)
+  registeredAt      DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  farms             Farm[]
+  cases             DiseaseCase[]
+  strays            StrayIncident[]
+  transfersOut      OwnershipTransfer[] @relation("FromOwner")
+  transfersIn       OwnershipTransfer[] @relation("ToOwner")
+  pcicPolicies      PcicPolicy[]
+  account           User?
+  email             String?             @db.VarChar(120)
+  /// Registered by the owner (owner app) instead of encoded by staff
+  selfRegistered    Boolean             @default(false)
+  /// Why the registration was returned for correction (cleared when resubmitted)
+  returnReason      String?             @db.VarChar(300)
+  reviewedBy        String?             @db.VarChar(120)
+  reviewedAt        DateTime?
+  farmRegistrations FarmRegistration[]
+  diseaseReports    DiseaseReport[]
+  /// Valid ID sent for verification (owner app): type, number and photo keys (front, back)
+  idType            String?             @db.VarChar(40)
+  idNumber          String?             @db.VarChar(60)
+  idPhotoKeys       Json?
+  /// When the registration was last sent (or sent again) for review
+  submittedAt       DateTime?
+  /// What the reviewer confirmed before verifying (checklist item codes)
+  verifyChecklist   Json?
 
   @@index([barangay])
 }
@@ -546,27 +571,27 @@ model Vaccination {
 
 /// A field visit to a farm: routine masterlist update, deworming, check-up, or monitoring near a disease case.
 model FarmVisit {
-  id        Int          @id @default(autoincrement())
-  code      String       @unique @db.VarChar(20)
-  farmId    Int
+  id         Int          @id @default(autoincrement())
+  code       String       @unique @db.VarChar(20)
+  farmId     Int
   /// The disease case this visit monitors (farms near a reported case)
-  caseId    Int?
-  date      DateTime     @db.Date
+  caseId     Int?
+  date       DateTime     @db.Date
   /// ROUTINE, DEWORMING, CHECKUP, MONITORING, OTHER
-  purpose   String       @db.VarChar(20)
+  purpose    String       @db.VarChar(20)
   /// NO_SIGNS, SICK_ANIMALS
-  findings  String       @default("NO_SIGNS") @db.VarChar(20)
-  visitedBy String?      @db.VarChar(120)
-  remarks   String?      @db.Text
-  createdBy String?      @db.VarChar(120)
+  findings   String       @default("NO_SIGNS") @db.VarChar(20)
+  visitedBy  String?      @db.VarChar(120)
+  remarks    String?      @db.Text
+  createdBy  String?      @db.VarChar(120)
   /// Entered in error: kept and marked, never deleted
   voidedAt   DateTime?
-  voidedBy   String?     @db.VarChar(120)
-  voidReason String?     @db.VarChar(300)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  farm      Farm         @relation(fields: [farmId], references: [id])
-  case      DiseaseCase? @relation(fields: [caseId], references: [id])
+  voidedBy   String?      @db.VarChar(120)
+  voidReason String?      @db.VarChar(300)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  farm       Farm         @relation(fields: [farmId], references: [id])
+  case       DiseaseCase? @relation(fields: [caseId], references: [id])
 
   @@index([farmId])
   @@index([caseId])
@@ -613,4 +638,285 @@ model AuditEntry {
 model Setting {
   key   String @id @db.VarChar(60)
   value String @db.Text
+}
+
+/// A farm registered by its owner in the owner app. It becomes a real Farm (with its livestock
+/// groups) only when the CVO approves it, so pending farms never enter the map or the figures.
+model FarmRegistration {
+  id              Int       @id @default(autoincrement())
+  code            String    @unique @db.VarChar(20)
+  ownerId         Int
+  name            String    @db.VarChar(150)
+  type            String    @db.VarChar(20)
+  barangay        String    @db.VarChar(60)
+  zone            String?   @db.VarChar(60)
+  address         String?   @db.VarChar(250)
+  lat             Float?
+  lng             Float?
+  /// Accuracy of the phone GPS reading in metres (null when the pin was placed by hand)
+  gpsAccuracy     Float?
+  /// [{ species, count }] declared by the owner
+  livestock       Json
+  /// PENDING, RETURNED (for correction), APPROVED, INACTIVE (not accepted)
+  status          String    @default("PENDING") @db.VarChar(20)
+  returnReason    String?   @db.VarChar(300)
+  reviewedBy      String?   @db.VarChar(120)
+  reviewedAt      DateTime?
+  /// The farm created when the registration was approved
+  farmId          Int?
+  /// What the reviewer confirmed before verifying (checklist item codes)
+  verifyChecklist Json?
+  submittedAt     DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  owner           Owner     @relation(fields: [ownerId], references: [id])
+
+  @@index([status])
+  @@index([ownerId])
+}
+
+/// A head count change sent by the owner (birth, purchase, sale, death…). Normal changes are
+/// accepted automatically; unusually large ones are flagged for a reviewer.
+model PopulationRequest {
+  id           Int       @id @default(autoincrement())
+  ownerId      Int
+  farmId       Int
+  groupId      Int?
+  species      String    @db.VarChar(40)
+  /// BIRTH, PURCHASE, SALE, DEATH, SLAUGHTER, LOST, CORRECTION
+  reason       String    @db.VarChar(20)
+  /// Signed change in head (+ added, − removed)
+  quantity     Int
+  before       Int
+  after        Int
+  note         String?   @db.VarChar(300)
+  /// PENDING, ACCEPTED, CANCELLED
+  status       String    @default("PENDING") @db.VarChar(20)
+  flagged      Boolean   @default(false)
+  flagReason   String?   @db.VarChar(200)
+  /// "System" when accepted automatically
+  decidedBy    String?   @db.VarChar(120)
+  decidedAt    DateTime?
+  decisionNote String?   @db.VarChar(300)
+  createdBy    String?   @db.VarChar(120)
+  createdAt    DateTime  @default(now())
+
+  @@index([status])
+  @@index([farmId])
+  @@index([ownerId])
+}
+
+/// A suspected disease reported by the owner from the owner app. The CVO validates it (a disease
+/// case is opened), asks for more information, or rejects it with a reason.
+model DiseaseReport {
+  id               Int             @id @default(autoincrement())
+  code             String          @unique @db.VarChar(20)
+  ownerId          Int
+  farmId           Int
+  species          String          @db.VarChar(40)
+  symptoms         String          @db.Text
+  signs            Json?
+  affected         Int
+  deaths           Int             @default(0)
+  observedAt       DateTime        @db.Date
+  photoKeys        Json?
+  lat              Float?
+  lng              Float?
+  gpsAccuracy      Float?
+  /// PHONE_GPS or FARM (GPS off or refused: the farm's own location is used)
+  locationSource   String          @db.VarChar(20)
+  /// Metres between the phone and the farm when the report was sent
+  distanceFromFarm Int?
+  /// REPORTED, INFO_REQUESTED, VALIDATED, REJECTED
+  status           String          @default("REPORTED") @db.VarChar(20)
+  rejectReason     String?         @db.VarChar(300)
+  /// The reviewer's own assessment when deciding (not shown to the owner)
+  assessment       String?         @db.Text
+  /// Planned date of the field visit (set when the report is validated)
+  visitDate        DateTime?       @db.Date
+  /// The disease case opened (or linked) when the report was validated
+  caseId           Int?
+  reviewedBy       String?         @db.VarChar(120)
+  reviewedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  owner            Owner           @relation(fields: [ownerId], references: [id])
+  messages         ReportMessage[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([farmId])
+}
+
+/// The conversation on a report: the CVO asks for more information, the owner replies.
+model ReportMessage {
+  id        Int           @id @default(autoincrement())
+  reportId  Int
+  fromOwner Boolean
+  byName    String        @db.VarChar(120)
+  text      String        @db.Text
+  photoKeys Json?
+  createdAt DateTime      @default(now())
+  report    DiseaseReport @relation(fields: [reportId], references: [id])
+
+  @@index([reportId])
+}
+
+/// The owner's in-app inbox. One row per message to one owner login.
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  /// REGISTRATION, POPULATION, REPORT, ALERT, VACCINATION, ANNOUNCEMENT, SERVICE
+  type      String    @db.VarChar(20)
+  title     String    @db.VarChar(160)
+  body      String    @db.Text
+  /// Where in the owner app the notification opens
+  link      String?   @db.VarChar(120)
+  /// Set to avoid sending the same notification twice (for example a reminder)
+  refKey    String?   @db.VarChar(80)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, refKey])
+  @@index([userId, readAt])
+}
+
+/// An epicenter with a monitoring radius, set by the CVO for a confirmed case. Owners of the farms
+/// inside it are notified. Active until lifted; never deleted.
+model MonitoringZone {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique @db.VarChar(20)
+  caseId     Int?
+  disease    String    @db.VarChar(150)
+  barangay   String    @db.VarChar(60)
+  lat        Float
+  lng        Float
+  radiusM    Int
+  /// ACTIVE or LIFTED
+  status     String    @default("ACTIVE") @db.VarChar(20)
+  guidance   String?   @db.Text
+  createdBy  String?   @db.VarChar(120)
+  createdAt  DateTime  @default(now())
+  liftedBy   String?   @db.VarChar(120)
+  liftedAt   DateTime?
+  liftReason String?   @db.VarChar(300)
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status])
+}
+
+/// A vaccination activity scheduled by the CVO for a barangay.
+model VaccinationActivity {
+  id           Int              @id @default(autoincrement())
+  code         String           @unique @db.VarChar(20)
+  title        String           @db.VarChar(160)
+  vaccine      String?          @db.VarChar(120)
+  /// A species, or "All"
+  species      String           @db.VarChar(40)
+  /// A barangay, or "ALL"
+  barangay     String           @db.VarChar(60)
+  date         DateTime         @db.Date
+  time         String?          @db.VarChar(40)
+  venue        String?          @db.VarChar(200)
+  notes        String?          @db.Text
+  /// SCHEDULED, ONGOING, COMPLETED, CANCELLED
+  status       String           @default("SCHEDULED") @db.VarChar(20)
+  cancelReason String?          @db.VarChar(300)
+  createdBy    String?          @db.VarChar(120)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  signups      ActivitySignup[]
+
+  @@index([date])
+  @@index([status])
+}
+
+/// An owner signing animals up for a vaccination activity.
+model ActivitySignup {
+  id            Int                 @id @default(autoincrement())
+  activityId    Int
+  ownerId       Int
+  farmId        Int
+  species       String              @db.VarChar(40)
+  heads         Int
+  /// SIGNED_UP, ATTENDED, NO_SHOW, CANCELLED
+  status        String              @default("SIGNED_UP") @db.VarChar(20)
+  /// The official vaccination record made when attendance was confirmed
+  vaccinationId Int?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  activity      VaccinationActivity @relation(fields: [activityId], references: [id])
+
+  @@unique([activityId, farmId, species])
+  @@index([ownerId])
+}
+
+/// A vaccination given outside a CVO activity (for example by a private veterinarian), submitted by
+/// the owner with proof. It becomes an official record only when the CVO verifies it.
+model OwnerVaccination {
+  id            Int       @id @default(autoincrement())
+  ownerId       Int
+  farmId        Int
+  species       String    @db.VarChar(40)
+  vaccine       String    @db.VarChar(120)
+  date          DateTime  @db.Date
+  heads         Int
+  givenBy       String    @db.VarChar(120)
+  proofKeys     Json?
+  /// SUBMITTED, VERIFIED, REJECTED
+  status        String    @default("SUBMITTED") @db.VarChar(20)
+  reason        String?   @db.VarChar(300)
+  vaccinationId Int?
+  decidedBy     String?   @db.VarChar(120)
+  decidedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status])
+  @@index([ownerId])
+}
+
+/// A veterinary service requested by an owner.
+model ServiceRequest {
+  id            Int       @id @default(autoincrement())
+  code          String    @unique @db.VarChar(20)
+  ownerId       Int
+  farmId        Int
+  serviceType   String    @db.VarChar(20)
+  species       String?   @db.VarChar(40)
+  note          String?   @db.VarChar(500)
+  preferredDate DateTime? @db.Date
+  /// REQUESTED, SCHEDULED, DONE, DECLINED
+  status        String    @default("REQUESTED") @db.VarChar(20)
+  scheduledDate DateTime? @db.Date
+  /// Time window of the visit, as told to the owner (e.g. "9:00 AM to 11:00 AM")
+  scheduledTime String?   @db.VarChar(40)
+  response      String?   @db.VarChar(300)
+  handledBy     String?   @db.VarChar(120)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+}
+
+/// An announcement or advisory published by the CVO to owners.
+model Announcement {
+  id             Int       @id @default(autoincrement())
+  code           String    @unique @db.VarChar(20)
+  title          String    @db.VarChar(160)
+  body           String    @db.Text
+  /// ALL, BARANGAY or ZONE
+  audience       String    @db.VarChar(20)
+  barangay       String?   @db.VarChar(60)
+  zoneId         Int?
+  /// PUBLISHED or WITHDRAWN
+  status         String    @default("PUBLISHED") @db.VarChar(20)
+  recipients     Int       @default(0)
+  publishedBy    String?   @db.VarChar(120)
+  publishedAt    DateTime  @default(now())
+  withdrawnBy    String?   @db.VarChar(120)
+  withdrawnAt    DateTime?
+  withdrawReason String?   @db.VarChar(300)
+
+  @@index([status])
 }

@@ -84,7 +84,7 @@ export default function DashboardPage() {
               className="w-[calc(50%-4px)] sm:w-36"
             />
             <FilterSelect
-              label="Case status"
+              label="Case Status"
               value={caseStatus}
               onChange={setCaseStatus}
               options={CASE_STATUSES.map((s) => ({ value: s, label: CASE_STATUS_LABELS[s] }))}
@@ -105,48 +105,48 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             {/* Each box opens the records behind its number (with the barangay chosen above). */}
             <StatCard
-              label="Livestock owners"
+              label="Livestock Owners"
               value={fmtNumber(data.stats.owners)}
               icon={Users}
               to={`/owners${qs({ barangay })}`}
             />
             <StatCard
-              label="Farms in the masterlist"
+              label="Farms in the Masterlist"
               value={fmtNumber(data.stats.farms)}
               sub={`${data.stats.outdatedFarms} head counts out of date`}
               icon={House}
               to={`/farms${qs({ barangay })}`}
             />
             <StatCard
-              label="Total livestock"
+              label="Total Livestock"
               value={fmtNumber(data.stats.livestock)}
               sub={`${data.stats.verifiedPct}% of farms counted this month`}
               icon={PawPrint}
               to={`/population${qs({ barangay, species })}`}
             />
             <StatCard
-              label="Suspected (open reports)"
+              label="Suspected (Open Reports)"
               value={data.stats.suspected}
               icon={AlertTriangle}
               tone="orange"
               to={`/cases${qs({ barangay, status: 'SUSPECTED' })}`}
             />
             <StatCard
-              label="Awaiting lab result"
+              label="Awaiting Lab Result"
               value={data.stats.inLab}
               icon={FlaskConical}
               tone="blue"
               to="/investigation"
             />
             <StatCard
-              label="Confirmed positive"
+              label="Confirmed Positive"
               value={data.stats.positive}
               icon={ShieldAlert}
               tone="red"
               to={`/cases${qs({ barangay, status: 'POSITIVE' })}`}
             />
             <StatCard
-              label="Heads dewormed this month"
+              label="Heads Dewormed This Month"
               value={fmtNumber(dewormed?.head ?? 0)}
               sub={`${dewormed?.farms ?? 0} farm(s)`}
               icon={Syringe}
@@ -154,7 +154,7 @@ export default function DashboardPage() {
               to="/services?tab=records&type=DEWORMING"
             />
             <StatCard
-              label="Farm visits this month"
+              label="Farm Visits This Month"
               to="/services?tab=visits"
               value={month?.visits.total ?? 0}
               sub={
@@ -173,7 +173,7 @@ export default function DashboardPage() {
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
             <Card>
               <CardHeader
-                title="Livestock & disease map"
+                title="Livestock & Disease Map"
                 actions={
                   <Button variant="outline" size="xs" asChild>
                     <Link to="/gis-map">View Full Map</Link>
@@ -194,7 +194,7 @@ export default function DashboardPage() {
               </div>
             </Card>
             <Card>
-              <CardHeader title="Recent activity" />
+              <CardHeader title="Recent Activity" />
               <ul className="space-y-3.5 px-4 py-4">
                 {data.recent.length === 0 && <li className="text-sm text-slate-500">No recent activity.</li>}
                 {data.recent.map((r) => (
@@ -220,31 +220,31 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <ChartCard title="Livestock by species" clickable>
+            <ChartCard title="Livestock by Species" clickable>
               <SpeciesDonut
                 data={data.bySpecies}
                 onSelect={(r) => navigate(populationLink({ species: r.species, barangay }))}
               />
             </ChartCard>
             <ChartCard
-              title="Monthly population trend"
+              title="Monthly Population Trend"
               note="Carried-forward values are not field-verified for that month."
             >
               <TrendBars data={data.trend} />
             </ChartCard>
-            <ChartCard title="Disease reports per month" clickable>
+            <ChartCard title="Disease Reports per Month" clickable>
               <CasesLine
                 data={data.casesPerMonth}
                 onSelect={(r) => navigate(casesLink({ month: r.month, barangay, state: 'all' }))}
               />
             </ChartCard>
-            <ChartCard title="Population by barangay" clickable>
+            <ChartCard title="Population by Barangay" clickable>
               <BarangayBars
                 data={data.byBarangay}
                 onSelect={(r) => navigate(populationLink({ barangay: r.barangay, species }))}
               />
             </ChartCard>
-            <ChartCard title="Deworming, check-ups and farm visits" clickable>
+            <ChartCard title="Deworming, Check-Ups and Farm Visits" clickable>
               {month ? (
                 <ServiceTrendBars
                   data={month.trend}

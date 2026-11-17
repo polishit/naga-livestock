@@ -206,14 +206,14 @@ export function ServiceDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Animals served" error={err(e, 'target')}>
+        <Field label="Animals Served" error={err(e, 'target')}>
           <Select {...form.register('target')}>
             <option value="GROUP">Livestock on the farm (by species)</option>
             <option value="ANIMAL">One tagged animal</option>
           </Select>
         </Field>
         {target === 'ANIMAL' ? (
-          <Field label="Tagged animal *" error={err(e, 'groupId') ?? err(e, 'animalId')}>
+          <Field label="Tagged Animal *" error={err(e, 'groupId') ?? err(e, 'animalId')}>
             <Select {...form.register('animalId')} disabled={!fId}>
               <option value="">{fId ? 'Select...' : 'Select farm first'}</option>
               {animals.map((a) => (
@@ -224,7 +224,7 @@ export function ServiceDialog({
             </Select>
           </Field>
         ) : (
-          <Field label="Species / group *" error={err(e, 'groupId')}>
+          <Field label="Species / Group *" error={err(e, 'groupId')}>
             <Select
               {...form.register('groupId', {
                 onChange: (ev) => {
@@ -319,7 +319,7 @@ export function ServiceDialog({
         </Field>
         {isVax && (
           <>
-            <Field label="Dose number" error={err(e, 'doseNumber')}>
+            <Field label="Dose Number" error={err(e, 'doseNumber')}>
               <Input type="number" min={1} {...form.register('doseNumber')} />
             </Field>
             <Field label="Batch / lot no." error={err(e, 'batch')}>
@@ -327,7 +327,7 @@ export function ServiceDialog({
             </Field>
           </>
         )}
-        <Field label="Done by" error={err(e, 'administeredBy')}>
+        <Field label="Done By" error={err(e, 'administeredBy')}>
           <Input {...form.register('administeredBy')} />
         </Field>
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
@@ -397,7 +397,7 @@ export function ServiceEditDialog({
             Cancel
           </Button>
           <Button form="service-edit" type="submit" loading={save.isPending}>
-            Save changes
+            Save Changes
           </Button>
         </>
       }
@@ -458,12 +458,12 @@ export function ServiceEditDialog({
         <Field label={PRODUCT_LABEL[type]} error={err(e, 'vaccine')}>
           <Input {...form.register('vaccine')} />
         </Field>
-        <Field label="Next schedule" error={err(e, 'nextDate')}>
+        <Field label="Next Schedule" error={err(e, 'nextDate')}>
           <Input type="date" {...form.register('nextDate')} />
         </Field>
         {isVax && (
           <>
-            <Field label="Dose number *" error={err(e, 'doseNumber')}>
+            <Field label="Dose Number *" error={err(e, 'doseNumber')}>
               <Input type="number" min={1} max={20} {...form.register('doseNumber')} />
             </Field>
             <Field label="Batch / lot no." error={err(e, 'batch')}>
@@ -471,7 +471,7 @@ export function ServiceEditDialog({
             </Field>
           </>
         )}
-        <Field label="Done by" error={err(e, 'administeredBy')}>
+        <Field label="Done By" error={err(e, 'administeredBy')}>
           <Input {...form.register('administeredBy')} />
         </Field>
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
@@ -754,14 +754,14 @@ export function FarmVisitDialog({
             Cancel
           </Button>
           <Button onClick={submit} loading={busy}>
-            {editing ? 'Save changes' : 'Save visit'}
+            {editing ? 'Save Changes' : 'Save Visit'}
           </Button>
         </>
       }
     >
       <div className="space-y-5">
         <section aria-label="Visit details" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Date of visit *" error={errors.date}>
+          <Field label="Date of Visit *" error={errors.date}>
             <Input
               type="date"
               min={MIN_DATE}
@@ -788,12 +788,12 @@ export function FarmVisitDialog({
               ))}
             </Select>
           </Field>
-          <Field label="Visited by" error={errors.visitedBy}>
+          <Field label="Visited By" error={errors.visitedBy}>
             <Input value={v.visitedBy} onChange={(e) => setV((x) => ({ ...x, visitedBy: e.target.value }))} />
           </Field>
           {(cases.length > 0 || v.caseId) && (
             <Field
-              label="Related disease case"
+              label="Related Disease Case"
               error={errors.caseId}
               hint="Link the visit when it checks a farm near a reported case."
               className="sm:col-span-2"
@@ -834,7 +834,7 @@ export function FarmVisitDialog({
         {!editing && (
           <section aria-label="Head count" className="rounded-lg border border-slate-200 p-4">
             <Checkbox
-              label="Update the head count (masterlist) from this visit"
+              label="Update the Head Count (Masterlist) from This Visit"
               checked={updateCounts}
               onChange={setUpdateCounts}
             />
@@ -859,7 +859,7 @@ export function FarmVisitDialog({
                             {g.code} · last recorded {g.count} head{g.tagged ? ` · ${g.tagged} tagged` : ''}
                           </div>
                         </div>
-                        <Field label="Head count now" error={errors[`count-${g.id}`]} className="w-36">
+                        <Field label="Head Count Now" error={errors[`count-${g.id}`]} className="w-36">
                           <Input
                             type="number"
                             min={g.tagged}
@@ -880,7 +880,7 @@ export function FarmVisitDialog({
         {!editing && (
           <section aria-label="Services given" className="rounded-lg border border-slate-200 p-4">
             <Checkbox
-              label="Services given during the visit (deworming, check-up, vaccination…)"
+              label="Services Given During the Visit (Deworming, Check-Up, Vaccination…)"
               checked={giveServices}
               onChange={setGiveServices}
             />

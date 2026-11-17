@@ -18,7 +18,9 @@ import {
   ROLE_LABELS,
   USER_STATUS_LABELS,
   changePasswordSchema,
-  loginSchema,
+  normalizePhone,
+  ownerRegisterSchema,
+  signInSchema,
   userReassignSchema,
   settingsSchema,
   userCreateSchema,
@@ -40,7 +42,8 @@ import {
 } from '../auth/auth';
 import { audit, prisma } from '../db';
 import { env } from '../env';
-import { logActivity } from '../lib/activity';
+import { displayCode, logActivity, tempCode } from '../lib/activity';
+import { runAs } from '../lib/audit';
 import { today, ymd } from '../lib/dates';
 import { HttpError, ah, badRequest, idParam, parse, qstr } from '../lib/http';
 import { storage } from '../storage';
@@ -78,9 +81,13 @@ authRouter.post(
   '/login',
   loginLimiter,
   ah(async (req, res) => {
-    const { email, password } = parse(loginSchema, req.body);
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    const wrong = new HttpError(401, 'Incorrect email or password');
+    const { email, password } = parse(signInSchema, req.body);
+    // Staff sign in with their email; livestock owners with their mobile number (or email).
+    const phone = normalizePhone(email);
+    const user = phone
+      ? await prisma.user.findUnique({ where: { phone } })
+      : await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const wrong = new HttpError(401, 'Incorrect email, mobile number or password');
     if (!user) {
       await audit({
         tableName: 'User',
@@ -124,7 +131,7 @@ authRouter.post(
       const left = s.lockoutAttempts - failed;
       throw new HttpError(
         401,
-        `Incorrect email or password. ${left} more wrong ${left === 1 ? 'try' : 'tries'} will lock the account.`,
+        `Incorrect email, mobile number or password. ${left} more wrong ${left === 1 ? 'try' : 'tries'} will lock the account.`,
       );
     }
     if (user.status !== 'ACTIVE')
@@ -178,6 +185,131 @@ authRouter.get(
   requireAuth,
   ah(async (req, res) => {
     res.json({ user: req.user, idleTimeoutMinutes: (await getSettings()).idleTimeoutMinutes });
+  }),
+);
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: env.NODE_ENV === 'production' ? 10 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many registrations from this connection. Try again later.' },
+});
+
+/**
+ * A livestock owner creates their own account from the owner app. The owner record starts as
+ * Pending and is verified by the City Veterinary Office; the owner can sign in at once to register
+ * a farm and follow the review.
+ */
+const idUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PHOTO_MB * 1024 * 1024, files: 2 },
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.mimetype)) cb(null, true);
+    else cb(new HttpError(400, 'The ID must be a JPG, PNG or WEBP photo, or a PDF'));
+  },
+}).fields([
+  { name: 'idFront', maxCount: 1 },
+  { name: 'idBack', maxCount: 1 },
+]);
+
+/** Store an ID photo under ids/ (served only to staff and to the owner it belongs to). */
+async function putIdPhoto(file: Express.Multer.File) {
+  const ext =
+    path
+      .extname(file.originalname)
+      .toLowerCase()
+      .replace(/[^.a-z0-9]/g, '') || '';
+  const key = `ids/${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}${ext}`;
+  await storage.put(key, file.buffer, file.mimetype);
+  return key;
+}
+
+authRouter.post(
+  '/register',
+  registerLimiter,
+  idUpload,
+  ah(async (req, res) => {
+    // Sent as multipart form data: the details as JSON in "data", and the ID photos as files.
+    let body = req.body;
+    if (typeof req.body?.data === 'string') {
+      try {
+        body = JSON.parse(req.body.data);
+      } catch {
+        throw badRequest('Invalid form data');
+      }
+    }
+    const d = parse(ownerRegisterSchema, body);
+    const files = (req.files ?? {}) as Record<string, Express.Multer.File[]>;
+    const phone = normalizePhone(d.phone)!;
+    const email = d.email?.toLowerCase() ?? `${phone}@owner.local`;
+    const fieldErrors: Record<string, string[]> = {};
+    if (!files.idFront?.[0]) fieldErrors.idFront = ['Add a photo of the front of your ID'];
+    if (await prisma.user.findUnique({ where: { phone } }))
+      fieldErrors.phone = ['This mobile number already has an account. Sign in instead.'];
+    if (d.email && (await prisma.user.findUnique({ where: { email } })))
+      fieldErrors.email = ['This email already has an account.'];
+    if (Object.keys(fieldErrors).length) throw badRequest('Validation failed', { fieldErrors });
+    const idPhotoKeys = [await putIdPhoto(files.idFront[0])];
+    if (files.idBack?.[0]) idPhotoKeys.push(await putIdPhoto(files.idBack[0]));
+    const actor = { userId: null, name: d.fullName, source: 'owner' as const };
+    const user = await runAs(actor, () =>
+      prisma.$transaction(async (tx) => {
+        const created = await tx.owner.create({
+          data: {
+            code: tempCode(),
+            fullName: d.fullName,
+            barangay: d.barangay,
+            zone: d.zone ?? null,
+            street: d.street ?? null,
+            contact: phone,
+            email: d.email?.toLowerCase() ?? null,
+            rsbsa: d.rsbsa ?? null,
+            source: 'OWNER_APP',
+            status: 'PENDING',
+            selfRegistered: true,
+            idType: d.idType,
+            idNumber: d.idNumber,
+            idPhotoKeys,
+            submittedAt: new Date(),
+          },
+        });
+        const owner = await tx.owner.update({
+          where: { id: created.id },
+          data: { code: displayCode('OWN', created.id) },
+        });
+        const u = await tx.user.create({
+          data: {
+            name: d.fullName,
+            email,
+            phone,
+            role: 'OWNER',
+            ownerId: owner.id,
+            passwordHash: await bcrypt.hash(d.password, 10),
+            passwordChangedAt: new Date(),
+          },
+        });
+        await logActivity(
+          'owner',
+          owner.id,
+          'registered',
+          `${owner.fullName} registered in the owner app (${owner.code}), waiting for verification`,
+          owner.fullName,
+          tx,
+        );
+        return u;
+      }),
+    );
+    await audit({
+      tableName: 'User',
+      recordId: user.id,
+      action: 'REGISTERED',
+      note: 'Owner account created in the owner app (consent to data privacy notice given)',
+      actor: { ...actor, userId: user.id },
+    });
+    const au = toAuthUser(user);
+    await setAuthCookies(res, au);
+    res.status(201).json({ user: au, idleTimeoutMinutes: (await getSettings()).idleTimeoutMinutes });
   }),
 );
 

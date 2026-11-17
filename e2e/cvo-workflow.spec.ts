@@ -15,7 +15,7 @@ test('record a farm visit with head count and deworming in one form', async ({ p
   const d = dialog(page);
   await d.getByLabel('Purpose').selectOption('DEWORMING');
   // Deworming is suggested for the goats and sheep on the farm.
-  await expect(d.getByLabel(/Services given during the visit/)).toBeChecked();
+  await expect(d.getByLabel(/Services given during the visit/i)).toBeChecked();
   await expect(d.getByLabel('Goat service')).toHaveValue('DEWORMING');
   await d.getByLabel('Goat product used').fill('Albendazole');
   await d.getByLabel('Sheep product used').fill('Albendazole');
@@ -30,7 +30,7 @@ test('record a farm visit with head count and deworming in one form', async ({ p
   // Visits and services are listed at the bottom of the farm overview.
   await expect(page.getByText('Farm Visit · Deworming')).toBeVisible();
   await expect(page.getByText(/Deworming · Goat · 15 head/)).toBeVisible();
-  await page.getByRole('tab', { name: /Livestock/ }).click();
+  await page.getByRole('tab', { name: /Livestock/i }).click();
   const goats = page.locator('.card').filter({ hasText: 'GRP-0029' });
   await expect(goats.getByText('15', { exact: true })).toBeVisible();
   await expect(goats.getByText('Doe', { exact: true })).toHaveCount(0);
@@ -43,12 +43,12 @@ test('one map with filters and layers leads to the farms to monitor', async ({ p
   await page.getByLabel('Livestock population (by barangay)').check();
   // The colour key sits above the map.
   await expect(page.getByRole('group', { name: 'Map legend' })).toContainText('Livestock (head)');
-  await expect(page.getByRole('heading', { name: /^Farms \(/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Farms \(/i })).toBeVisible();
   // Filtering by disease shows only the disease reports on the right.
   await page.getByLabel('Disease', { exact: true }).selectOption('African Swine Fever (ASF)');
-  await expect(page.getByRole('heading', { name: /^Farms \(/ })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: /^Disease Reports \(/ })).toBeVisible();
-  await page.getByRole('button', { name: /African Swine Fever \(ASF\).*CASE-0001/ }).click();
+  await expect(page.getByRole('heading', { name: /^Farms \(/i })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /^Disease Reports \(/i })).toBeVisible();
+  await page.getByRole('button', { name: /African Swine Fever \(ASF\).*CASE-0001/i }).click();
   // The ground-zero farm (the case's own farm) is not in the list of farms to monitor.
   await expect(
     page.getByText(/farm\(s\) to monitor within 1\.00 km \(ground-zero farm not included\)/),
@@ -93,11 +93,11 @@ test('dashboard boxes open their records; no shortcut buttons at the top', async
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Record Farm Visit' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Report Incident' })).toHaveCount(0);
-  await page.getByRole('link', { name: /Confirmed Positive/ }).click();
+  await page.getByRole('link', { name: /Confirmed Positive/i }).click();
   await expect(page).toHaveURL(/\/cases\?status=POSITIVE/);
   await page.goto('/');
   await page
-    .getByRole('link', { name: /Livestock Owners/ })
+    .getByRole('link', { name: /Livestock Owners/i })
     .first()
     .click();
   await expect(page).toHaveURL(/\/owners/);

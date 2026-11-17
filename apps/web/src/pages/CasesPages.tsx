@@ -48,6 +48,7 @@ import {
   type CaseOutcome,
   type CaseStatus,
   type ResponseType,
+  type CaseStage,
 } from '@livestock/shared';
 import { isQueued } from '@/lib/api';
 import { printAnalysisRequest, printSampleCollection } from '@/lib/print';
@@ -148,7 +149,7 @@ export function CasesPage() {
   const openCases = (all ?? []).filter((c) => !c.closed);
   const quick: { key: string; label: string; count: number; params: Record<string, string>; tone: string }[] =
     [
-      { key: 'open', label: 'Open cases', count: openCases.length, params: {}, tone: 'text-slate-900' },
+      { key: 'open', label: 'Open Cases', count: openCases.length, params: {}, tone: 'text-slate-900' },
       ...CASE_STATUSES.map((st) => ({
         key: st,
         label: CASE_STATUS_LABELS[st],
@@ -158,7 +159,7 @@ export function CasesPage() {
       })),
       {
         key: 'unmapped',
-        label: 'Awaiting geotagging',
+        label: 'Awaiting Geotagging',
         count: openCases.filter((c) => !c.mapped).length,
         params: { location: 'unmapped' },
         tone: 'text-amber-700',
@@ -172,7 +173,7 @@ export function CasesPage() {
       },
       {
         key: 'all',
-        label: 'All cases',
+        label: 'All Cases',
         count: (all ?? []).length,
         params: { state: 'all' },
         tone: 'text-slate-900',
@@ -243,24 +244,24 @@ export function CasesPage() {
         className="w-[calc(50%-4px)] sm:w-48"
       />
       <FilterSelect
-        label="Location status"
+        label="Location Status"
         value={location}
         onChange={setLocation}
         options={[
           { value: 'mapped', label: 'Mapped' },
-          { value: 'unmapped', label: 'Awaiting geotagging' },
+          { value: 'unmapped', label: 'Awaiting Geotagging' },
         ]}
         all="Any location status"
         className="w-[calc(50%-4px)] sm:w-56"
       />
       <FilterSelect
-        label="Case state"
+        label="Case State"
         value={state}
         onChange={setState}
         options={[
-          { value: 'open', label: 'Open cases' },
-          { value: 'closed', label: 'Closed cases' },
-          { value: 'voided', label: 'Voided (reported in error)' },
+          { value: 'open', label: 'Open Cases' },
+          { value: 'closed', label: 'Closed Cases' },
+          { value: 'voided', label: 'Voided (Reported in Error)' },
         ]}
         all="All cases"
         className="w-full sm:w-44"
@@ -387,7 +388,7 @@ export function CasesPage() {
           aria-expanded={showTrends}
           onClick={() => setShowTrends((v) => !v)}
         >
-          {showTrends ? 'Hide trends and graphs' : 'Show trends and graphs'}
+          {showTrends ? 'Hide Trends and Graphs' : 'Show Trends and Graphs'}
         </button>
         {showTrends && allReports && (
           <div className="mt-3">
@@ -724,7 +725,7 @@ export function CaseNewPage() {
               <Input {...form.register('zone')} />
             </Field>
             <Field
-              label="Species affected *"
+              label="Species Affected *"
               error={err(e, 'species')}
               hint={
                 farm && !farmSpecies.length
@@ -747,7 +748,7 @@ export function CaseNewPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Suspected disease *" error={err(e, 'disease')}>
+            <Field label="Suspected Disease *" error={err(e, 'disease')}>
               <DiseasePicker
                 value={form.watch('disease') ?? ''}
                 onChange={(v) =>
@@ -757,7 +758,7 @@ export function CaseNewPage() {
               />
             </Field>
             <Field
-              label="Animals affected *"
+              label="Animals Affected *"
               error={err(e, 'affected')}
               hint={
                 head != null
@@ -774,7 +775,7 @@ export function CaseNewPage() {
             >
               <Input type="number" min={0} max={affected || undefined} {...form.register('deaths')} />
             </Field>
-            <Field label="Date symptoms observed" error={err(e, 'symptomsDate')}>
+            <Field label="Date Symptoms Observed" error={err(e, 'symptomsDate')}>
               <Input
                 type="date"
                 min={MIN_DATE}
@@ -782,11 +783,11 @@ export function CaseNewPage() {
                 {...form.register('symptomsDate')}
               />
             </Field>
-            <Field label="Date reported" error={err(e, 'reportedAt')}>
+            <Field label="Date Reported" error={err(e, 'reportedAt')}>
               <Input type="date" min={MIN_DATE} max={isoDate()} {...form.register('reportedAt')} />
             </Field>
             <Field
-              label="Clinical signs seen"
+              label="Clinical Signs Seen"
               className="sm:col-span-2"
               hint="Tick all that the owner or the visit found."
             >
@@ -796,7 +797,7 @@ export function CaseNewPage() {
               />
             </Field>
             <Field
-              label="Other signs / history of the sick animals"
+              label="Other Signs / History of the Sick Animals"
               error={err(e, 'symptoms')}
               className="sm:col-span-2"
             >
@@ -806,10 +807,10 @@ export function CaseNewPage() {
                 placeholder="When it started, feed or animals brought in recently, nearby farms with sick animals…"
               />
             </Field>
-            <Field label="Reported by" error={err(e, 'reportedBy')}>
+            <Field label="Reported By" error={err(e, 'reportedBy')}>
               <Input {...form.register('reportedBy')} placeholder={user?.name} />
             </Field>
-            <Field label="Assigned inspector" error={err(e, 'assignedToId')}>
+            <Field label="Assigned Inspector" error={err(e, 'assignedToId')}>
               <Select {...form.register('assignedToId')}>
                 <option value="">Unassigned</option>
                 {lookups?.inspectors.map((u) => (
@@ -832,7 +833,7 @@ export function CaseNewPage() {
         </Card>
         <div className="space-y-3">
           <Card>
-            <CardHeader title="Case location" />
+            <CardHeader title="Case Location" />
             <div className="p-4">
               <MapView
                 className="h-[290px]"
@@ -869,7 +870,7 @@ export function CaseNewPage() {
               Cancel
             </Button>
             <Button type="submit" loading={save.isPending}>
-              Submit report
+              Submit Report
             </Button>
           </div>
         </div>
@@ -905,6 +906,12 @@ interface InvestigationRow {
 
 interface CaseDetail {
   case: CaseRow & { culled: number; pendingPopulation: number };
+  /** The stage the owner sees in the owner app */
+  stage: CaseStage;
+  stageLabel: string;
+  /** The owner's report this case was opened from */
+  ownerReport: { id: number; code: string } | null;
+  zone: { id: number; code: string; status: 'ACTIVE' | 'LIFTED'; radiusM: number } | null;
   history: {
     id: number;
     status: CaseStatus;
@@ -935,9 +942,9 @@ type StepState = 'done' | 'current' | 'todo' | 'skipped';
 
 const STEP_BADGE: Record<StepState, { label: string; tone: Tone }> = {
   done: { label: 'Done', tone: 'green' },
-  current: { label: 'Do this now', tone: 'blue' },
-  todo: { label: 'Not yet', tone: 'slate' },
-  skipped: { label: 'Not needed', tone: 'slate' },
+  current: { label: 'Do This Now', tone: 'blue' },
+  todo: { label: 'Not Yet', tone: 'slate' },
+  skipped: { label: 'Not Needed', tone: 'slate' },
 };
 
 /** One numbered step of the case checklist. */
@@ -1054,7 +1061,7 @@ function CaseNav({ id }: { id: number }) {
           ‹ Previous case
         </Button>
         <Button size="xs" variant="outline" disabled={!next} onClick={() => navigate(`/cases/${next}`)}>
-          Next case ›
+          Next Case ›
         </Button>
       </span>
     </nav>
@@ -1229,6 +1236,29 @@ function CaseDetail() {
             {!c.closed && <CaseStatusBadge status={c.status} />}
             {c.voided ? <Badge tone="red">Voided</Badge> : c.closed && <ClosedBadge />}
             {!c.mapped && !c.closed && <GeotagBadge />}
+            {!c.voided && <Badge tone="slate">Owner sees: {data.stageLabel}</Badge>}
+            {data.ownerReport && (
+              <Link
+                to={`/review?tab=reports&report=${data.ownerReport.id}`}
+                className="text-[14px] underline"
+              >
+                From owner report {data.ownerReport.code}
+              </Link>
+            )}
+            {data.zone ? (
+              <Link to={`/zones?zone=${data.zone.id}`} className="text-[14px] underline">
+                Monitoring zone {data.zone.code} ({data.zone.status === 'ACTIVE' ? 'active' : 'lifted'})
+              </Link>
+            ) : (
+              isReviewer &&
+              c.status === 'POSITIVE' &&
+              !c.closed &&
+              !c.voided && (
+                <Link to={`/zones?case=${c.id}`} className="text-[14px] font-medium text-red-700 underline">
+                  Set a monitoring zone and alert nearby owners
+                </Link>
+              )
+            )}
           </span>
         }
         actions={
@@ -1240,26 +1270,26 @@ function CaseDetail() {
             )}
             {c.closed && isReviewer && (
               <Button variant="outline" loading={reopen.isPending} onClick={() => reopen.mutate({})}>
-                <RotateCcw /> {c.voided ? 'Undo void' : 'Reopen case'}
+                <RotateCcw /> {c.voided ? 'Undo Void' : 'Reopen Case'}
               </Button>
             )}
             <MoreMenu
               items={[
-                canEdit && { label: 'Edit case details', icon: Pencil, onSelect: () => setDlg('edit') },
+                canEdit && { label: 'Edit Case Details', icon: Pencil, onSelect: () => setDlg('edit') },
                 canEdit && {
                   label: c.mapped ? 'Edit location' : 'Add location',
                   icon: MapPin,
                   onSelect: () => setDlg('location'),
                 },
                 canEdit && {
-                  label: 'Report incident on another farm',
+                  label: 'Report Incident on Another Farm',
                   icon: Link2,
                   hint: 'The disease spread to another farm',
                   onSelect: () => navigate(`/cases/new?from=${c.id}`),
                 },
                 isReviewer &&
                   !c.voided && {
-                    label: 'Void case (reported in error)',
+                    label: 'Void Case (Reported in Error)',
                     icon: Ban,
                     danger: true,
                     hint: 'A duplicate or wrong report; kept, but no longer counted',
@@ -1343,14 +1373,14 @@ function CaseDetail() {
                   Farms to Monitor.
                   {canEdit && (
                     <Button size="xs" variant="outline" onClick={() => setDlg('location')}>
-                      Add location
+                      Add Location
                     </Button>
                   )}
                 </div>
               )}
               {canEdit && (
                 <Button size="xs" variant="ghost" onClick={() => setDlg('edit')}>
-                  <Pencil /> Edit details
+                  <Pencil /> Edit Details
                 </Button>
               )}
             </CaseStep>
@@ -1358,7 +1388,7 @@ function CaseDetail() {
             <CaseStep
               id="step-visit"
               n={2}
-              title="Site visit"
+              title="Site Visit"
               state={stateOf('visit')}
               summary={
                 visitCount
@@ -1432,7 +1462,7 @@ function CaseDetail() {
                     variant={current === 'visit' ? 'default' : 'outline'}
                     onClick={() => openVisit()}
                   >
-                    <Plus /> {visitCount ? 'Record follow-up visit' : 'Record site visit'}
+                    <Plus /> {visitCount ? 'Record Follow-Up Visit' : 'Record Site Visit'}
                   </Button>
                 </StepActions>
               )}
@@ -1441,7 +1471,7 @@ function CaseDetail() {
             <CaseStep
               id="step-samples"
               n={3}
-              title="Samples & laboratory result"
+              title="Samples & Laboratory Result"
               state={stateOf('samples')}
               summary={
                 final ? (
@@ -1499,7 +1529,7 @@ function CaseDetail() {
                             variant={l.result === 'PENDING' ? 'default' : 'ghost'}
                             onClick={() => openLab(l)}
                           >
-                            {l.result !== 'PENDING' ? 'Edit' : l.sentAt ? 'Enter result' : 'Enter date sent'}
+                            {l.result !== 'PENDING' ? 'Edit' : l.sentAt ? 'Enter Result' : 'Enter Date Sent'}
                           </Button>
                         )}
                         {!l.voided && isReviewer && !c.closed && (
@@ -1523,7 +1553,7 @@ function CaseDetail() {
                     variant={current === 'samples' && !waiting.length ? 'default' : 'outline'}
                     onClick={() => openLab()}
                   >
-                    <Plus /> {labs.length ? 'Add another sample' : 'Add sample'}
+                    <Plus /> {labs.length ? 'Add Another Sample' : 'Add Sample'}
                   </Button>
                   {labs.length > 0 && (
                     <>
@@ -1607,7 +1637,7 @@ function CaseDetail() {
                   </Button>
                   {c.mapped && (
                     <Button size="sm" variant="outline" onClick={() => navigate(`/radius?case=${c.id}`)}>
-                      <Radar /> Farms to monitor
+                      <Radar /> Farms to Monitor
                     </Button>
                   )}
                 </StepActions>
@@ -1617,7 +1647,7 @@ function CaseDetail() {
             <CaseStep
               id="step-head"
               n={5}
-              title="Update the head count"
+              title="Update the Head Count"
               state={stateOf('head')}
               summary={
                 pending > 0
@@ -1634,7 +1664,7 @@ function CaseDetail() {
                     variant={current === 'head' ? 'default' : 'outline'}
                     onClick={() => setDlg('pop')}
                   >
-                    Update head count
+                    Update Head Count
                   </Button>
                   <Button
                     size="sm"
@@ -1642,7 +1672,7 @@ function CaseDetail() {
                     loading={reconcile.isPending}
                     onClick={() => reconcile.mutate({})}
                   >
-                    Already counted
+                    Already Counted
                   </Button>
                 </StepActions>
               )}
@@ -1651,7 +1681,7 @@ function CaseDetail() {
             <CaseStep
               id="step-close"
               n={6}
-              title="Close the case"
+              title="Close the Case"
               state={stateOf('close')}
               last
               summary={
@@ -1686,7 +1716,7 @@ function CaseDetail() {
                     disabled={blockers.length > 0}
                     onClick={() => setDlg('close')}
                   >
-                    <Lock /> Close case
+                    <Lock /> Close Case
                   </Button>
                 </StepActions>
               )}
@@ -1696,7 +1726,7 @@ function CaseDetail() {
         {tab === 'details' && (
           <div className="space-y-4">
             <Card>
-              <CardHeader title="Case details" />
+              <CardHeader title="Case Details" />
               <div className="grid grid-cols-1 gap-4 px-4 py-4 md:grid-cols-[1fr_auto]">
                 <KV
                   rows={[
@@ -1742,7 +1772,7 @@ function CaseDetail() {
             </Card>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Linked incidents" />
+                <CardHeader title="Linked Incidents" />
                 <div className="px-4 py-3 text-[15px]">
                   {c.relatedCaseId && (
                     <p className="mb-2 text-slate-700">
@@ -1804,7 +1834,7 @@ function CaseDetail() {
               {canEdit && (
                 <div className="mt-3">
                   <Button onClick={() => setDlg('location')}>
-                    <MapPin /> Add location
+                    <MapPin /> Add Location
                   </Button>
                 </div>
               )}
@@ -1955,14 +1985,14 @@ function IncidentTimeline({ d, visits }: { d: CaseDetail; visits: VisitRecord[] 
       key: 'sym',
       date: c.symptomsDate,
       sort: `${c.symptomsDate} 0`,
-      title: 'Symptoms first observed',
+      title: 'Symptoms First Observed',
       tone: 'amber',
     });
   add({
     key: 'rep',
     date: c.reportedAt,
     sort: `${c.reportedAt} 1`,
-    title: 'Incident reported',
+    title: 'Incident Reported',
     body: `${c.species} · ${c.affected} affected, ${c.deaths} dead${c.reportedBy ? ` · reported by ${c.reportedBy}` : ''}`,
     tone: 'red',
   });
@@ -2046,7 +2076,7 @@ function IncidentTimeline({ d, visits }: { d: CaseDetail; visits: VisitRecord[] 
       key: 'close',
       date: c.closedAt.slice(0, 10),
       sort: `${c.closedAt.slice(0, 10)} 9`,
-      title: 'Case closed',
+      title: 'Case Closed',
       body: [
         c.closureOutcome && (CASE_OUTCOME_LABELS[c.closureOutcome as CaseOutcome] ?? c.closureOutcome),
         c.closedBy,
@@ -2070,7 +2100,7 @@ function MonitoringCard({ c }: { c: CaseRow }) {
         actions={
           c.mapped && (
             <Button size="xs" variant="outline" onClick={() => navigate(`/radius?case=${c.id}&radius=1000`)}>
-              <Radar /> Open list
+              <Radar /> Open List
             </Button>
           )
         }
@@ -2152,7 +2182,7 @@ function MeasureRow({
             {open
               ? r.status === 'PLANNED'
                 ? 'Planned'
-                : 'In force'
+                : 'In Force'
               : r.endDate && r.endDate <= today
                 ? 'Lifted'
                 : 'Completed'}
@@ -2363,7 +2393,7 @@ export function InvestigationPage() {
               {
                 key: 'sentAt',
                 header: 'Sent',
-                cell: (r) => (r.sent ? fmtDate(r.sentAt) : <Badge tone="amber">Not sent yet</Badge>),
+                cell: (r) => (r.sent ? fmtDate(r.sentAt) : <Badge tone="amber">Not Sent Yet</Badge>),
               },
               {
                 key: 'waitingDays',
@@ -2429,7 +2459,7 @@ const MEASURE_STATE: Record<
   CaseWorklist['measures'][number]['state'],
   { label: string; tone: Tone; order: number }
 > = {
-  IN_FORCE: { label: 'In force', tone: 'red', order: 0 },
+  IN_FORCE: { label: 'In Force', tone: 'red', order: 0 },
   ONGOING: { label: 'Ongoing', tone: 'orange', order: 1 },
   PLANNED: { label: 'Planned', tone: 'blue', order: 2 },
 };
@@ -2447,7 +2477,7 @@ export function ResponseActivitiesPage() {
       />
       <Card>
         <CardHeader
-          title="Measures on open cases"
+          title="Measures on Open Cases"
           actions={
             data ? (
               <>
@@ -2479,7 +2509,7 @@ export function ResponseActivitiesPage() {
               cell: (r) => (
                 <span className="inline-flex flex-wrap items-center gap-1.5">
                   <Badge tone={MEASURE_STATE[r.state].tone}>{MEASURE_STATE[r.state].label}</Badge>
-                  {r.late && <Badge tone="amber">Needs update</Badge>}
+                  {r.late && <Badge tone="amber">Needs Update</Badge>}
                 </span>
               ),
             },

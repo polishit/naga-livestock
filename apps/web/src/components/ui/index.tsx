@@ -343,7 +343,7 @@ export function Dialog({
                 </p>
                 <div className="mt-4 flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setConfirming(false)} autoFocus>
-                    Keep editing
+                    Keep Editing
                   </Button>
                   <Button variant="destructive" onClick={discard}>
                     Discard

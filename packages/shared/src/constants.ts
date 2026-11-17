@@ -229,7 +229,8 @@ export const MONITORED_DISEASES = [
 export const SEXES = ['Mixed', 'Male', 'Female'] as const;
 export const HEALTH_STATUSES = ['Healthy', 'Sick', 'Under treatment', 'Quarantined'] as const;
 
-export const OWNER_STATUSES = ['ACTIVE', 'INACTIVE', 'ARCHIVED'] as const;
+/** PENDING = registered by the owner in the owner app, waiting for the CVO to verify. */
+export const OWNER_STATUSES = ['ACTIVE', 'INACTIVE', 'ARCHIVED', 'PENDING'] as const;
 export type OwnerStatus = (typeof OWNER_STATUSES)[number];
 
 /** VOIDED = registered by mistake (records are never deleted). */
@@ -617,7 +618,7 @@ export const ROLES = ['ADMIN', 'VETERINARIAN', 'TECHNICIAN', 'OWNER'] as const;
 export type Role = (typeof ROLES)[number];
 export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: 'System Administrator',
-  VETERINARIAN: 'Veterinarian (reviewer)',
+  VETERINARIAN: 'Veterinarian (Reviewer)',
   TECHNICIAN: 'Field Technician',
   OWNER: 'Livestock Owner',
 };

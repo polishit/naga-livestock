@@ -187,7 +187,7 @@ export default function PopulationPage() {
           rows: [...t.byBarangay]
             .sort((a, b) => b.population - a.population)
             .map((b) => ({ barangay: b.barangay, owners: b.owners, farms: b.farms, head: b.population })),
-          summary: [{ label: 'Total heads', value: t.total }],
+          summary: [{ label: 'Total Heads', value: t.total }],
         } as ReportResult,
         lh,
       );
@@ -211,7 +211,7 @@ export default function PopulationPage() {
             head: x.population,
             tagged: x.tagged,
           })),
-        summary: [{ label: 'Total heads', value: t.total }],
+        summary: [{ label: 'Total Heads', value: t.total }],
       } as ReportResult,
       lh,
     );
@@ -226,7 +226,7 @@ export default function PopulationPage() {
           canEdit && (
             <>
               <FilterSelect
-                label="Farm to update"
+                label="Farm to Update"
                 value={farmParam}
                 onChange={setFarm}
                 all="Select farm to update..."
@@ -277,7 +277,7 @@ export default function PopulationPage() {
         {tab === 'farms' && (
           <>
             <FilterSelect
-              label="Farm type"
+              label="Farm Type"
               value={farmType}
               onChange={setFarmType}
               options={FARM_TYPES.map((x) => ({ value: x, label: FARM_TYPE_LABELS[x] }))}
@@ -301,12 +301,12 @@ export default function PopulationPage() {
               className="w-[calc(50%-4px)] sm:w-44"
             />
             <FilterSelect
-              label="Last counted"
+              label="Last Counted"
               value={counted}
               onChange={setCounted}
               options={[
-                { value: 'month', label: 'Counted this month' },
-                { value: 'due', label: 'Not counted this month' },
+                { value: 'month', label: 'Counted This Month' },
+                { value: 'due', label: 'Not Counted This Month' },
               ]}
               all="Any count date"
               className="w-[calc(50%-4px)] sm:w-52"
@@ -404,7 +404,7 @@ export default function PopulationPage() {
                       className="px-2 text-[13px] text-slate-700 hover:underline"
                       onClick={() => setFarm('')}
                     >
-                      Clear farm filter
+                      Clear Farm Filter
                     </button>
                   )
                 }

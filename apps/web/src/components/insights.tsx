@@ -40,7 +40,7 @@ function Bar({
         <div
           className="absolute top-0 h-full w-0.5 bg-slate-500"
           style={{ left: `${Math.min(100, marker)}%` }}
-          title="Share of the year gone"
+          title="Share of the Year Gone"
         />
       )}
     </div>
@@ -77,7 +77,7 @@ export function CompareKpis({
   return (
     <Card className="mb-4">
       <CardHeader
-        title="This period compared with the one before"
+        title="This Period Compared with the One Before"
         actions={
           <span className="text-[13px] text-slate-500">
             {data.current.label} vs {data.previous.label}
@@ -138,7 +138,7 @@ export function HotspotsCard() {
   const { data } = useApi<Hotspots>('/api/insights/hotspots');
   return (
     <Card>
-      <CardHeader title="Disease hotspots (last 30 days)" />
+      <CardHeader title="Disease Hotspots (Last 30 Days)" />
       <div className="px-4 py-3">
         <p className="mb-3 text-[13px] text-slate-500">
           A barangay is a <b className="font-medium text-red-600">hotspot</b> when it has 2 or more cases in
@@ -191,7 +191,7 @@ export function HotspotBanner() {
         </span>
       </div>
       <Button size="sm" variant="outline" asChild>
-        <Link to="/analytics">See details</Link>
+        <Link to="/analytics">See Details</Link>
       </Button>
     </div>
   );
@@ -209,7 +209,7 @@ export function DataQualityCard({ barangay }: { barangay?: string }) {
   return (
     <Card>
       <CardHeader
-        title="Record completeness"
+        title="Record Completeness"
         actions={
           data && (
             <Badge tone={data.score >= 85 ? 'green' : data.score >= 65 ? 'amber' : 'red'}>
@@ -270,7 +270,7 @@ export function TargetsCard() {
   return (
     <Card>
       <CardHeader
-        title="Vaccination targets"
+        title="Vaccination Targets"
         actions={
           <>
             <Select
@@ -285,7 +285,7 @@ export function TargetsCard() {
             </Select>
             {isAdmin && (
               <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-                <Target /> Set targets
+                <Target /> Set Targets
               </Button>
             )}
           </>
@@ -417,7 +417,7 @@ function TargetsDialog({
             Cancel
           </Button>
           <Button onClick={submit} loading={save.isPending}>
-            Save targets
+            Save Targets
           </Button>
         </>
       }
@@ -477,7 +477,7 @@ function TargetsDialog({
         className="mt-3"
         onClick={() => setRows((rs) => [...rs, { vaccine: '', species: '', target: '' }])}
       >
-        <Plus /> Add target
+        <Plus /> Add Target
       </Button>
       {error && (
         <p role="alert" className="mt-3 text-[13px] text-red-600">
@@ -639,7 +639,7 @@ export function WelcomeCard() {
     <Card className="mb-4 border-brand/30 bg-brand-light/40">
       <div className="flex items-start justify-between gap-3 px-4 pt-4">
         <div>
-          <h2 className="card-title">How the system works</h2>
+          <h2 className="card-title">How the System Works</h2>
           <p className="text-[14px] text-slate-600">
             Follow these steps in order. &quot;My tasks&quot; below always shows what to do next, and the{' '}
             <b>?</b> button at the top of every page explains that page.
@@ -666,7 +666,7 @@ export function WelcomeCard() {
       </ol>
       <div className="px-4 pb-4">
         <Button size="sm" variant="outline" onClick={dismiss}>
-          Got it, hide this guide
+          Got It, Hide This Guide
         </Button>
       </div>
     </Card>

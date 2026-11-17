@@ -7,7 +7,7 @@ export default {
     container: { center: true, padding: '1rem' },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Inter Variable', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: 'hsl(var(--border))',

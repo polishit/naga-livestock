@@ -733,6 +733,12 @@ export const settingsSchema = z.object({
   lockoutMinutes: intField(1, 'At least 1 minute', 1440),
   /** A signed-in user with no activity for this long is signed out */
   idleTimeoutMinutes: intField(5, 'At least 5 minutes', 720),
+  /** An owner's head count change larger than this share of the count is flagged for review… */
+  popFlagPercent: intField(1, 'At least 1', 1000),
+  /** …but only when it is also at least this many head */
+  popFlagMinHeads: intField(1, 'At least 1', 100000),
+  /** Registrations and reports waiting longer than this many days are marked overdue */
+  reviewDays: intField(1, 'At least 1', 60),
 });
 export type SettingsInput = z.infer<typeof settingsSchema>;
 

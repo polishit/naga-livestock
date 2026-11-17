@@ -76,7 +76,7 @@ test('barangay map shades barangays and ranks them', async ({ page }) => {
   await shot(page, 'barangay-livestock');
   await page.getByLabel('Show').selectOption('openCases');
   await expect(page.getByText(/Ranking · \d+ cases in total/i)).toBeVisible();
-  await page.getByRole('button', { name: /^Cararayan/ }).click();
+  await page.getByRole('button', { name: /^Cararayan/i }).click();
   await expect(page.getByRole('heading', { name: 'Cararayan' })).toBeVisible();
   await shot(page, 'barangay-cases');
 });
@@ -137,7 +137,7 @@ test('stray incident: violation recorded without a fine or penalty', async ({ pa
   await shot(page, 'stray-violation');
   await d.getByRole('button', { name: 'Save changes' }).click();
   await expectToast(page, 'Incident updated.');
-  await expect(page.getByRole('columnheader', { name: /Fine/ })).toHaveCount(0);
+  await expect(page.getByRole('columnheader', { name: /Fine/i })).toHaveCount(0);
   const row = page.getByRole('row').filter({ hasText: code });
   await expect(row.getByRole('cell', { name: '1', exact: true })).toBeVisible();
 });
@@ -187,7 +187,7 @@ test('stray incident has no impound, fine or payment fields', async ({ page }) =
 
 test('cowlick is asked only for cattle and carabao', async ({ page }) => {
   await page.goto('/animals');
-  await page.getByRole('button', { name: /Register animal/ }).click();
+  await page.getByRole('button', { name: /Register animal/i }).click();
   const d = dialog(page);
   const group = d.getByLabel('Population group *');
   const options = await group.locator('option:not([disabled])').allTextContents();

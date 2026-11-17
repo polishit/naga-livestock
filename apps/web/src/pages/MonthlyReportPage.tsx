@@ -83,7 +83,7 @@ export default function MonthlyReportPage() {
             ? ` · last ${new Date(dataUpdatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
             : ''}
           <button type="button" className="link ml-1" onClick={() => refetch()}>
-            Refresh now
+            Refresh Now
           </button>
         </span>
       </div>
@@ -95,7 +95,7 @@ export default function MonthlyReportPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
-              label="Total livestock"
+              label="Total Livestock"
               value={fmtNumber(m.population.total)}
               sub={`${m.population.farms} farms · ${m.population.owners} owners`}
             />
@@ -106,13 +106,13 @@ export default function MonthlyReportPage() {
               tone={m.diseases.positive ? 'red' : 'orange'}
             />
             <StatCard
-              label="Heads dewormed"
+              label="Heads Dewormed"
               value={fmtNumber(deworm?.head ?? 0)}
               sub={`${deworm?.farms ?? 0} farms · check-ups: ${checkup?.head ?? 0} heads`}
               tone="blue"
             />
             <StatCard
-              label="Farm visits"
+              label="Farm Visits"
               value={m.visits.total}
               sub={`${m.visits.farms} farms${m.visits.sickFound ? ` · ${m.visits.sickFound} with sick animals` : ''}`}
               tone={m.visits.sickFound ? 'red' : 'green'}
@@ -126,7 +126,7 @@ export default function MonthlyReportPage() {
                 onSelect={(r) => navigate(casesLink({ month: r.month, barangay, state: 'all' }))}
               />
             </ChartCard>
-            <ChartCard title="Deworming, Check-ups and Farm Visits" clickable>
+            <ChartCard title="Deworming, Check-Ups and Farm Visits" clickable>
               <ServiceTrendBars
                 data={m.trend}
                 onSelect={(r) => navigate(servicesLink({ month: r.month, barangay }))}
@@ -166,7 +166,7 @@ export default function MonthlyReportPage() {
                       <th className="px-4 py-2.5 text-right">Pregnancy Diagnosis</th>
                       <th className="px-4 py-2.5 text-right">Pregnant</th>
                       <th className="px-4 py-2.5 text-right">Insemination</th>
-                      <th className="px-4 py-2.5 text-right">Check-up</th>
+                      <th className="px-4 py-2.5 text-right">Check-Up</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">

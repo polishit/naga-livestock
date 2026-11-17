@@ -8,6 +8,8 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { ApiError } from './lib/api';
 import { AuthProvider } from './lib/auth';
+// The font is bundled with the app so it looks the same offline and on every phone.
+import '@fontsource-variable/inter';
 import './index.css';
 
 if (import.meta.env.VITE_SENTRY_DSN) {

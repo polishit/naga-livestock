@@ -25,7 +25,7 @@ test('register, edit and archive a livestock owner', async ({ page }) => {
   await dialog(page).getByRole('button', { name: 'Cancel' }).click();
   await expectToast(page, 'Owner saved. Add the farm later from the owner page.');
   await page.getByLabel('Search table').fill('Benito Santiago');
-  await page.getByRole('row', { name: /Benito Santiago/ }).click();
+  await page.getByRole('row', { name: /Benito Santiago/i }).click();
   await expect(page.getByRole('heading', { name: 'Benito Santiago' })).toBeVisible();
   await expect(page.getByText(/OWN-00\d\d · Pacol/)).toBeVisible();
 
@@ -36,7 +36,7 @@ test('register, edit and archive a livestock owner', async ({ page }) => {
   await expect(page.getByText('22 Peñafrancia Ave.')).toBeVisible();
 
   await page.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: /Archive owner/ }).click();
+  await page.getByRole('menuitem', { name: /Archive owner/i }).click();
   await expect(dialog(page).getByText('This owner has no active farms')).toBeVisible();
   await dialog(page).getByRole('button', { name: 'Archive owner' }).click();
   await expectToast(page, 'Owner archived.');
@@ -47,7 +47,7 @@ test('register, edit and archive a livestock owner', async ({ page }) => {
 test('archive dialog blocks owners with active farms', async ({ page }) => {
   await page.goto('/owners/1');
   await page.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: /Archive owner/ }).click();
+  await page.getByRole('menuitem', { name: /Archive owner/i }).click();
   const d = dialog(page);
   await expect(d.getByText('This owner still has 2 active farm(s)')).toBeVisible();
   await expect(
@@ -80,11 +80,11 @@ test('register a farm with a map pin, add a group and update its population', as
   // Fine-tune by typing, about 3 km from the outbreak farms used by the radius test.
   await d.getByLabel('Latitude', { exact: true }).fill('13.625');
   await d.getByLabel('Longitude', { exact: true }).fill('123.265');
-  await d.getByRole('button', { name: 'Add farm', exact: true }).click();
+  await d.getByRole('button', { name: 'Add Farm', exact: true }).click();
   await expectToast(page, 'Farm added to the masterlist.');
   await expect(page.getByRole('heading', { name: 'Santos Duck Pond' })).toBeVisible();
 
-  await page.getByRole('tab', { name: /Livestock/ }).click();
+  await page.getByRole('tab', { name: /Livestock/i }).click();
   await page.getByRole('button', { name: 'Add Species' }).click();
   // The office's species list, in order.
   await expect(dialog(page).getByLabel('Species').locator('option')).toHaveText([
@@ -109,7 +109,7 @@ test('register a farm with a map pin, add a group and update its population', as
 
   await page.getByRole('button', { name: 'Update Head Count' }).click();
   const u = dialog(page);
-  await u.getByRole('spinbutton', { name: /GRP-\d+ count/ }).fill('56');
+  await u.getByRole('spinbutton', { name: /GRP-\d+ count/i }).fill('56');
   await expect(u.getByText('+6')).toBeVisible();
   await u.getByRole('button', { name: 'Save head count' }).click();
   await expectToast(page, /Population for Santos Duck Pond saved/);
@@ -181,7 +181,7 @@ test('report a stray animal and update the incident', async ({ page }) => {
   await clickMap(page, d, 0.5, 0.5);
   await d.getByRole('button', { name: 'Save report' }).click();
   await expectToast(page, 'Stray livestock report saved.');
-  const row = page.getByRole('row', { name: /STR-0007/ });
+  const row = page.getByRole('row', { name: /STR-0007/i });
   await expect(row).toContainText('Pinned');
   await row.click();
   const u = dialog(page);
@@ -191,7 +191,7 @@ test('report a stray animal and update the incident', async ({ page }) => {
   await u.getByLabel('Status').selectOption('CLOSED');
   await u.getByRole('button', { name: 'Save changes' }).click();
   await expectToast(page, 'Incident updated.');
-  await expect(page.getByRole('row', { name: /STR-0007/ })).toContainText('Closed');
+  await expect(page.getByRole('row', { name: /STR-0007/i })).toContainText('Closed');
 });
 
 test('set the location of a farm without coordinates (old geotagging link)', async ({ page }) => {
@@ -202,7 +202,7 @@ test('set the location of a farm without coordinates (old geotagging link)', asy
   await page.goto('/geotagging');
   await expect(page).toHaveURL(/\/farms\?location=unmapped/);
   await page
-    .getByRole('cell', { name: /Pacol Carabao Yard/ })
+    .getByRole('cell', { name: /Pacol Carabao Yard/i })
     .first()
     .click();
   await page.getByRole('button', { name: 'Set location' }).click();

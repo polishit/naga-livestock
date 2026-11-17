@@ -120,10 +120,10 @@ function ChangePasswordForm({
       <Field label={temporary ? 'Temporary password *' : 'Current password *'} error={err(e, 'current')}>
         <PasswordInput autoComplete="current-password" {...form.register('current')} />
       </Field>
-      <Field label="New password *" error={err(e, 'password')} hint={PASSWORD_RULE}>
+      <Field label="New Password *" error={err(e, 'password')} hint={PASSWORD_RULE}>
         <PasswordInput autoComplete="new-password" {...form.register('password')} />
       </Field>
-      <Field label="Type the new password again *" error={err(e, 'confirm')}>
+      <Field label="Type the New Password Again *" error={err(e, 'confirm')}>
         <PasswordInput autoComplete="new-password" {...form.register('confirm')} />
       </Field>
     </form>
@@ -136,7 +136,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: DialogProps) {
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Change password"
+      title="Change Password"
       size="sm"
       footer={
         <>
@@ -144,7 +144,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: DialogProps) {
             Cancel
           </Button>
           <Button form="change-password" type="submit" loading={busy}>
-            Change password
+            Change Password
           </Button>
         </>
       }
@@ -167,7 +167,7 @@ export function FirstPasswordScreen() {
         <div className="mb-1 flex h-11 w-11 items-center justify-center rounded-full bg-brand/10 text-brand-dark">
           <KeyRound className="h-5 w-5" />
         </div>
-        <h1 className="mt-3 text-[22px] font-semibold text-slate-900">Set your own password</h1>
+        <h1 className="mt-3 text-[22px] font-semibold text-slate-900">Set Your Own Password</h1>
         <p className="mt-1 text-[15px] text-slate-600">
           {user?.name}, you signed in with a temporary password. Choose a new one that only you know to
           continue.
@@ -177,10 +177,10 @@ export function FirstPasswordScreen() {
         </div>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="outline" onClick={() => void logout()}>
-            Sign out
+            Sign Out
           </Button>
           <Button form="first-password" type="submit" loading={busy}>
-            Save and continue
+            Save and Continue
           </Button>
         </div>
       </div>
@@ -285,7 +285,7 @@ function AccountDialog({
             Cancel
           </Button>
           <Button form="account-form" type="submit" loading={save.isPending}>
-            {editing ? 'Save changes' : 'Create account'}
+            {editing ? 'Save Changes' : 'Create Account'}
           </Button>
         </>
       }
@@ -298,7 +298,7 @@ function AccountDialog({
         )}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
-        <Field label="Full name *" error={err(e, 'name')}>
+        <Field label="Full Name *" error={err(e, 'name')}>
           <Input {...form.register('name')} />
         </Field>
         <Field
@@ -322,7 +322,7 @@ function AccountDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Position title" error={err(e, 'title')} className="sm:col-span-2">
+        <Field label="Position Title" error={err(e, 'title')} className="sm:col-span-2">
           <Input {...form.register('title')} placeholder="Veterinary Inspector" />
         </Field>
         {!editing && (
@@ -389,7 +389,7 @@ function ReassignDialog({
             Cancel
           </Button>
           <Button form="reassign-form" type="submit" loading={run.isPending}>
-            {thenDeactivate ? 'Reassign and deactivate' : 'Reassign'}
+            {thenDeactivate ? 'Reassign and Deactivate' : 'Reassign'}
           </Button>
         </>
       }
@@ -406,7 +406,7 @@ function ReassignDialog({
             {account.openCases === 1 ? '' : 's'}. Open work cannot stay with an account that can no longer
             sign in, so choose who takes over.
           </p>
-          <Field label="Reassign to *" error={err(e, 'toUserId')}>
+          <Field label="Reassign To *" error={err(e, 'toUserId')}>
             <Select {...form.register('toUserId')}>
               <option value="">Select a staff member…</option>
               {others.map((o) => (
@@ -490,9 +490,9 @@ export function UsersPage() {
   const actions = (u: StaffAccount) => {
     const self = u.id === me?.id;
     return [
-      { label: 'Edit name, role or title', icon: Pencil, onSelect: () => (setEditing(u), setOpen(true)) },
+      { label: 'Edit Name, Role or Title', icon: Pencil, onSelect: () => (setEditing(u), setOpen(true)) },
       {
-        label: 'Reset password',
+        label: 'Reset Password',
         icon: KeyRound,
         hint: 'Forgotten password: gives a new temporary one',
         onSelect: () =>
@@ -504,7 +504,7 @@ export function UsersPage() {
                 temporary password to hand over; it must be changed at the next sign-in.
               </>
             ),
-            confirm: 'Reset password',
+            confirm: 'Reset Password',
             run: async () => {
               const r = await api.post<{ temporaryPassword: string }>(`/api/users/${u.id}/reset-password`);
               await qc.invalidateQueries();
@@ -513,7 +513,7 @@ export function UsersPage() {
           }),
       },
       u.locked && {
-        label: 'Unlock account',
+        label: 'Unlock Account',
         icon: LockOpen,
         hint: 'Locked after too many wrong passwords',
         onSelect: () =>
@@ -529,7 +529,7 @@ export function UsersPage() {
           }),
       },
       u.openCases > 0 && {
-        label: 'Reassign open cases',
+        label: 'Reassign Open Cases',
         icon: UserCheck,
         hint: `${u.openCases} open case${u.openCases === 1 ? '' : 's'} assigned`,
         onSelect: () => setReassign({ account: u, deactivate: false }),
@@ -577,13 +577,13 @@ export function UsersPage() {
                 }),
         },
       u.status !== 'ACTIVE' && {
-        label: 'Make active again',
+        label: 'Make Active Again',
         icon: UserCheck,
         onSelect: () =>
           setAsk({
             title: `Make ${u.name} active again?`,
             body: <>The account can sign in again with its current password and role.</>,
-            confirm: 'Make active',
+            confirm: 'Make Active',
             run: () => setStatus(u, 'ACTIVE', `${u.name} is active again.`),
           }),
       },
@@ -602,7 +602,7 @@ export function UsersPage() {
               setOpen(true);
             }}
           >
-            <Plus /> Add staff account
+            <Plus /> Add Staff Account
           </Button>
         }
       />
@@ -656,7 +656,7 @@ export function UsersPage() {
                     <Badge tone={STATUS_TONE[r.status]}>{USER_STATUS_LABELS[r.status]}</Badge>
                     {r.locked && <Badge tone="red">Locked</Badge>}
                     {r.mustChangePassword && r.status === 'ACTIVE' && (
-                      <Badge tone="amber">Temporary password</Badge>
+                      <Badge tone="amber">Temporary Password</Badge>
                     )}
                   </div>
                 ),
@@ -838,7 +838,7 @@ export function AuditLogPage() {
               placeholder="Name, note or record number"
             />
           </Field>
-          <Field label="Record type">
+          <Field label="Record Type">
             <Select aria-label="Record type" value={table} onChange={(e) => setTable(e.target.value)}>
               <option value="">All</option>
               {(data?.tables ?? []).map((t) => (

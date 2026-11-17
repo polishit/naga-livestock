@@ -46,6 +46,17 @@ const MonthlyReportPage = lazy(() => import('@/pages/MonthlyReportPage'));
 const AnalyticsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.AnalyticsPage })));
 const ReportsPage = lazy(() => import('@/pages/ReportsPages').then((m) => ({ default: m.ReportsPage })));
 const UsersPage = lazy(() => import('@/pages/AccountPages').then((m) => ({ default: m.UsersPage })));
+const OwnerApp = lazy(() => import('@/owner/OwnerApp').then((m) => ({ default: m.OwnerApp })));
+const RegisterPage = lazy(() => import('@/pages/PublicPages').then((m) => ({ default: m.RegisterPage })));
+const PublicPage = lazy(() => import('@/pages/PublicPages').then((m) => ({ default: m.PublicPage })));
+const ReviewPage = lazy(() => import('@/pages/ReviewPages').then((m) => ({ default: m.ReviewPage })));
+const ZonesPage = lazy(() => import('@/pages/OutreachPages').then((m) => ({ default: m.ZonesPage })));
+const ActivitiesPage = lazy(() =>
+  import('@/pages/OutreachPages').then((m) => ({ default: m.ActivitiesPage })),
+);
+const AnnouncementsPage = lazy(() =>
+  import('@/pages/OutreachPages').then((m) => ({ default: m.AnnouncementsPage })),
+);
 const AuditLogPage = lazy(() => import('@/pages/AccountPages').then((m) => ({ default: m.AuditLogPage })));
 const FirstPasswordScreen = lazy(() =>
   import('@/pages/AccountPages').then((m) => ({ default: m.FirstPasswordScreen })),
@@ -59,7 +70,19 @@ function RequireAuth({ children, admin }: { children: ReactNode; admin?: boolean
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   // A temporary password must be changed before anything else can be opened.
   if (user.mustChangePassword) return <FirstPasswordScreen />;
+  // Livestock owners use the owner app, never the CVO system.
+  if (user.role === 'OWNER') return <Navigate to="/app" replace />;
   if (admin && !isAdmin) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+/** The owner app: livestock owners only (staff are sent to the CVO system). */
+function RequireOwner({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <Loading />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.mustChangePassword) return <FirstPasswordScreen />;
+  if (user.role !== 'OWNER') return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -73,6 +96,16 @@ export default function App() {
     <Suspense fallback={<Loading />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/public" element={<PublicPage />} />
+        <Route
+          path="/app/*"
+          element={
+            <RequireOwner>
+              <OwnerApp />
+            </RequireOwner>
+          }
+        />
         <Route
           element={
             <RequireAuth>
@@ -150,6 +183,10 @@ export default function App() {
               </RequireAuth>
             }
           />
+          <Route path="review" element={<ReviewPage />} />
+          <Route path="zones" element={<ZonesPage />} />
+          <Route path="vaccination-activities" element={<ActivitiesPage />} />
+          <Route path="announcements" element={<AnnouncementsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

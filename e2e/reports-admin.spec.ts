@@ -33,7 +33,7 @@ test('reports list all 35 report types and filter by barangay (old export link)'
   await expect(page.getByText('35 ready-made reports')).toBeVisible();
   await page.getByRole('tab', { name: 'Disease Surveillance' }).click();
   await page
-    .getByLabel('Report type', { exact: true })
+    .getByLabel('Report Type', { exact: true })
     .selectOption({ label: 'Disease Case Monitoring Report' });
   await expect(page.getByRole('heading', { name: 'Disease Case Monitoring Report' })).toBeVisible();
   await page.getByLabel('Barangay').first().selectOption('Cararayan');
@@ -68,7 +68,7 @@ test('admin creates a staff account; the temporary password must be changed at f
   await expect(made.getByText('Account created')).toBeVisible();
   const temp = (await made.locator('code').textContent())!.trim();
   await made.getByRole('button', { name: 'Done' }).click();
-  await expect(page.getByRole('row', { name: /Dr\. Ana Field/ })).toContainText('Temporary password');
+  await expect(page.getByRole('row', { name: /Dr\. Ana Field/i })).toContainText(/Temporary password/i);
 
   const ctx = await browser.newContext();
   const p2 = await ctx.newPage();
@@ -104,6 +104,6 @@ test('settings can be saved', async ({ page }) => {
 
 test('global search finds owners, farms and cases', async ({ page }) => {
   await page.getByLabel('Global search').fill('Hillside');
-  await page.getByRole('button', { name: /Hillside Ranch/ }).click();
+  await page.getByRole('button', { name: /Hillside Ranch/i }).click();
   await expect(page.getByRole('heading', { name: 'Hillside Ranch' })).toBeVisible();
 });

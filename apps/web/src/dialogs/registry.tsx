@@ -203,7 +203,7 @@ export function OwnerDialog({
               Cancel
             </Button>
             <Button form="owner-form" type="submit" loading={save.isPending}>
-              {editing ? 'Save changes' : 'Add owner'}
+              {editing ? 'Save Changes' : 'Add Owner'}
             </Button>
           </>
         )
@@ -216,14 +216,14 @@ export function OwnerDialog({
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
         <SectionTitle>Personal Information</SectionTitle>
-        <Field label="Full name *" error={err(e, 'fullName')} className="sm:col-span-2">
+        <Field label="Full Name *" error={err(e, 'fullName')} className="sm:col-span-2">
           <Input {...form.register('fullName')} aria-invalid={!!e.fullName} autoFocus />
         </Field>
         {(String(err(e, 'fullName') ?? '').startsWith('Possible duplicate') ||
           form.watch('confirmDuplicate')) && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 sm:col-span-2">
             <Checkbox
-              label="This is a different person — save anyway"
+              label="This Is a Different Person — Save Anyway"
               checked={!!form.watch('confirmDuplicate')}
               onChange={(v) => {
                 form.setValue('confirmDuplicate', v as any);
@@ -243,10 +243,10 @@ export function OwnerDialog({
         <Field label="Zone / Purok" error={err(e, 'zone')}>
           <Input {...form.register('zone')} />
         </Field>
-        <Field label="Street address" error={err(e, 'street')} className="sm:col-span-2">
+        <Field label="Street Address" error={err(e, 'street')} className="sm:col-span-2">
           <Input {...form.register('street')} />
         </Field>
-        <Field label="Contact number" error={err(e, 'contact')}>
+        <Field label="Contact Number" error={err(e, 'contact')}>
           <Input {...form.register('contact')} inputMode="tel" placeholder="09XX-XXX-XXXX" />
         </Field>
         <Field
@@ -257,7 +257,7 @@ export function OwnerDialog({
           <Input {...form.register('rsbsa')} />
         </Field>
         <SectionTitle>Record</SectionTitle>
-        <Field label="Source of record" error={err(e, 'source')} hint="Where the office got this information">
+        <Field label="Source of Record" error={err(e, 'source')} hint="Where the office got this information">
           <SourceSelect {...form.register('source')} />
         </Field>
         {editing && !step && (
@@ -341,7 +341,7 @@ export function ArchiveOwnerDialog({
               })
             }
           >
-            Archive owner
+            Archive Owner
           </Button>
         </>
       }
@@ -405,7 +405,7 @@ export function ArchiveOwnerDialog({
                         act(`a${f.id}`, () => api.post(`/api/farms/${f.id}/archive`), `${f.name} archived.`)
                       }
                     >
-                      Archive farm
+                      Archive Farm
                     </Button>
                   </div>
                 </div>
@@ -542,7 +542,7 @@ export function PcicDialog({
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
         <Field
-          label="Scanned application form"
+          label="Scanned Application Form"
           className="sm:col-span-2"
           hint="The filled-in PCIC Application for Livestock Mortality Insurance (the policy itself is issued by PCIC)."
         >
@@ -551,13 +551,13 @@ export function PcicDialog({
             onFilesChange={setFiles}
             existing={keep}
             onExistingChange={setKeep}
-            label="Attach scanned form"
+            label="Attach Scanned Form"
           />
         </Field>
-        <Field label="Date of application *" error={err(e, 'applicationDate')}>
+        <Field label="Date of Application *" error={err(e, 'applicationDate')}>
           <Input type="date" min={MIN_DATE} max={isoDate()} {...form.register('applicationDate')} />
         </Field>
-        <Field label="Application type" error={err(e, 'applicationType')}>
+        <Field label="Application Type" error={err(e, 'applicationType')}>
           <Select {...form.register('applicationType')}>
             {PCIC_APPLICATION_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -566,7 +566,7 @@ export function PcicDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Species insured" error={err(e, 'species')}>
+        <Field label="Species Insured" error={err(e, 'species')}>
           <Select {...form.register('species')}>
             {SPECIES.map((s) => (
               <option key={s}>{s}</option>
@@ -582,7 +582,7 @@ export function PcicDialog({
         </Field>
         <div className="sm:col-span-2">
           <Checkbox
-            label="Premium subsidized through RSBSA"
+            label="Premium Subsidized Through RSBSA"
             checked={subsidized}
             onChange={(v) => form.setValue('subsidized', v as any, { shouldDirty: true })}
           />
@@ -775,7 +775,7 @@ export function FarmDialog({
               Cancel
             </Button>
             <Button form="farm-form" type="submit" loading={save.isPending}>
-              {editing ? 'Save changes' : 'Add farm'}
+              {editing ? 'Save Changes' : 'Add Farm'}
             </Button>
           </>
         )
@@ -821,11 +821,11 @@ export function FarmDialog({
               />
             </Field>
           )}
-          <Field label="Farm name *" error={err(e, 'name')} className="sm:col-span-2">
+          <Field label="Farm Name *" error={err(e, 'name')} className="sm:col-span-2">
             <Input {...form.register('name')} aria-invalid={!!e.name} />
           </Field>
           <Field
-            label="Farm scale"
+            label="Farm Scale"
             error={err(e, 'type')}
             hint="Livestock raised (piggery, goat only…) follows the species you add."
           >
@@ -855,7 +855,7 @@ export function FarmDialog({
           <Field label="Zone / Purok" error={err(e, 'zone')} className="sm:col-span-2">
             <Input {...form.register('zone')} />
           </Field>
-          <Field label="Farm address" error={err(e, 'address')} className="sm:col-span-2">
+          <Field label="Farm Address" error={err(e, 'address')} className="sm:col-span-2">
             <Input {...form.register('address')} />
           </Field>
           <Field label="Latitude" error={err(e, 'lat')}>
@@ -864,7 +864,7 @@ export function FarmDialog({
           <Field label="Longitude" error={err(e, 'lng')}>
             <Input inputMode="decimal" {...form.register('lng')} />
           </Field>
-          <Field label="Source of record" error={err(e, 'source')}>
+          <Field label="Source of Record" error={err(e, 'source')}>
             <SourceSelect {...form.register('source')} />
           </Field>
           <Field label="Remarks" error={err(e, 'remarks')}>
@@ -948,7 +948,7 @@ export function GroupDialog({
               Cancel
             </Button>
             <Button form="group-form" type="submit" loading={save.isPending}>
-              Add livestock
+              Add Livestock
             </Button>
           </>
         )
@@ -978,7 +978,7 @@ export function GroupDialog({
           </Select>
         </Field>
         <Field
-          label="Month counted"
+          label="Month Counted"
           error={err(e, 'reportingMonth')}
           hint="Month the head count was taken (farm visit or DA list)."
         >
@@ -989,10 +989,10 @@ export function GroupDialog({
             {...form.register('reportingMonth')}
           />
         </Field>
-        <Field label="Head count *" error={err(e, 'count')}>
+        <Field label="Head Count *" error={err(e, 'count')}>
           <Input type="number" min={0} {...form.register('count')} />
         </Field>
-        <Field label="Health status" error={err(e, 'healthStatus')}>
+        <Field label="Health Status" error={err(e, 'healthStatus')}>
           <Select {...form.register('healthStatus')}>
             {HEALTH_STATUSES.map((s) => (
               <option key={s}>{s}</option>
@@ -1083,7 +1083,7 @@ export function PopulationUpdateDialog({
             Cancel
           </Button>
           <Button form="pop-form" type="submit" loading={save.isPending} disabled={!groups.length}>
-            Save head count
+            Save Head Count
           </Button>
         </>
       }
@@ -1099,7 +1099,7 @@ export function PopulationUpdateDialog({
             {note}
           </p>
         )}
-        <Field label="Reporting month" error={e.month?.message} className="w-full sm:w-48">
+        <Field label="Reporting Month" error={e.month?.message} className="w-full sm:w-48">
           <Input type="month" min={MIN_DATE.slice(0, 7)} max={isoMonth()} {...form.register('month')} />
         </Field>
         {!groups.length && (
@@ -1124,13 +1124,13 @@ export function PopulationUpdateDialog({
                   </div>
                 </div>
                 <div className="flex items-end gap-3">
-                  <Field label="Reason (optional)" className="w-44">
+                  <Field label="Reason (Optional)" className="w-44">
                     <Input
                       placeholder="births +3, deaths −1"
                       {...form.register(`entries.${i}.reason` as const)}
                     />
                   </Field>
-                  <Field label="Head count" error={e.entries?.[i]?.count?.message} className="w-28">
+                  <Field label="Head Count" error={e.entries?.[i]?.count?.message} className="w-28">
                     <Input
                       type="number"
                       min={g.tagged}
@@ -1203,7 +1203,7 @@ export function GroupEditDialog({
             Cancel
           </Button>
           <Button form="group-edit-form" type="submit" loading={save.isPending}>
-            Save changes
+            Save Changes
           </Button>
         </>
       }
@@ -1224,7 +1224,7 @@ export function GroupEditDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Health status" error={err(e, 'healthStatus')}>
+        <Field label="Health Status" error={err(e, 'healthStatus')}>
           <Select {...form.register('healthStatus')}>
             {HEALTH_STATUSES.map((s) => (
               <option key={s}>{s}</option>

@@ -138,7 +138,7 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
             Cancel
           </Button>
           <Button form="case-edit-form" type="submit" loading={save.isPending}>
-            Save changes
+            Save Changes
           </Button>
         </>
       }
@@ -149,7 +149,7 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
-        <Field label="Suspected disease *" error={err(e, 'disease')} className="sm:col-span-2">
+        <Field label="Suspected Disease *" error={err(e, 'disease')} className="sm:col-span-2">
           <DiseasePicker
             value={form.watch('disease') ?? ''}
             onChange={(v) => form.setValue('disease', v as any, { shouldDirty: true })}
@@ -157,7 +157,7 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
           />
         </Field>
         <Field
-          label="Animals affected *"
+          label="Animals Affected *"
           error={err(e, 'affected')}
           hint={head != null ? `${head} ${c.species.toLowerCase()} on this farm` : undefined}
         >
@@ -174,10 +174,10 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
         <Field label="Zone / Purok" error={err(e, 'zone')}>
           <Input {...form.register('zone')} />
         </Field>
-        <Field label="Date symptoms observed" error={err(e, 'symptomsDate')}>
+        <Field label="Date Symptoms Observed" error={err(e, 'symptomsDate')}>
           <Input type="date" min={MIN_DATE} max={c.reportedAt} {...form.register('symptomsDate')} />
         </Field>
-        <Field label="Assigned inspector" error={err(e, 'assignedToId')}>
+        <Field label="Assigned Inspector" error={err(e, 'assignedToId')}>
           <Select {...form.register('assignedToId')}>
             <option value="">Unassigned</option>
             {lookups?.inspectors.map((u) => (
@@ -187,16 +187,16 @@ export function CaseEditDialog({ open, onOpenChange, c }: DialogProps & { c: Cas
             ))}
           </Select>
         </Field>
-        <Field label="Reported by" error={err(e, 'reportedBy')}>
+        <Field label="Reported By" error={err(e, 'reportedBy')}>
           <Input {...form.register('reportedBy')} />
         </Field>
-        <Field label="Clinical signs seen" className="sm:col-span-2">
+        <Field label="Clinical Signs Seen" className="sm:col-span-2">
           <ClinicalSignsPicker
             value={form.watch('clinicalSigns') ?? []}
             onChange={(v) => form.setValue('clinicalSigns', v as any, { shouldDirty: true })}
           />
         </Field>
-        <Field label="Other signs / history" error={err(e, 'symptoms')} className="sm:col-span-2">
+        <Field label="Other Signs / History" error={err(e, 'symptoms')} className="sm:col-span-2">
           <Textarea rows={3} {...form.register('symptoms')} />
         </Field>
         <Field label="Remarks" error={err(e, 'remarks')} className="sm:col-span-2">
@@ -244,7 +244,7 @@ export function VoidDialog({
             Cancel
           </Button>
           <Button variant="destructive" form="void-form" type="submit" loading={save.isPending}>
-            Void record
+            Void Record
           </Button>
         </>
       }
@@ -306,7 +306,7 @@ export function CaseCloseDialog({
             Cancel
           </Button>
           <Button form="close-form" type="submit" loading={save.isPending} disabled={blockers.length > 0}>
-            Close case
+            Close Case
           </Button>
         </>
       }
@@ -345,7 +345,7 @@ export function CaseCloseDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Closing remarks *" error={err(e, 'note')}>
+        <Field label="Closing Remarks *" error={err(e, 'note')}>
           <Textarea
             rows={4}
             placeholder="e.g. Quarantine lifted after 30 days; no new cases; farm disinfected."
@@ -391,7 +391,7 @@ export function CaseLocationDialog({
             Cancel
           </Button>
           <Button disabled={!point} loading={save.isPending} onClick={() => point && save.mutate(point)}>
-            Save location
+            Save Location
           </Button>
         </>
       }
@@ -522,10 +522,10 @@ export function InvestigationDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
-        <Field label="Visit date *" error={err(e, 'date')}>
+        <Field label="Visit Date *" error={err(e, 'date')}>
           <Input type="date" min={minDate ?? MIN_DATE} max={isoDate()} {...form.register('date')} />
         </Field>
-        <Field label="Type of visit" error={err(e, 'visitType')}>
+        <Field label="Type of Visit" error={err(e, 'visitType')}>
           <Select {...form.register('visitType')}>
             {INVESTIGATION_VISIT_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -537,40 +537,40 @@ export function InvestigationDialog({
         <Field label="Investigator" error={err(e, 'investigator')}>
           <Input {...form.register('investigator')} />
         </Field>
-        <Field label="Animals examined" error={err(e, 'animalsExamined')}>
+        <Field label="Animals Examined" error={err(e, 'animalsExamined')}>
           <Input type="number" min={0} {...form.register('animalsExamined')} />
         </Field>
-        <Field label="Sick at the visit" error={err(e, 'sickCount')}>
+        <Field label="Sick at the Visit" error={err(e, 'sickCount')}>
           <Input type="number" min={0} {...form.register('sickCount')} />
         </Field>
         <Field
-          label="Dead at the visit"
+          label="Dead at the Visit"
           error={err(e, 'deadCount')}
           hint="The case's deaths are raised to this number if it is higher"
         >
           <Input type="number" min={0} {...form.register('deadCount')} />
         </Field>
-        <Field label="Clinical signs observed" error={err(e, 'clinicalSigns')} className="sm:col-span-3">
+        <Field label="Clinical Signs Observed" error={err(e, 'clinicalSigns')} className="sm:col-span-3">
           <Textarea
             rows={2}
             placeholder="e.g. high fever, skin hemorrhages, loss of appetite"
             {...form.register('clinicalSigns')}
           />
         </Field>
-        <Field label="Biosecurity observations" error={err(e, 'biosecurity')} className="sm:col-span-3">
+        <Field label="Biosecurity Observations" error={err(e, 'biosecurity')} className="sm:col-span-3">
           <Textarea
             rows={2}
             placeholder="e.g. no footbath, shared feed source, swill feeding"
             {...form.register('biosecurity')}
           />
         </Field>
-        <Field label="Findings / summary *" error={err(e, 'notes')} className="sm:col-span-3">
+        <Field label="Findings / Summary *" error={err(e, 'notes')} className="sm:col-span-3">
           <Textarea rows={3} {...form.register('notes')} aria-invalid={!!e.notes} />
         </Field>
-        <Field label="Actions taken / advice given" error={err(e, 'actionsTaken')} className="sm:col-span-2">
+        <Field label="Actions Taken / Advice Given" error={err(e, 'actionsTaken')} className="sm:col-span-2">
           <Textarea rows={2} {...form.register('actionsTaken')} />
         </Field>
-        <Field label="Next visit" error={err(e, 'nextVisit')} hint="Adds a reminder to Notifications">
+        <Field label="Next Visit" error={err(e, 'nextVisit')} hint="Adds a reminder to Notifications">
           <Input type="date" min={date || isoDate()} {...form.register('nextVisit')} />
         </Field>
         <div className="sm:col-span-3">
@@ -698,7 +698,7 @@ export function LabDialog({
         className="grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
         <p className="text-[13px] font-medium uppercase tracking-wide text-slate-500 sm:col-span-3">Sample</p>
-        <Field label="Sample ID number *" error={err(e, 'sampleId')}>
+        <Field label="Sample ID Number *" error={err(e, 'sampleId')}>
           <Input {...form.register('sampleId')} aria-invalid={!!e.sampleId} placeholder={`RADDL-${code}`} />
         </Field>
         <Field
@@ -732,7 +732,7 @@ export function LabDialog({
           ))}
         </datalist>
         {specimen === 'Tissue / Organs' && (
-          <Field label="Organs taken *" error={err(e, 'organs')} className="sm:col-span-2">
+          <Field label="Organs Taken *" error={err(e, 'organs')} className="sm:col-span-2">
             <Input
               {...form.register('organs')}
               list="sample-organs"
@@ -746,11 +746,11 @@ export function LabDialog({
           </Field>
         )}
         {condition === 'DEAD' && (
-          <Field label="Hours since death" error={err(e, 'hoursSinceDeath')}>
+          <Field label="Hours Since Death" error={err(e, 'hoursSinceDeath')}>
             <Input type="number" min={0} {...form.register('hoursSinceDeath')} />
           </Field>
         )}
-        <Field label="Age of the animal" error={err(e, 'animalAge')}>
+        <Field label="Age of the Animal" error={err(e, 'animalAge')}>
           <Input {...form.register('animalAge')} placeholder="e.g. 3 m" />
         </Field>
         <Field label="Sex" error={err(e, 'animalSex')}>
@@ -760,13 +760,13 @@ export function LabDialog({
             <option value="F">Female</option>
           </Select>
         </Field>
-        <Field label="Number of samples" error={err(e, 'sampleCount')}>
+        <Field label="Number of Samples" error={err(e, 'sampleCount')}>
           <Input type="number" min={1} {...form.register('sampleCount')} />
         </Field>
-        <Field label="Collection date" error={err(e, 'collectedAt')}>
+        <Field label="Collection Date" error={err(e, 'collectedAt')}>
           <Input type="date" min={start} max={isoDate()} {...form.register('collectedAt')} />
         </Field>
-        <Field label="Collected / submitted by" error={err(e, 'submittedBy')} className="sm:col-span-2">
+        <Field label="Collected / Submitted By" error={err(e, 'submittedBy')} className="sm:col-span-2">
           <Input {...form.register('submittedBy')} />
         </Field>
         <p className="text-[13px] font-medium uppercase tracking-wide text-slate-500 sm:col-span-3">
@@ -775,13 +775,13 @@ export function LabDialog({
         <Field label="Laboratory" error={err(e, 'laboratory')}>
           <Input {...form.register('laboratory')} />
         </Field>
-        <Field label="Date sent" error={err(e, 'sentAt')}>
+        <Field label="Date Sent" error={err(e, 'sentAt')}>
           <Input type="date" min={collected || start} max={isoDate()} {...form.register('sentAt')} />
         </Field>
         <Field label="Laboratory reference no." error={err(e, 'labReference')}>
           <Input {...form.register('labReference')} placeholder="From the lab's receipt" />
         </Field>
-        <Field label="Test requested" error={err(e, 'testMethod')}>
+        <Field label="Test Requested" error={err(e, 'testMethod')}>
           <Input
             {...form.register('testMethod')}
             list="lab-tests"
@@ -811,7 +811,7 @@ export function LabDialog({
           />
         </Field>
         {result !== 'PENDING' && (
-          <Field label="Result received by" error={err(e, 'receivedVia')}>
+          <Field label="Result Received By" error={err(e, 'receivedVia')}>
             <Select {...form.register('receivedVia')}>
               {RESULT_RECEIVED_VIA.map((v) => (
                 <option key={v} value={v}>
@@ -821,7 +821,7 @@ export function LabDialog({
             </Select>
           </Field>
         )}
-        <Field label="Remarks / result details" error={err(e, 'remarks')} className="sm:col-span-3">
+        <Field label="Remarks / Result Details" error={err(e, 'remarks')} className="sm:col-span-3">
           <Textarea rows={2} {...form.register('remarks')} />
         </Field>
         {lab?.updatedAt && (
@@ -940,7 +940,7 @@ export function ResponseDialog({
         onSubmit={form.handleSubmit((v) => save.mutate(v))}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
-        <Field label="Activity type" error={err(e, 'type')}>
+        <Field label="Activity Type" error={err(e, 'type')}>
           <Select {...form.register('type')}>
             {RESPONSE_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -1006,7 +1006,7 @@ export function ResponseDialog({
                 aria-invalid={!!e.heads}
               />
             </Field>
-            <Field label="Disposal method" error={err(e, 'disposalMethod')}>
+            <Field label="Disposal Method" error={err(e, 'disposalMethod')}>
               <Select {...form.register('disposalMethod')}>
                 <option value="">Select...</option>
                 {DISPOSAL_METHODS.map((d) => (

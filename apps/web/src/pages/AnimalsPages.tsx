@@ -47,7 +47,7 @@ export function AnimalsPage() {
         actions={
           canEdit && (
             <Button onClick={() => setOpen(true)}>
-              <Plus /> Register animal
+              <Plus /> Register Animal
             </Button>
           )
         }
@@ -233,11 +233,11 @@ export function AnimalDetailPage() {
         actions={
           <>
             <Button variant="outline" onClick={printSummary}>
-              <Printer /> Ownership summary
+              <Printer /> Ownership Summary
             </Button>
             {canEdit && a.status === 'ACTIVE' && (
               <Button variant="outline" onClick={() => setDlg('move')}>
-                <MoveRight /> Move group
+                <MoveRight /> Move Group
               </Button>
             )}
             {canEdit && a.status === 'ACTIVE' && (
@@ -352,10 +352,10 @@ export function AnimalDetailPage() {
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: 'activity', label: 'Activity log' },
-          { id: 'vax', label: 'Deworming & services' },
+          { id: 'activity', label: 'Activity Log' },
+          { id: 'vax', label: 'Deworming & Services' },
           { id: 'own', label: `Ownership history (${data.transfers.length})` },
-          { id: 'cases', label: 'Disease cases' },
+          { id: 'cases', label: 'Disease Cases' },
         ]}
       />
       <div className="mt-4">
@@ -507,7 +507,7 @@ export function OwnershipPage() {
             />
           </div>
           <Button type="submit" loading={busy}>
-            Look up
+            Look Up
           </Button>
         </form>
         {lookupError && <p className="mt-3 text-sm text-red-600">{lookupError}</p>}
@@ -527,11 +527,11 @@ export function OwnershipPage() {
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => navigate(`/animals/${found.id}`)}>
-                Open record
+                Open Record
               </Button>
               {canEdit && found.status === 'ACTIVE' && (
                 <Button onClick={() => setTransfer(true)}>
-                  <ArrowRightLeft /> Record transfer
+                  <ArrowRightLeft /> Record Transfer
                 </Button>
               )}
             </div>
@@ -539,7 +539,7 @@ export function OwnershipPage() {
         )}
       </Card>
       <Card className="mt-4">
-        <CardHeader title="All ownership transfers" className="border-b-0" />
+        <CardHeader title="All Ownership Transfers" className="border-b-0" />
         <DataTable
           rows={data}
           loading={isLoading}

@@ -30,6 +30,9 @@ import { populationRouter } from './routes/population';
 import { visitsRouter } from './routes/visits';
 import { vaccinationsRouter } from './routes/vaccinations';
 import { auditRouter } from './routes/audit';
+import { myRouter } from './routes/my';
+import { reviewRouter } from './routes/ownerReview';
+import { activitiesRouter, announcementsRouter, publicRouter, zonesRouter } from './routes/outreach';
 
 export function createApp() {
   const app = express();
@@ -64,6 +67,10 @@ export function createApp() {
   // Everything after this runs with the signed-in user as the author of the audit trail.
   app.use(auditContext);
   app.use('/api/auth', authRouter);
+  // Public information: no sign-in, no personal data.
+  app.use('/api/public', publicRouter);
+  // The owner app: livestock owners only, each limited to their own records.
+  app.use('/api/my', requireAuth, passwordChanged, myRouter);
 
   const api = express.Router();
   // The CVO system: staff accounts only, and never with a temporary password still in use.
@@ -86,6 +93,10 @@ export function createApp() {
   api.use('/users', requireRole('ADMIN'), usersRouter);
   api.use('/settings', settingsRouter);
   api.use('/audit', auditRouter);
+  api.use('/review', reviewRouter);
+  api.use('/zones', zonesRouter);
+  api.use('/activities', activitiesRouter);
+  api.use('/announcements', announcementsRouter);
   api.use('/insights', insightsRouter);
   api.use('/uploads', uploadsRouter);
   api.use('/files', filesRouter);

@@ -70,7 +70,7 @@ export const api = {
 const MAX_PHOTO_SIDE = 1600;
 
 /** Phone photos are resized and saved as JPEG before upload (Vercel accepts at most 4.5 MB). */
-async function shrinkImage(file: Blob): Promise<Blob> {
+export async function shrinkImage(file: Blob): Promise<Blob> {
   if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 400_000) return file;
   if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return file;
   try {
@@ -91,12 +91,18 @@ async function shrinkImage(file: Blob): Promise<Blob> {
   }
 }
 
-export async function uploadFile(file: Blob, name = 'photo.jpg', folder = 'photos'): Promise<string> {
+export async function uploadFile(
+  file: Blob,
+  name = 'photo.jpg',
+  folder = 'photos',
+  /** The owner app uploads through its own route */
+  url = '/api/uploads',
+): Promise<string> {
   const small = await shrinkImage(file);
   const fd = new FormData();
   fd.append('folder', folder);
   fd.append('file', small, small === file ? name : name.replace(/\.[^.]+$/, '') + '.jpg');
-  const out = await handle<{ key: string }>(await rawFetch('POST', '/api/uploads', fd));
+  const out = await handle<{ key: string }>(await rawFetch('POST', url, fd));
   return out.key;
 }
 

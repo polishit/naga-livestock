@@ -57,7 +57,7 @@ export function SettingsPage() {
                 }
               }}
             >
-              <Download /> Download backup
+              <Download /> Download Backup
             </Button>
           )
         }
@@ -68,23 +68,23 @@ export function SettingsPage() {
         className="grid grid-cols-1 gap-4 lg:grid-cols-2"
       >
         <Card>
-          <CardHeader title="Office & letterhead" />
+          <CardHeader title="Office & Letterhead" />
           <fieldset disabled={!isAdmin} className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-            <Field label="Office name *" error={err(e, 'officeName')} className="sm:col-span-2">
+            <Field label="Office Name *" error={err(e, 'officeName')} className="sm:col-span-2">
               <Input {...form.register('officeName')} />
             </Field>
             <Field label="City *" error={err(e, 'cityName')}>
               <Input {...form.register('cityName')} />
             </Field>
             <div />
-            <Field label="Letterhead line 1" error={err(e, 'letterheadLine1')}>
+            <Field label="Letterhead Line 1" error={err(e, 'letterheadLine1')}>
               <Input {...form.register('letterheadLine1')} />
             </Field>
-            <Field label="Letterhead line 2" error={err(e, 'letterheadLine2')}>
+            <Field label="Letterhead Line 2" error={err(e, 'letterheadLine2')}>
               <Input {...form.register('letterheadLine2')} />
             </Field>
             <Field
-              label="Office address"
+              label="Office Address"
               error={err(e, 'officeAddress')}
               hint="Printed as “Submitted by” on the laboratory forms"
               className="sm:col-span-2"
@@ -97,44 +97,44 @@ export function SettingsPage() {
             <Field label="Office contact no." error={err(e, 'officeContact')}>
               <Input {...form.register('officeContact')} />
             </Field>
-            <Field label="Office email" error={err(e, 'officeEmail')}>
+            <Field label="Office Email" error={err(e, 'officeEmail')}>
               <Input type="email" {...form.register('officeEmail')} />
             </Field>
           </fieldset>
         </Card>
         <Card>
-          <CardHeader title="Monitoring thresholds" />
+          <CardHeader title="Monitoring Thresholds" />
           <fieldset disabled={!isAdmin} className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-            <Field label="Default assessment radius (m)" error={err(e, 'defaultRadiusMeters')}>
+            <Field label="Default Assessment Radius (m)" error={err(e, 'defaultRadiusMeters')}>
               <Input type="number" min={50} {...form.register('defaultRadiusMeters')} />
             </Field>
-            <Field label="Upcoming vaccination window (days)" error={err(e, 'vaccinationUpcomingDays')}>
+            <Field label="Upcoming Vaccination Window (Days)" error={err(e, 'vaccinationUpcomingDays')}>
               <Input type="number" min={1} {...form.register('vaccinationUpcomingDays')} />
             </Field>
-            <Field label="Population update due after (days)" error={err(e, 'populationOverdueDays')}>
+            <Field label="Population Update Due After (Days)" error={err(e, 'populationOverdueDays')}>
               <Input type="number" min={1} {...form.register('populationOverdueDays')} />
             </Field>
           </fieldset>
         </Card>
         <Card className="lg:col-span-2">
-          <CardHeader title="Sign-in security" />
+          <CardHeader title="Sign-In Security" />
           <fieldset disabled={!isAdmin} className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
             <Field
-              label="Wrong passwords before lock"
+              label="Wrong Passwords Before Lock"
               error={err(e, 'lockoutAttempts')}
               hint="An account locks itself after this many wrong passwords in a row"
             >
               <Input type="number" min={3} max={20} {...form.register('lockoutAttempts')} />
             </Field>
             <Field
-              label="Lock lasts (minutes)"
+              label="Lock Lasts (Minutes)"
               error={err(e, 'lockoutMinutes')}
               hint="The administrator can unlock it sooner"
             >
               <Input type="number" min={1} {...form.register('lockoutMinutes')} />
             </Field>
             <Field
-              label="Sign out when idle for (minutes)"
+              label="Sign Out When Idle for (Minutes)"
               error={err(e, 'idleTimeoutMinutes')}
               hint="No tap, key press or scroll for this long"
             >
@@ -142,10 +142,36 @@ export function SettingsPage() {
             </Field>
           </fieldset>
         </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader title="Owner App Review Rules" />
+          <fieldset disabled={!isAdmin} className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
+            <Field
+              label="Flag a head count change above (%)"
+              error={err(e, 'popFlagPercent')}
+              hint="An owner's change larger than this share of the recorded count waits for a reviewer…"
+            >
+              <Input type="number" min={1} {...form.register('popFlagPercent')} />
+            </Field>
+            <Field
+              label="…and at least (head)"
+              error={err(e, 'popFlagMinHeads')}
+              hint="Smaller changes are always accepted automatically"
+            >
+              <Input type="number" min={1} {...form.register('popFlagMinHeads')} />
+            </Field>
+            <Field
+              label="Review Within (Days)"
+              error={err(e, 'reviewDays')}
+              hint="Registrations and reports waiting longer are marked in red"
+            >
+              <Input type="number" min={1} {...form.register('reviewDays')} />
+            </Field>
+          </fieldset>
+        </Card>
         {isAdmin ? (
           <div className="flex justify-end lg:col-span-2">
             <Button type="submit" loading={save.isPending}>
-              Save settings
+              Save Settings
             </Button>
           </div>
         ) : (

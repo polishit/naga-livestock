@@ -223,7 +223,7 @@ export default function ServicesPage() {
       })),
       summary: [
         { label: 'Records', value: rows.length },
-        { label: 'Heads served', value: rows.reduce((a, x) => a + x.count, 0) },
+        { label: 'Heads Served', value: rows.reduce((a, x) => a + x.count, 0) },
       ],
     };
     printReport(r, lh);
@@ -369,19 +369,19 @@ export default function ServicesPage() {
                   tone="blue"
                 />
                 <StatCard
-                  label="Heads checked (check-ups)"
+                  label="Heads Checked (Check-Ups)"
                   value={svc('CHECKUP')?.head ?? 0}
                   sub={`${svc('CHECKUP')?.farms ?? 0} farm(s)`}
                   tone="green"
                 />
                 <StatCard
-                  label="Heads vaccinated"
+                  label="Heads Vaccinated"
                   value={svc('VACCINATION')?.head ?? 0}
                   sub={`${svc('VACCINATION')?.farms ?? 0} farm(s)`}
                   tone="orange"
                 />
                 <StatCard
-                  label="Farm visits"
+                  label="Farm Visits"
                   value={s.visits.total}
                   sub={`${s.visits.farms} farm(s)${s.visits.sickFound ? ` · ${s.visits.sickFound} with sick animals` : ''}`}
                   tone={s.visits.sickFound ? 'red' : 'green'}
@@ -427,7 +427,7 @@ export default function ServicesPage() {
                   title="Due Soon"
                   actions={
                     <Button size="xs" variant="outline" onClick={() => setTab('upcoming')}>
-                      View schedule
+                      View Schedule
                     </Button>
                   }
                 />
@@ -557,7 +557,7 @@ export default function ServicesPage() {
                     ),
                     action: (
                       <Button size="xs" variant="outline" onClick={() => navigate(`/farms/${r.farmId}`)}>
-                        Open farm
+                        Open Farm
                       </Button>
                     ),
                   }))}

@@ -32,7 +32,7 @@ export function ClosedBadge() {
 export function GeotagBadge() {
   return (
     <Badge tone="red">
-      <MapPinOff className="h-3.5 w-3.5" /> Awaiting geotagging
+      <MapPinOff className="h-3.5 w-3.5" /> Awaiting Geotagging
     </Badge>
   );
 }

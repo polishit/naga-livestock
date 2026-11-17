@@ -69,9 +69,9 @@ export function AnalyticsPage() {
               value={months}
               onChange={setMonths}
               options={[
-                { value: '3', label: 'Last 3 months' },
-                { value: '6', label: 'Last 6 months' },
-                { value: '12', label: 'Last 12 months' },
+                { value: '3', label: 'Last 3 Months' },
+                { value: '6', label: 'Last 6 Months' },
+                { value: '12', label: 'Last 12 Months' },
               ]}
               className="w-[calc(50%-4px)] sm:w-40"
             />
@@ -92,36 +92,36 @@ export function AnalyticsPage() {
           </div>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartCard
-              title="Monthly population trend"
+              title="Monthly Population Trend"
               note="Carried-forward values are not field-verified for that month."
             >
               <TrendBars data={data.trend} />
             </ChartCard>
-            <ChartCard title="Livestock by species" clickable>
+            <ChartCard title="Livestock by Species" clickable>
               <SpeciesDonut
                 data={data.bySpecies}
                 onSelect={(r) => navigate(populationLink({ species: r.species, barangay }))}
               />
             </ChartCard>
-            <ChartCard title="Population by barangay" clickable>
+            <ChartCard title="Population by Barangay" clickable>
               <BarangayBars
                 data={data.byBarangay}
                 onSelect={(r) => navigate(populationLink({ barangay: r.barangay, species }))}
               />
             </ChartCard>
-            <ChartCard title="Disease cases per month" clickable>
+            <ChartCard title="Disease Cases per Month" clickable>
               <CasesLine
                 data={data.casesPerMonth}
                 onSelect={(r) => navigate(casesLink({ month: r.month, barangay, state: 'all' }))}
               />
             </ChartCard>
-            <ChartCard title="Cases by status" clickable>
+            <ChartCard title="Cases by Status" clickable>
               <StatusPie
                 data={data.casesByStatus}
                 onSelect={(r) => navigate(casesLink({ status: r.status, barangay, state: 'all' }))}
               />
             </ChartCard>
-            <ChartCard title="Cases by suspected disease" clickable>
+            <ChartCard title="Cases by Suspected Disease" clickable>
               <DiseaseBars
                 data={data.casesByDisease}
                 onSelect={(r) => navigate(casesLink({ disease: r.disease, barangay, state: 'all' }))}
@@ -129,7 +129,7 @@ export function AnalyticsPage() {
             </ChartCard>
             <ChartCard
               clickable
-              title="Vaccination coverage by species"
+              title="Vaccination Coverage by Species"
               note="Estimated coverage is based on aggregate events; exact applies to tagged animals only."
             >
               <CoverageBars
@@ -141,7 +141,7 @@ export function AnalyticsPage() {
             </ChartCard>
             <ChartCard
               clickable
-              title="Deworming and veterinary services"
+              title="Deworming and Veterinary Services"
               note="Heads served per month (raw totals; the same animal can be served more than once)."
             >
               <ServiceTrendBars
@@ -150,13 +150,13 @@ export function AnalyticsPage() {
                 onSelect={(r) => navigate(servicesLink({ month: r.month, barangay, species }))}
               />
             </ChartCard>
-            <ChartCard title="Farms by livestock raised" clickable>
+            <ChartCard title="Farms by Livestock Raised" clickable>
               <FarmTypeDonut
                 data={data.farmsByRaised}
                 onSelect={(r) => navigate(`/farms${qs({ raised: r.type, barangay })}`)}
               />
             </ChartCard>
-            <ChartCard title="Largest farms (current population)" clickable>
+            <ChartCard title="Largest Farms (Current Population)" clickable>
               <LargestFarmsBars data={data.largestFarms} onSelect={(r) => navigate(`/farms/${r.id}`)} />
             </ChartCard>
           </div>
@@ -214,9 +214,9 @@ function ReportFilters({
   return (
     <Card className="p-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(240px,320px)_190px_140px_150px_150px]">
-        <Field label="Report type" className="col-span-2 md:col-span-1">
+        <Field label="Report Type" className="col-span-2 md:col-span-1">
           <FilterSelect
-            label="Report type"
+            label="Report Type"
             value={type}
             onChange={setType}
             options={types.map((t) => ({ value: t.id, label: t.title }))}
@@ -283,7 +283,7 @@ function OutbreakReport({ initialCase, initialRadius }: { initialCase?: string; 
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Field label="Case (geocoded only)" className="sm:w-80">
+            <Field label="Case (Geocoded Only)" className="sm:w-80">
               <FilterSelect
                 label="Case"
                 value={effective}

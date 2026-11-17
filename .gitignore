@@ -13,3 +13,4 @@ coverage
 apps/api/src/generated
 backups/
 apps/api/uploads-e2e
+apps/api/uploads-test

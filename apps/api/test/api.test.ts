@@ -2063,3 +2063,755 @@ describe('accounts, roles and the audit trail', () => {
     expect(staff.some((u: { email: string }) => u.email === 'owner.test@example.com')).toBe(false);
   });
 });
+
+describe('the owner app: registration, head counts, reports, alerts', () => {
+  const fresh = () => request.agent(app);
+  let ana: request.Agent; // a new owner
+  let ben: request.Agent; // her neighbour
+  let anaOwnerId = 0;
+  let anaFarmId = 0;
+  let benFarmId = 0;
+  let caseId = 0;
+  const PIN = { lat: 13.6551, lng: 123.2241 }; // Pacol
+  const reg = (over: Record<string, unknown> = {}) => ({
+    fullName: 'Ana Reyes',
+    phone: '0917 555 0101',
+    barangay: 'Pacol',
+    idType: 'PHILSYS',
+    idNumber: '1234-5678-9012',
+    password: 'Kalabaw#2026',
+    confirm: 'Kalabaw#2026',
+    consent: true,
+    ...over,
+  });
+  // A 1x1 PNG standing in for the photo of an ID.
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  /** Sign up the way the owner app does: details as JSON, the ID photo as a file. */
+  const signUp = (
+    agent: request.Agent | ReturnType<typeof request.agent>,
+    body: Record<string, unknown>,
+    withId = true,
+  ) => {
+    const r = agent.post('/api/auth/register').field('data', JSON.stringify(body));
+    return withId ? r.attach('idFront', PNG, { filename: 'id.png', contentType: 'image/png' }) : r;
+  };
+  const OWNER_OK = ['ID_READABLE', 'ID_MATCHES', 'ADDRESS_OK', 'NO_DUPLICATE'];
+  const FARM_OK = ['PIN_OK', 'LIVESTOCK_OK', 'NO_DUPLICATE'];
+  const farm = (over: Record<string, unknown> = {}) => ({
+    name: 'Reyes Piggery',
+    type: 'backyard',
+    barangay: 'Pacol',
+    ...PIN,
+    gpsAccuracy: 12,
+    livestock: [{ species: 'Pig', count: 20 }],
+    ...over,
+  });
+
+  it('an owner registers, signs in with the mobile number and sees only the owner app', async () => {
+    expect((await signUp(fresh(), reg({ consent: false }))).status).toBe(400);
+    expect((await signUp(fresh(), reg({ phone: '12345' }))).body.fieldErrors.phone[0]).toMatch(/11-digit/);
+    ana = fresh();
+    // The ID photo is required.
+    expect((await signUp(fresh(), reg(), false)).body.fieldErrors.idFront[0]).toMatch(/front of your ID/);
+    const made = await signUp(ana, reg());
+    expect(made.status).toBe(201);
+    expect(made.body.user).toMatchObject({ role: 'OWNER', mustChangePassword: false });
+    anaOwnerId = made.body.user.ownerId;
+    // The same number cannot register twice.
+    expect((await signUp(fresh(), reg())).body.fieldErrors.phone[0]).toMatch(/already has an account/);
+    // Sign in with the mobile number in any common format.
+    const again = fresh();
+    expect(
+      (await again.post('/api/auth/login').send({ email: '+63 917 555 0101', password: 'Kalabaw#2026' }))
+        .status,
+    ).toBe(200);
+    // Pending until the office verifies.
+    const home = (await ana.get('/api/my/home')).body;
+    expect(home.owner).toMatchObject({ status: 'PENDING', fullName: 'Ana Reyes' });
+    expect(home.farms).toEqual([]);
+    // An owner cannot open the CVO system; staff cannot use the owner routes.
+    for (const url of ['/api/owners', '/api/cases', '/api/review/registrations', '/api/zones'])
+      expect((await ana.get(url)).status, url).toBe(403);
+    expect((await admin.get('/api/my/home')).status).toBe(403);
+    expect((await request(app).get('/api/my/home')).status).toBe(401);
+  });
+
+  it('a farm registration waits for review: owner first, then the farm; outside the city is refused', async () => {
+    const outside = await ana.post('/api/my/farms').send(farm({ lat: 14.6, lng: 121.0 }));
+    expect(outside.body.fieldErrors.lat[0]).toMatch(/outside Naga City/);
+    expect((await ana.post('/api/my/farms').send(farm({ livestock: [] }))).status).toBe(400);
+    const sent = await ana.post('/api/my/farms').send(farm());
+    expect(sent.status).toBe(201);
+    expect(sent.body).toMatchObject({ status: 'PENDING', code: expect.stringMatching(/^REG-/) });
+    expect((await ana.post('/api/my/farms').send(farm())).body.fieldErrors.name[0]).toMatch(/already sent/);
+    // A pending farm is not in the masterlist, the map or the figures.
+    expect(
+      (await admin.get('/api/farms')).body.some((f: { name: string }) => f.name === 'Reyes Piggery'),
+    ).toBe(false);
+
+    const queue = (await admin.get('/api/review/registrations')).body;
+    const o = queue.owners.find((x: { id: number }) => x.id === anaOwnerId);
+    expect(o).toMatchObject({ fullName: 'Ana Reyes', contact: '09175550101' });
+    const r = queue.farms.find((x: { id: number }) => x.id === sent.body.id);
+    expect(r.owner.fullName).toBe('Ana Reyes');
+    expect((await admin.get('/api/review/summary')).body.farms).toBeGreaterThanOrEqual(1);
+    // Field technicians can look but not decide.
+    expect((await viewer.get('/api/review/registrations')).status).toBe(200);
+    expect((await viewer.post(`/api/review/owners/${anaOwnerId}`).send({ decision: 'APPROVE' })).status).toBe(
+      403,
+    );
+    // The farm cannot be verified before its owner.
+    expect((await admin.post(`/api/review/farms/${r.id}`).send({ decision: 'APPROVE' })).body.error).toMatch(
+      /Verify the owner/,
+    );
+    // Returned for correction: a reason is required and the owner is told.
+    expect((await admin.post(`/api/review/farms/${r.id}`).send({ decision: 'RETURN' })).status).toBe(400);
+    expect(
+      (
+        await admin
+          .post(`/api/review/farms/${r.id}`)
+          .send({ decision: 'RETURN', reason: 'Pin is on the road' })
+      ).status,
+    ).toBe(200);
+    const home = (await ana.get('/api/my/home')).body;
+    expect(home.registrations[0]).toMatchObject({ status: 'RETURNED', returnReason: 'Pin is on the road' });
+    expect(home.unread).toBeGreaterThanOrEqual(1);
+    // She corrects it and sends it again.
+    const fixed = await ana
+      .patch(`/api/my/registrations/${r.id}`)
+      .send(farm({ lat: 13.6553, lng: 123.2243 }));
+    expect(fixed.body).toMatchObject({ status: 'PENDING', returnReason: null });
+
+    // While pending she cannot update head counts or report (no verified farm yet).
+    expect(
+      (await ana.post('/api/my/population').send({ farmId: 1, species: 'Pig', reason: 'BIRTH', quantity: 1 }))
+        .status,
+    ).toBe(403);
+    // Verifying needs every checklist item ticked.
+    expect(
+      (
+        await admin
+          .post(`/api/review/owners/${anaOwnerId}`)
+          .send({ decision: 'APPROVE', checklist: ['ID_READABLE'] })
+      ).body.fieldErrors.checklist[0],
+    ).toMatch(/Confirm every item/);
+    // Returned: she sees the reason, sends a clearer ID and goes back in the queue.
+    await admin
+      .post(`/api/review/owners/${anaOwnerId}`)
+      .send({ decision: 'RETURN', reason: 'The ID photo is blurred' });
+    expect((await ana.get('/api/my/home')).body.owner).toMatchObject({
+      status: 'PENDING',
+      returnReason: 'The ID photo is blurred',
+    });
+    const up = await ana
+      .post('/api/my/uploads')
+      .field('folder', 'ids')
+      .attach('file', PNG, { filename: 'id2.png', contentType: 'image/png' });
+    expect(
+      (
+        await ana
+          .post('/api/my/verification')
+          .send({ idType: 'PHILSYS', idNumber: '1234', idPhotoKeys: ['misc/x.png'] })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await ana
+          .post('/api/my/verification')
+          .send({ idType: 'PHILSYS', idNumber: '1234-5678-9012', idPhotoKeys: [up.body.key] })
+      ).status,
+    ).toBe(200);
+    expect((await ana.get('/api/my/home')).body.owner.returnReason).toBeNull();
+    // The reviewer sees the ID; another owner cannot open it.
+    const inQueue = (await admin.get('/api/review/registrations')).body.owners.find(
+      (x: { id: number }) => x.id === anaOwnerId,
+    );
+    expect(inQueue).toMatchObject({ idTypeLabel: 'PhilSys National ID', idNumber: '1234-5678-9012' });
+    expect(inQueue.history.length).toBeGreaterThanOrEqual(2);
+    expect((await admin.get(inQueue.idPhotos[0].url)).status).toBe(200);
+    expect((await ana.get(`/api/my/files/${up.body.key}`)).status).toBe(200);
+
+    expect(
+      (
+        await admin
+          .post(`/api/review/owners/${anaOwnerId}`)
+          .send({ decision: 'APPROVE', checklist: OWNER_OK })
+      ).status,
+    ).toBe(200);
+    expect((await admin.post(`/api/review/farms/${r.id}`).send({ decision: 'APPROVE' })).status).toBe(400);
+    const ok = await admin
+      .post(`/api/review/farms/${r.id}`)
+      .send({ decision: 'APPROVE', checklist: FARM_OK });
+    expect(ok.status).toBe(200);
+    anaFarmId = ok.body.farmId;
+    const after = (await ana.get('/api/my/home')).body;
+    expect(after.owner.status).toBe('ACTIVE');
+    expect(after.farms[0]).toMatchObject({
+      id: anaFarmId,
+      status: 'VERIFIED',
+      total: 20,
+      livestock: [{ species: 'Pig', count: 20 }],
+    });
+    expect(after.registrations).toEqual([]);
+    // Now it is in the masterlist, with its head count.
+    const f = (await admin.get(`/api/farms/${anaFarmId}`)).body;
+    expect(f.farm ?? f).toMatchObject({ name: 'Reyes Piggery' });
+    const notes = (await ana.get('/api/my/notifications')).body;
+    expect(notes.map((n: { title: string }) => n.title)).toEqual(
+      expect.arrayContaining(['Your registration is verified', 'Reyes Piggery is verified']),
+    );
+  });
+
+  it('owners see only their own records', async () => {
+    ben = fresh();
+    const b = await signUp(ben, reg({ fullName: 'Ben Cruz', phone: '09175550202' }));
+    await admin
+      .post(`/api/review/owners/${b.body.user.ownerId}`)
+      .send({ decision: 'APPROVE', checklist: OWNER_OK });
+    // 300 m from Ana's farm.
+    const sent = await ben.post('/api/my/farms').send(
+      farm({
+        name: 'Cruz Farm',
+        lat: 13.6578,
+        lng: 123.2243,
+        livestock: [
+          { species: 'Pig', count: 8 },
+          { species: 'Chicken', count: 30 },
+        ],
+      }),
+    );
+    const ok = await admin
+      .post(`/api/review/farms/${sent.body.id}`)
+      .send({ decision: 'APPROVE', checklist: FARM_OK });
+    benFarmId = ok.body.farmId;
+    expect((await ben.get(`/api/my/farms/${benFarmId}`)).status).toBe(200);
+    expect((await ben.get(`/api/my/farms/${anaFarmId}`)).status).toBe(404);
+    expect((await ana.get(`/api/my/farms/${benFarmId}`)).status).toBe(404);
+    expect(
+      (
+        await ben
+          .post('/api/my/population')
+          .send({ farmId: anaFarmId, species: 'Pig', reason: 'BIRTH', quantity: 1 })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await ben
+          .post('/api/my/reports')
+          .send({ farmId: anaFarmId, species: 'Pig', symptoms: 'x', affected: 1 })
+      ).status,
+    ).toBe(404);
+  });
+
+  it('normal head count updates are accepted automatically; unusual ones wait for a reviewer', async () => {
+    const birth = await ana
+      .post('/api/my/population')
+      .send({ farmId: anaFarmId, species: 'Pig', reason: 'BIRTH', quantity: 6, note: 'One sow farrowed' });
+    expect(birth.status).toBe(201);
+    expect(birth.body).toMatchObject({
+      status: 'ACCEPTED',
+      flagged: false,
+      before: 20,
+      after: 26,
+      decidedBy: 'System',
+    });
+    expect((await ana.get(`/api/my/farms/${anaFarmId}`)).body.livestock[0].count).toBe(26);
+    // More than is there cannot be removed; a zero change is refused.
+    expect(
+      (
+        await ana
+          .post('/api/my/population')
+          .send({ farmId: anaFarmId, species: 'Pig', reason: 'SALE', quantity: 99 })
+      ).body.fieldErrors.quantity[0],
+    ).toMatch(/Only 26 Pig/);
+    expect(
+      (
+        await ana
+          .post('/api/my/population')
+          .send({ farmId: anaFarmId, species: 'Pig', reason: 'CORRECTION', quantity: 26 })
+      ).status,
+    ).toBe(400);
+    // 20 of 26 died: more than half and at least 10 head, so it is held for review.
+    const big = await ana
+      .post('/api/my/population')
+      .send({ farmId: anaFarmId, species: 'Pig', reason: 'DEATH', quantity: 20 });
+    expect(big.body).toMatchObject({ status: 'PENDING', flagged: true });
+    expect(big.body.flagReason).toMatch(/77% of the recorded 26/);
+    expect((await ana.get(`/api/my/farms/${anaFarmId}`)).body.livestock[0].count).toBe(26);
+    expect(
+      (
+        await ana
+          .post('/api/my/population')
+          .send({ farmId: anaFarmId, species: 'Pig', reason: 'BIRTH', quantity: 1 })
+      ).body.error,
+    ).toMatch(/still waiting for review/);
+    const queue = (await admin.get('/api/review/population')).body;
+    expect(queue.find((q: { id: number }) => q.id === big.body.id)).toMatchObject({
+      reasonLabel: 'Died',
+      quantity: -20,
+    });
+    expect(
+      (await viewer.post(`/api/review/population/${big.body.id}`).send({ decision: 'ACCEPT' })).status,
+    ).toBe(403);
+    expect(
+      (await admin.post(`/api/review/population/${big.body.id}`).send({ decision: 'CANCEL' })).status,
+    ).toBe(400);
+    expect(
+      (
+        await admin
+          .post(`/api/review/population/${big.body.id}`)
+          .send({ decision: 'CANCEL', reason: 'Called the owner: typing mistake' })
+      ).status,
+    ).toBe(200);
+    expect((await ana.get(`/api/my/farms/${anaFarmId}`)).body.livestock[0].count).toBe(26);
+    // A new kind of livestock, large enough to be reviewed, then accepted.
+    const goats = await ana
+      .post('/api/my/population')
+      .send({ farmId: anaFarmId, species: 'Goat', reason: 'PURCHASE', quantity: 12 });
+    expect(goats.body.status).toBe('PENDING');
+    // The owner may cancel her own pending update.
+    expect((await ana.post(`/api/my/population/${goats.body.id}/cancel`)).status).toBe(200);
+    const goats2 = await ana
+      .post('/api/my/population')
+      .send({ farmId: anaFarmId, species: 'Goat', reason: 'PURCHASE', quantity: 12 });
+    expect(
+      (await admin.post(`/api/review/population/${goats2.body.id}`).send({ decision: 'ACCEPT' })).status,
+    ).toBe(400);
+    expect(
+      (
+        await admin
+          .post(`/api/review/population/${goats2.body.id}`)
+          .send({ decision: 'ACCEPT', reason: 'Saw the receipt for 12 goats' })
+      ).status,
+    ).toBe(200);
+    const live = (await ana.get(`/api/my/farms/${anaFarmId}`)).body.livestock;
+    expect(live).toEqual(expect.arrayContaining([expect.objectContaining({ species: 'Goat', count: 12 })]));
+    // Every change keeps who sent it and who accepted it.
+    const hist = (await ana.get('/api/my/population')).body;
+    expect(hist.find((h: { id: number }) => h.id === goats2.body.id)).toMatchObject({
+      status: 'ACCEPTED',
+      decidedBy: 'Dr. Liza Admin',
+    });
+  });
+
+  it('an owner reports sick animals; the office asks, validates and the owner follows the case', async () => {
+    const bad = await ana
+      .post('/api/my/reports')
+      .send({ farmId: anaFarmId, species: 'Pig', symptoms: 'Fever', affected: 2, deaths: 5 });
+    expect(bad.body.fieldErrors.deaths).toBeDefined();
+    const sent = await ana.post('/api/my/reports').send({
+      farmId: anaFarmId,
+      species: 'Pig',
+      signs: ['FEVER', 'SKIN_REDNESS'],
+      symptoms: 'Three pigs stopped eating and have red skin.',
+      affected: 3,
+      deaths: 1,
+      lat: 13.6554,
+      lng: 123.2244,
+      gpsAccuracy: 8,
+    });
+    expect(sent.status, JSON.stringify(sent.body)).toBe(201);
+    expect(sent.body).toMatchObject({
+      status: 'REPORTED',
+      locationSource: 'PHONE_GPS',
+      code: expect.stringMatching(/^RPT-/),
+    });
+    // Sending the same thing again is refused.
+    expect(
+      (
+        await ana
+          .post('/api/my/reports')
+          .send({ farmId: anaFarmId, species: 'Pig', symptoms: 'Again', affected: 3 })
+      ).status,
+    ).toBe(409);
+    const id = sent.body.id;
+    expect((await ana.get(`/api/my/reports/${id}`)).body).toMatchObject({
+      stage: 'REPORTED',
+      stageLabel: 'Reported',
+    });
+    expect((await ben.get(`/api/my/reports/${id}`)).status).toBe(404);
+
+    const detail = (await admin.get(`/api/review/reports/${id}`)).body;
+    expect(detail).toMatchObject({ recordedHead: 26, species: 'Pig' });
+    expect(
+      (await viewer.post(`/api/review/reports/${id}`).send({ decision: 'REJECT', message: 'x' })).status,
+    ).toBe(403);
+    expect((await admin.post(`/api/review/reports/${id}`).send({ decision: 'REQUEST_INFO' })).status).toBe(
+      400,
+    );
+    await admin
+      .post(`/api/review/reports/${id}`)
+      .send({ decision: 'REQUEST_INFO', message: 'When did the first pig get sick?' });
+    const asked = (await ana.get(`/api/my/reports/${id}`)).body;
+    expect(asked.stage).toBe('INFO_REQUESTED');
+    // Staff are shown as the office, never by name.
+    expect(asked.report.messages[0]).toMatchObject({ fromOwner: false, by: 'City Veterinary Office' });
+    expect((await ana.post(`/api/my/reports/${id}/reply`).send({ text: 'Two days ago.' })).status).toBe(201);
+    expect(
+      (await admin.get('/api/review/reports')).body.find((r: { id: number }) => r.id === id).status,
+    ).toBe('REPORTED');
+
+    expect((await admin.post(`/api/review/reports/${id}`).send({ decision: 'VALIDATE' })).status).toBe(400);
+    // Validating needs the checklist, an assessment and the date of the field visit.
+    const err = (
+      await admin
+        .post(`/api/review/reports/${id}`)
+        .send({ decision: 'VALIDATE', disease: 'African Swine Fever (ASF)' })
+    ).body.fieldErrors;
+    expect(Object.keys(err)).toEqual(expect.arrayContaining(['assessment', 'visitDate']));
+    const ok = await admin.post(`/api/review/reports/${id}`).send({
+      decision: 'VALIDATE',
+      disease: 'African Swine Fever (ASF)',
+      assessment: 'Fever and deaths in 3 pigs; ASF cannot be ruled out.',
+      visitDate: isoDate(),
+      checklist: ['PHOTOS_SEEN', 'FARM_CONFIRMED', 'NOT_DUPLICATE'],
+    });
+    expect(ok.status).toBe(200);
+    caseId = ok.body.caseId;
+    const c = (await admin.get(`/api/cases/${caseId}`)).body;
+    expect(c.case).toMatchObject({ disease: 'African Swine Fever (ASF)', affected: 3, deaths: 1 });
+    expect(c).toMatchObject({ stage: 'UNDER_INVESTIGATION', ownerReport: { id } });
+    expect((await ana.get(`/api/my/reports/${id}`)).body).toMatchObject({
+      stage: 'UNDER_INVESTIGATION',
+      case: { code: ok.body.caseCode },
+    });
+    // It cannot be decided twice.
+    expect(
+      (await admin.post(`/api/review/reports/${id}`).send({ decision: 'REJECT', message: 'no' })).status,
+    ).toBe(400);
+
+    // The laboratory result: the owner is told and sees it, but none of the staff notes.
+    const lab = await admin.post(`/api/cases/${caseId}/labs`).send({
+      sampleId: 'OWN-APP-1',
+      sampleType: 'Whole blood',
+      testMethod: 'PCR',
+      collectedAt: isoDate(),
+      sentAt: isoDate(),
+      result: 'POSITIVE',
+      resultDate: isoDate(),
+      remarks: 'INTERNAL NOTE',
+    });
+    expect(lab.status).toBe(201);
+    const seen = (await ana.get(`/api/my/reports/${id}`)).body;
+    expect(seen.stage).toBe('CONFIRMED');
+    expect(seen.case.labResults[0]).toMatchObject({ sampleId: 'OWN-APP-1', result: 'POSITIVE' });
+    expect(JSON.stringify(seen)).not.toContain('INTERNAL NOTE');
+    const titles = (await ana.get('/api/my/notifications')).body.map((n: { title: string }) => n.title);
+    expect(titles).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/confirmed at Reyes Piggery/),
+        expect.stringMatching(/accepted: under investigation/),
+      ]),
+    );
+  });
+
+  it('a monitoring zone alerts the owners inside it, with their distance, and can be widened and lifted', async () => {
+    // Only for a confirmed case, and only by a reviewer.
+    expect((await admin.post('/api/zones').send({ caseId: 6, radiusM: 1000 })).status).toBe(400);
+    expect((await viewer.post('/api/zones').send({ caseId, radiusM: 100 })).status).toBe(403);
+    const z = await admin
+      .post('/api/zones')
+      .send({ caseId, radiusM: 100, guidance: 'Do not move pigs out of the area.' });
+    expect(z.status).toBe(201);
+    expect(z.body.code).toMatch(/^ZONE-/);
+    expect((await admin.post('/api/zones').send({ caseId, radiusM: 500 })).body.error).toMatch(
+      /already has an active monitoring zone/,
+    );
+    // Ben's farm is about 300 m away: outside 100 m.
+    expect((await ben.get('/api/my/alerts')).body).toEqual([]);
+    const wider = await admin
+      .patch(`/api/zones/${z.body.id}`)
+      .send({ radiusM: 500, guidance: 'Do not move pigs out of the area.' });
+    expect(wider.body.newlyNotified).toBeGreaterThanOrEqual(1);
+    const alerts = (await ben.get('/api/my/alerts')).body;
+    expect(alerts[0]).toMatchObject({
+      disease: 'African Swine Fever (ASF)',
+      farmId: benFarmId,
+      radiusM: 500,
+    });
+    expect(alerts[0].distance).toBeGreaterThan(200);
+    const note = (await ben.get('/api/my/notifications')).body.find(
+      (n: { type: string }) => n.type === 'ALERT',
+    );
+    expect(note.body).toMatch(/about \d+ m from your farm Cruz Farm/);
+    // The alert never names the reporting owner or farm.
+    expect(JSON.stringify([alerts, note])).not.toMatch(/Ana Reyes|Reyes Piggery/);
+    // Widening again does not send a second alert to the same farm.
+    await admin.patch(`/api/zones/${z.body.id}`).send({ radiusM: 1000 });
+    expect(
+      (await ben.get('/api/my/notifications')).body.filter((n: { type: string }) => n.type === 'ALERT'),
+    ).toHaveLength(1);
+    const view = (await admin.get(`/api/zones/${z.body.id}`)).body;
+    expect(view.rows.find((r: { farmId: number }) => r.farmId === benFarmId)).toMatchObject({
+      hasApp: true,
+      owner: 'Ben Cruz',
+    });
+    expect((await admin.get(`/api/cases/${caseId}`)).body.zone).toMatchObject({
+      status: 'ACTIVE',
+      radiusM: 1000,
+    });
+
+    expect((await admin.post(`/api/zones/${z.body.id}/lift`).send({})).status).toBe(400);
+    expect(
+      (await admin.post(`/api/zones/${z.body.id}/lift`).send({ reason: 'No new cases for 40 days' })).body
+        .status,
+    ).toBe('LIFTED');
+    expect((await ben.get('/api/my/alerts')).body).toEqual([]);
+    expect((await admin.patch(`/api/zones/${z.body.id}`).send({ radiusM: 3000 })).status).toBe(400);
+  });
+
+  it('vaccination activities, sign-ups, owner-submitted records and service requests', async () => {
+    const tomorrow = isoDate(new Date(Date.now() + 86_400_000));
+    expect(
+      (
+        await admin
+          .post('/api/activities')
+          .send({ title: 'Hog cholera vaccination', species: 'Pig', barangay: 'Pacol', date: '2020-01-01' })
+      ).status,
+    ).toBe(400);
+    const a = await admin.post('/api/activities').send({
+      title: 'Hog cholera vaccination',
+      vaccine: 'Hog cholera vaccine',
+      species: 'Pig',
+      barangay: 'Pacol',
+      date: isoDate(),
+      time: '8:00 AM',
+      venue: 'Pacol covered court',
+    });
+    expect(a.status).toBe(201);
+    expect(a.body.notified).toBeGreaterThanOrEqual(2);
+    const v = (await ana.get('/api/my/vaccination')).body;
+    expect(v.activities.find((x: { id: number }) => x.id === a.body.id)).toMatchObject({
+      title: 'Hog cholera vaccination',
+      status: 'SCHEDULED',
+    });
+    expect(
+      (
+        await ana
+          .post(`/api/activities/${a.body.id}/signup`)
+          .send({ farmId: anaFarmId, species: 'Goat', heads: 2 })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await ana
+          .post(`/api/my/activities/${a.body.id}/signup`)
+          .send({ farmId: anaFarmId, species: 'Goat', heads: 2 })
+      ).body.fieldErrors.species[0],
+    ).toMatch(/for Pig/);
+    expect(
+      (
+        await ana
+          .post(`/api/my/activities/${a.body.id}/signup`)
+          .send({ farmId: anaFarmId, species: 'Pig', heads: 500 })
+      ).body.fieldErrors.heads[0],
+    ).toMatch(/only 26 Pig/);
+    const s = await ana
+      .post(`/api/my/activities/${a.body.id}/signup`)
+      .send({ farmId: anaFarmId, species: 'Pig', heads: 10 });
+    expect(s.status).toBe(201);
+    // Moving it tells the owners; attendance puts the vaccination on the farm's official record.
+    const moved = await admin.patch(`/api/activities/${a.body.id}`).send({
+      title: 'Hog cholera vaccination',
+      vaccine: 'Hog cholera vaccine',
+      species: 'Pig',
+      barangay: 'Pacol',
+      date: isoDate(),
+      time: '1:00 PM',
+      venue: 'Pacol covered court',
+    });
+    expect(moved.body.notified).toBeGreaterThanOrEqual(1);
+    expect(
+      (await admin.post(`/api/activities/signups/${s.body.id}/status`).send({ status: 'ATTENDED' })).status,
+    ).toBe(200);
+    const rec = (await ana.get('/api/my/vaccination')).body.records;
+    expect(rec[0]).toMatchObject({ product: 'Hog cholera vaccine', heads: 10, species: 'Pig' });
+    expect(
+      (await admin.post(`/api/activities/${a.body.id}/status`).send({ status: 'CANCELLED' })).status,
+    ).toBe(400);
+    expect(
+      (await admin.post(`/api/activities/${a.body.id}/status`).send({ status: 'COMPLETED' })).body.status,
+    ).toBe('COMPLETED');
+    expect(
+      (await admin.post(`/api/activities/${a.body.id}/status`).send({ status: 'SCHEDULED' })).status,
+    ).toBe(400);
+
+    // The day before an activity the owner signed up for, a reminder is waiting (once).
+    const b = await admin
+      .post('/api/activities')
+      .send({ title: 'Deworming day', species: 'All', barangay: 'ALL', date: tomorrow });
+    await ben
+      .post(`/api/my/activities/${b.body.id}/signup`)
+      .send({ farmId: benFarmId, species: 'Pig', heads: 4 });
+    await ben.get('/api/my/home');
+    await ben.get('/api/my/home');
+    const reminders = (await ben.get('/api/my/notifications')).body.filter((n: { title: string }) =>
+      /Reminder: Deworming day/.test(n.title),
+    );
+    expect(reminders).toHaveLength(1);
+    const cancelled = await admin
+      .post(`/api/activities/${b.body.id}/status`)
+      .send({ status: 'CANCELLED', reason: 'Typhoon signal' });
+    expect(cancelled.body).toMatchObject({ status: 'CANCELLED', cancelReason: 'Typhoon signal' });
+
+    // A private veterinarian's vaccination, sent by the owner and verified by the office.
+    const own = await ana.post('/api/my/vaccinations').send({
+      farmId: anaFarmId,
+      species: 'Goat',
+      vaccine: 'Anthrax spore vaccine',
+      date: isoDate(),
+      heads: 5,
+      givenBy: 'Dr. Private Vet',
+    });
+    expect(own.status).toBe(201);
+    expect(
+      (await admin.post(`/api/review/vaccinations/${own.body.id}`).send({ decision: 'REJECT' })).status,
+    ).toBe(400);
+    expect(
+      (await admin.post(`/api/review/vaccinations/${own.body.id}`).send({ decision: 'VERIFY' })).status,
+    ).toBe(400);
+    expect(
+      (
+        await admin
+          .post(`/api/review/vaccinations/${own.body.id}`)
+          .send({ decision: 'VERIFY', checklist: ['PROOF_OK', 'DETAILS_MATCH', 'HEADS_OK'] })
+      ).status,
+    ).toBe(200);
+    expect((await ana.get('/api/my/vaccination')).body.submitted[0]).toMatchObject({ status: 'VERIFIED' });
+
+    const rq = await ana
+      .post('/api/my/service-requests')
+      .send({ farmId: anaFarmId, serviceType: 'DEWORMING', note: 'Goats are thin' });
+    expect(rq.body.code).toMatch(/^SRQ-/);
+    expect(
+      (await admin.post(`/api/review/service-requests/${rq.body.id}`).send({ status: 'SCHEDULED' })).status,
+    ).toBe(400);
+    expect(
+      (
+        await viewer
+          .post(`/api/review/service-requests/${rq.body.id}`)
+          .send({ status: 'SCHEDULED', scheduledDate: tomorrow })
+      ).status,
+    ).toBe(200);
+    expect((await ana.get('/api/my/vaccination')).body.requests[0]).toMatchObject({
+      status: 'SCHEDULED',
+      scheduledDate: tomorrow,
+    });
+    // A request is scheduled before it can be marked done.
+    const rq2 = await ana
+      .post('/api/my/service-requests')
+      .send({ farmId: anaFarmId, serviceType: 'DEWORMING' });
+    expect(
+      (await admin.post(`/api/review/service-requests/${rq2.body.id}`).send({ status: 'DONE' })).body.error,
+    ).toMatch(/Schedule the visit first/);
+  });
+
+  it('announcements reach their audience, can be muted, and are withdrawn instead of deleted', async () => {
+    expect(
+      (await viewer.post('/api/announcements').send({ title: 'x', body: 'y', audience: 'ALL' })).status,
+    ).toBe(403);
+    expect(
+      (await admin.post('/api/announcements').send({ title: 'x', body: 'y', audience: 'BARANGAY' })).status,
+    ).toBe(400);
+    // Ben turns announcements off; alerts and his own records cannot be turned off.
+    expect((await ben.put('/api/my/settings').send({ muted: ['ALERT'] })).status).toBe(400);
+    expect((await ben.put('/api/my/settings').send({ muted: ['ANNOUNCEMENT'] })).body.muted).toEqual([
+      'ANNOUNCEMENT',
+    ]);
+    const a = await admin.post('/api/announcements').send({
+      title: 'ASF advisory',
+      body: 'Do not feed swill to pigs.',
+      audience: 'BARANGAY',
+      barangay: 'Pacol',
+    });
+    expect(a.status).toBe(201);
+    expect(a.body.code).toMatch(/^ANN-/);
+    expect(a.body.recipients).toBeGreaterThanOrEqual(1);
+    expect((await ana.get('/api/my/announcements')).body[0]).toMatchObject({ title: 'ASF advisory' });
+    const benNotes = (await ben.get('/api/my/notifications')).body;
+    expect(benNotes.some((n: { title: string }) => n.title === 'ASF advisory')).toBe(false);
+    // Reading is tracked.
+    await ana.post('/api/my/notifications/read').send({});
+    expect((await ana.get('/api/my/home')).body.unread).toBe(0);
+    expect(
+      (await admin.get('/api/announcements')).body.find((x: { id: number }) => x.id === a.body.id).read,
+    ).toBeGreaterThanOrEqual(1);
+    expect((await admin.delete(`/api/announcements/${a.body.id}`)).status).toBe(404);
+    expect(
+      (await admin.post(`/api/announcements/${a.body.id}/withdraw`).send({ reason: 'Wrong barangay' })).body
+        .status,
+    ).toBe('WITHDRAWN');
+    expect(
+      (await ana.get('/api/my/announcements')).body.some((x: { id: number }) => x.id === a.body.id),
+    ).toBe(false);
+  });
+
+  it('a registration that is not accepted closes the app, with the reason and the office contact', async () => {
+    const carl = fresh();
+    const c = await signUp(carl, reg({ fullName: 'Carl Diaz', phone: '09175550909' }));
+    expect(
+      (
+        await admin
+          .post(`/api/review/owners/${c.body.user.ownerId}`)
+          .send({ decision: 'INACTIVE', reason: 'Lives outside Naga City' })
+      ).status,
+    ).toBe(200);
+    const home = (await carl.get('/api/my/home')).body;
+    expect(home.owner).toMatchObject({ status: 'INACTIVE', returnReason: 'Lives outside Naga City' });
+    expect(home.office.name).toBeTruthy();
+    // Nothing else can be sent.
+    expect((await carl.post('/api/my/farms').send(farm({ name: 'Diaz Farm' }))).status).toBe(403);
+    expect((await carl.get('/api/my/reports')).status).toBe(403);
+  });
+
+  it('staff give an existing owner a login; the farm summary and the public page show no private data', async () => {
+    const existing = await prisma.owner.findFirst({ where: { status: 'ACTIVE', account: null } });
+    const made = await admin.post(`/api/review/accounts/${existing!.id}`).send({ phone: '09175550303' });
+    expect(made.status).toBe(201);
+    const o = fresh();
+    const first = await o
+      .post('/api/auth/login')
+      .send({ email: '09175550303', password: made.body.temporaryPassword });
+    expect(first.body.user).toMatchObject({ role: 'OWNER', mustChangePassword: true, ownerId: existing!.id });
+    expect((await o.get('/api/my/home')).body.code).toBe('PASSWORD_CHANGE_REQUIRED');
+    await o
+      .post('/api/auth/change-password')
+      .send({ current: made.body.temporaryPassword, password: 'Baka#2026a', confirm: 'Baka#2026a' });
+    expect((await o.get('/api/my/home')).body.owner.fullName).toBe(existing!.fullName);
+    expect(
+      (await admin.post(`/api/review/accounts/${existing!.id}`).send({ phone: '09175550304' })).body.error,
+    ).toMatch(/already has a login/);
+
+    const sum = (await ana.get('/api/my/summary?log=1')).body;
+    expect(sum.owner.fullName).toBe('Ana Reyes');
+    expect(sum.farms.map((f: { name: string }) => f.name)).toEqual(['Reyes Piggery']);
+    expect((await admin.get('/api/audit?action=EXPORT&q=Ana')).body.rows[0].note).toMatch(
+      /Farm summary of Ana Reyes/,
+    );
+
+    // Public: no sign-in, totals and barangay-level figures only.
+    const pub = await request(app).get('/api/public/overview');
+    expect(pub.status).toBe(200);
+    expect(pub.body.totals.livestock).toBeGreaterThan(0);
+    expect(
+      pub.body.barangays.find((b: { barangay: string }) => b.barangay === 'Pacol').confirmedOpen,
+    ).toBeGreaterThanOrEqual(1);
+    const text = JSON.stringify(pub.body);
+    // Confirmed cases are shown where they are, but never with the owner or the farm.
+    expect(text).not.toMatch(/Ana Reyes|Reyes Piggery|0917|ownerId|farmId/);
+    expect(pub.body.cases.length).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(pub.body.cases[0]).sort()).toEqual(
+      ['barangay', 'code', 'disease', 'lat', 'lng', 'reportedAt', 'species'].sort(),
+    );
+    // Everything an owner does is in the audit trail as coming from the owner app.
+    const log = (await admin.get('/api/audit?table=PopulationRequest')).body;
+    expect(
+      log.rows.some(
+        (r: { source: string; byName: string }) => r.source === 'owner' && r.byName === 'Ana Reyes',
+      ),
+    ).toBe(true);
+  });
+});

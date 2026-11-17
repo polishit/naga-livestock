@@ -1,4 +1,7 @@
 import {
+  Inbox,
+  Megaphone,
+  Smartphone,
   ScrollText,
   Activity,
   ArrowRightLeft,
@@ -51,6 +54,28 @@ export const NAV: NavSection[] = [
     id: 'home',
     label: null,
     items: [{ to: '/', label: 'Dashboard', icon: LayoutGrid, hint: 'Summary of the whole city' }],
+  },
+  {
+    id: 'owners-app',
+    label: 'Owner App',
+    short: 'Owners',
+    icon: Smartphone,
+    items: [
+      {
+        to: '/review',
+        label: 'Review Queue',
+        icon: Inbox,
+        hint: 'Registrations, updates and reports sent by owners',
+      },
+      { to: '/zones', label: 'Monitoring Zones', icon: Radar, hint: 'Epicenters and the owners alerted' },
+      {
+        to: '/vaccination-activities',
+        label: 'Vaccination Schedule',
+        icon: CalendarDays,
+        hint: 'Activities by barangay and sign-ups',
+      },
+      { to: '/announcements', label: 'Announcements', icon: Megaphone, hint: 'Advisories sent to owners' },
+    ],
   },
   {
     id: 'registry',

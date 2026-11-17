@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   CASE_OUTCOME_LABELS,
+  CASE_STAGE_LABELS,
   CASE_STATUS_LABELS,
   INVESTIGATION_VISIT_LABELS,
   RESPONSE_STATUS_LABELS,
@@ -29,6 +30,7 @@ import { displayCode, logActivity, tempCode } from '../lib/activity';
 import { assertNotFuture, dateOnly, today, ymd } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { siteVisitsDue } from '../services/caseVisits';
+import { notifyCaseOwner, stageOfCase } from '../services/ownerSide';
 import { loadCases, radiusAnalysis } from '../services/metrics';
 import { serializeCase } from './serializers';
 import { refreshReminders } from './vaccinations';
@@ -119,6 +121,8 @@ export async function syncCaseStatus(tx: Prisma.TransactionClient, caseId: numbe
         ? `${c.code} confirmed negative — ${c.disease}`
         : `${c.code} moved to ${CASE_STATUS_LABELS[next]}`;
   await logActivity('case', caseId, 'status', summary, by, tx);
+  // The owner sees the laboratory result of their own case in the owner app.
+  if (next === 'POSITIVE' || next === 'NEGATIVE') await notifyCaseOwner(tx, caseId, next);
   return next;
 }
 
@@ -213,8 +217,21 @@ casesRouter.get(
     // Visited: a site visit on the case, or a Farm Visit to its farm linked to it.
     const visited =
       c.investigations.some((i) => !i.voidedAt) || c.monitoringVisits.some((v) => v.farmId === c.farmId);
+    // The owner side: the report it came from, its stage, and the monitoring zone around it.
+    const [ownerReport, zone] = await Promise.all([
+      prisma.diseaseReport.findFirst({
+        where: { caseId: id },
+        select: { id: true, code: true, createdAt: true },
+      }),
+      prisma.monitoringZone.findFirst({ where: { caseId: id }, orderBy: { id: 'desc' } }),
+    ]);
+    const stage = stageOfCase(c);
     res.json({
       case: { ...serializeCase({ ...c, visited }), culled, pendingPopulation: pendingPopulation(c, culled) },
+      stage,
+      stageLabel: CASE_STAGE_LABELS[stage],
+      ownerReport,
+      zone: zone && { id: zone.id, code: zone.code, status: zone.status, radiusM: zone.radiusM },
       history: c.history.map((h) => ({
         id: h.id,
         status: h.status,
@@ -735,6 +752,7 @@ casesRouter.post(
         },
       });
       await logActivity('case', id, 'closed', `${c.code} closed (${c.disease})`, req.user?.name, tx);
+      await notifyCaseOwner(tx, id, 'CLOSED', `Outcome: ${CASE_OUTCOME_LABELS[d.outcome]}.`);
       return u;
     });
     res.json(updated);
@@ -772,6 +790,7 @@ casesRouter.post(
         },
       });
       await logActivity('case', id, 'reopened', `${c.code} reopened`, req.user?.name, tx);
+      await notifyCaseOwner(tx, id, 'REOPENED');
       return u;
     });
     res.json(updated);

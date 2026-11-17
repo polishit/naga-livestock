@@ -156,7 +156,7 @@ export function LabSubmissionsPage() {
       cell: (r) => (
         <span className="inline-flex flex-wrap items-center gap-1">
           <ResultCounts s={r} />
-          {r.positiveNoCase > 0 && <Badge tone="red">Needs a case</Badge>}
+          {r.positiveNoCase > 0 && <Badge tone="red">Needs a Case</Badge>}
         </span>
       ),
     },
@@ -169,22 +169,22 @@ export function LabSubmissionsPage() {
         actions={
           canEdit && (
             <Button onClick={() => navigate('/lab-submissions/new')}>
-              <FilePlus2 /> New submission
+              <FilePlus2 /> New Submission
             </Button>
           )
         }
       />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Batches" value={rows.length} icon={ClipboardList} tone="blue" />
-        <StatCard label="Samples sent" value={rows.reduce((a, r) => a + r.total, 0)} icon={FlaskConical} />
+        <StatCard label="Samples Sent" value={rows.reduce((a, r) => a + r.total, 0)} icon={FlaskConical} />
         <StatCard
-          label="Waiting for results"
+          label="Waiting for Results"
           value={rows.reduce((a, r) => a + r.pending, 0)}
           icon={Hourglass}
           tone="orange"
         />
         <StatCard
-          label="Positive, no case yet"
+          label="Positive, No Case Yet"
           value={rows.reduce((a, r) => a + r.positiveNoCase, 0)}
           icon={Siren}
           tone="red"
@@ -332,7 +332,7 @@ export function LabSubmissionFormPage() {
         className="space-y-4"
       >
         <Card>
-          <CardHeader title="Request details" />
+          <CardHeader title="Request Details" />
           <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 sm:p-5">
             <Field label="Purpose *" error={err(e, 'purpose')}>
               <Select {...form.register('purpose')}>
@@ -343,7 +343,7 @@ export function LabSubmissionFormPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Examination requested *" error={err(e, 'examination')} className="lg:col-span-2">
+            <Field label="Examination Requested *" error={err(e, 'examination')} className="lg:col-span-2">
               <Input {...form.register('examination')} list="lab-exams" aria-invalid={!!e.examination} />
               <datalist id="lab-exams">
                 {LAB_TEST_METHODS.map((t) => (
@@ -354,13 +354,13 @@ export function LabSubmissionFormPage() {
             <Field label="Laboratory *" error={err(e, 'laboratory')} className="lg:col-span-2">
               <Input {...form.register('laboratory')} aria-invalid={!!e.laboratory} />
             </Field>
-            <Field label="Date submitted" error={err(e, 'submittedAt')} hint="Leave blank if not sent yet">
+            <Field label="Date Submitted" error={err(e, 'submittedAt')} hint="Leave blank if not sent yet">
               <Input type="date" max={isoDate()} {...form.register('submittedAt')} />
             </Field>
-            <Field label="Submitted by" error={err(e, 'submittedBy')}>
+            <Field label="Submitted By" error={err(e, 'submittedBy')}>
               <Input {...form.register('submittedBy')} />
             </Field>
-            <Field label="Noted by" error={err(e, 'notedBy')}>
+            <Field label="Noted By" error={err(e, 'notedBy')}>
               <Input {...form.register('notedBy')} />
             </Field>
             <Field label="Request ID / accession no." hint="Given by the laboratory (optional)">
@@ -383,7 +383,7 @@ export function LabSubmissionFormPage() {
             title={`Samples (${rows.length})`}
             actions={
               <Button type="button" size="sm" variant="outline" onClick={addRow}>
-                <Plus /> Add sample
+                <Plus /> Add Sample
               </Button>
             }
           />
@@ -431,7 +431,7 @@ export function LabSubmissionFormPage() {
                       <Input {...reg('sampleId')} aria-invalid={!!serverErr('sampleId')} />
                     </Field>
                     <Field
-                      label="Farm (owner) *"
+                      label="Farm (Owner) *"
                       error={serverErr('farmId')}
                       className="col-span-2 md:col-span-3 xl:col-span-2"
                     >
@@ -485,7 +485,7 @@ export function LabSubmissionFormPage() {
                         <option value="F">Female</option>
                       </Select>
                     </Field>
-                    <Field label="Live / dead" error={serverErr('condition')}>
+                    <Field label="Live / Dead" error={serverErr('condition')}>
                       <Select
                         {...reg('condition', {
                           onChange: (ev: any) => {
@@ -526,7 +526,7 @@ export function LabSubmissionFormPage() {
                     </Field>
                     {r.sampleType === 'Tissue / Organs' && (
                       <Field
-                        label="Organs taken *"
+                        label="Organs Taken *"
                         error={serverErr('organs')}
                         className="col-span-2 md:col-span-2 xl:col-span-3"
                       >
@@ -538,7 +538,7 @@ export function LabSubmissionFormPage() {
                       </Field>
                     )}
                     {r.condition === 'DEAD' && (
-                      <Field label="Hours since death" error={serverErr('hoursSinceDeath')}>
+                      <Field label="Hours Since Death" error={serverErr('hoursSinceDeath')}>
                         <Input type="number" min={0} {...reg('hoursSinceDeath')} />
                       </Field>
                     )}
@@ -562,7 +562,7 @@ export function LabSubmissionFormPage() {
           </datalist>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 sm:px-5">
             <Button type="button" size="sm" variant="outline" onClick={addRow}>
-              <Plus /> Add sample
+              <Plus /> Add Sample
             </Button>
             <span className="text-[13px] text-slate-500">
               New rows copy the farm, specimen and date of the row above.
@@ -574,7 +574,7 @@ export function LabSubmissionFormPage() {
             Cancel
           </Button>
           <Button type="submit" loading={save.isPending}>
-            {editing ? 'Save changes' : 'Save submission'}
+            {editing ? 'Save Changes' : 'Save Submission'}
           </Button>
         </div>
       </form>
@@ -710,7 +710,7 @@ export function LabSubmissionDetailPage() {
           </Link>
         ) : r.result === 'POSITIVE' && canEdit ? (
           <Button size="xs" onClick={() => navigate(`/cases/new?fromSample=${r.id}`)}>
-            <Siren /> Open case
+            <Siren /> Open Case
           </Button>
         ) : (
           <span className="flex items-center gap-2">
@@ -762,7 +762,7 @@ export function LabSubmissionDetailPage() {
         </div>
       )}
       <Card className="mb-4">
-        <CardHeader title="Request details" />
+        <CardHeader title="Request Details" />
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 px-4 py-4 text-[15px] sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
           {(
             [
@@ -792,7 +792,7 @@ export function LabSubmissionDetailPage() {
       <div>
         <Card>
           <CardHeader
-            title="Samples and results"
+            title="Samples and Results"
             actions={
               canEdit &&
               (entering ? (
@@ -811,7 +811,7 @@ export function LabSubmissionDetailPage() {
                       )
                     }
                   >
-                    Set all pending to Negative
+                    Set All Pending to Negative
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setEntering(false)}>
                     Cancel
@@ -820,7 +820,7 @@ export function LabSubmissionDetailPage() {
               ) : (
                 live.length > 0 && (
                   <Button size="sm" onClick={startResults}>
-                    Enter results
+                    Enter Results
                   </Button>
                 )
               ))
@@ -828,7 +828,7 @@ export function LabSubmissionDetailPage() {
           />
           {entering && (
             <div className="grid grid-cols-1 gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end sm:px-5">
-              <Field label="Result date *">
+              <Field label="Result Date *">
                 <Input
                   type="date"
                   max={isoDate()}
@@ -836,7 +836,7 @@ export function LabSubmissionDetailPage() {
                   onChange={(ev) => setResultDate(ev.target.value)}
                 />
               </Field>
-              <Field label="Received by">
+              <Field label="Received By">
                 <Select value={via} onChange={(ev) => setVia(ev.target.value)}>
                   {RESULT_RECEIVED_VIA.map((v) => (
                     <option key={v} value={v}>

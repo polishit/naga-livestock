@@ -55,7 +55,7 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/owners/:id': {
-    title: 'Owner profile',
+    title: 'Owner Profile',
     purpose: 'One livestock owner: personal information, ownership, insurance and farms.',
     steps: [
       'Owner Profile tab: personal information, then ownership records and PCIC insurance below it.',
@@ -87,7 +87,7 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/farms/:id': {
-    title: 'Farm profile',
+    title: 'Farm Profile',
     purpose: 'One farm: information, livestock head counts, visits and services, and cases.',
     steps: [
       'After each visit select "Record Farm Visit": note the findings, update the head count and the deworming given, all in one form.',
@@ -118,7 +118,7 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/animals/:id': {
-    title: 'Animal record',
+    title: 'Animal Record',
     purpose: 'One tagged animal: identity, vaccinations, insurance and ownership history.',
     steps: [
       'Select "Transfer" when it is sold or given to another owner.',
@@ -200,7 +200,7 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/cases/new': {
-    title: 'Report a disease incident',
+    title: 'Report a Disease Incident',
     purpose: 'Record a new suspected case.',
     steps: [
       'Choose the owner and the farm. The location is copied from the farm.',
@@ -209,7 +209,7 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/cases/:id': {
-    title: 'Disease report',
+    title: 'Disease Report',
     purpose: 'One incident from report to closing, as six steps.',
     steps: [
       'Steps tab: work from top to bottom. The step marked "Do this now" is the next thing to do.',
@@ -277,7 +277,7 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/users': {
-    title: 'User management',
+    title: 'User Management',
     purpose: 'Who can sign in and what they can do.',
     steps: [
       'Select "Add staff account", enter the name and email, and choose the role.',
@@ -287,15 +287,63 @@ const HELP: Record<string, Help> = {
     ],
     terms: [
       ['System Administrator', 'Everything, including accounts, settings, targets and the audit log.'],
-      ['Veterinarian (reviewer)', 'Records and reviews: closes and reopens cases and voids wrong entries.'],
+      ['Veterinarian (Reviewer)', 'Records and reviews: closes and reopens cases and voids wrong entries.'],
       ['Field Technician', 'Records field work. Cannot review, void or manage accounts.'],
       ['Suspended', 'Temporarily blocked from signing in.'],
       ['Deactivated', 'Left the office. The account is kept so every record keeps its author.'],
       ['Locked', 'Too many wrong passwords. It unlocks by itself after a while, or you can unlock it.'],
     ],
   },
+  '/review': {
+    title: 'Review Queue',
+    purpose: 'What livestock owners sent from the owner app and is waiting for the office.',
+    steps: [
+      'Registrations: verify a new owner first, then the farm. Return it with a reason if something must be corrected.',
+      'Head count updates: only unusually large changes wait here. Accept, or cancel with a reason.',
+      'Disease reports: validate (a disease case is opened), ask the owner a question, or reject with a reason.',
+      'Vaccination records and service requests sent by owners are in their own tabs.',
+      'Owner logins: give a login to an owner already in the masterlist, or reset a forgotten password.',
+    ],
+    terms: [
+      ['Pending', 'Sent by the owner, waiting for the office.'],
+      ['Returned for correction', 'Sent back to the owner with a reason; it comes back when corrected.'],
+      ['Verified', 'Accepted: it is now part of the official records.'],
+      ['Flagged', 'A head count change larger than the limit in the System Settings.'],
+    ],
+  },
+  '/zones': {
+    title: 'Monitoring Zones',
+    purpose: 'An epicenter with a radius around a confirmed case, and the owners alerted.',
+    steps: [
+      'Select "Set a monitoring zone", choose the confirmed case and the radius.',
+      'Owners of the farms inside get an alert in the owner app with the distance to their own farm.',
+      'Owners without the app are marked: tell them by phone or visit.',
+      'Widen the radius to alert more farms, and lift the zone with a reason when it is over.',
+    ],
+    terms: [
+      ['Active', 'The monitoring area is in force.'],
+      ['Lifted', 'Ended. It stays on record.'],
+    ],
+  },
+  '/vaccination-activities': {
+    title: 'Vaccination Schedule',
+    purpose: 'Vaccination activities by barangay, and the owners who signed up.',
+    steps: [
+      'Select "Schedule an activity" and choose the barangay, livestock and date. Owners there are told.',
+      'On the day, open the activity and mark each sign-up as attended. The vaccination goes on the farm record.',
+      'Mark the activity completed, or cancel it with a reason (owners are told).',
+    ],
+  },
+  '/announcements': {
+    title: 'Announcements',
+    purpose: 'Advisories sent to livestock owners in the owner app.',
+    steps: [
+      'Select "New announcement", write it, and choose who gets it: everyone, one barangay, or a monitoring zone.',
+      'A published announcement cannot be edited. Withdraw it with a reason and publish a new one.',
+    ],
+  },
   '/audit-log': {
-    title: 'Audit log',
+    title: 'Audit Log',
     purpose: 'Who did what and when, with the old and new values. It cannot be edited or deleted.',
     steps: [
       'Filter by record type, action, person or dates to find a change.',
@@ -309,7 +357,7 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/settings': {
-    title: 'System settings',
+    title: 'System Settings',
     purpose: 'Office details, letterhead and reminder periods.',
     steps: [
       'Edit the office name and letterhead lines used on printed reports.',
@@ -359,7 +407,7 @@ export function PageHelp() {
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 rounded-lg p-2 text-slate-600 hover:bg-slate-100"
         aria-label="How to use this page"
-        title="How to use this page"
+        title="How to Use This Page"
       >
         <CircleHelp className="h-5 w-5" />
         <span className="hidden text-[14px] xl:inline">Help</span>
@@ -369,7 +417,7 @@ export function PageHelp() {
         onOpenChange={setOpen}
         title={`How to use: ${help.title}`}
         guardChanges={false}
-        footer={<Button onClick={() => setOpen(false)}>Got it</Button>}
+        footer={<Button onClick={() => setOpen(false)}>Got It</Button>}
       >
         <p className="text-[15px] text-slate-700">{help.purpose}</p>
         <ol className="mt-4 space-y-2.5">
@@ -385,7 +433,7 @@ export function PageHelp() {
         {help.terms && (
           <>
             <h3 className="mt-5 text-[13px] font-semibold uppercase tracking-wide text-slate-500">
-              Words you will see
+              Words You Will See
             </h3>
             <dl className="mt-2 space-y-1.5 text-[14px]">
               {help.terms.map(([t, d]) => (

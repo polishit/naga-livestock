@@ -1,6 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  Menu,
   Bell,
   ChevronDown,
   ChevronRight,
@@ -32,7 +33,7 @@ import { cn } from '@/lib/utils';
 import { Logo } from '../Logo';
 import { PageHelp } from '../PageHelp';
 import { QuickNew } from '../QuickNew';
-import { Button, Dialog } from '../ui';
+import { Badge, Button, Dialog } from '../ui';
 import { NAV, crumbsFor, sectionFor, type NavSection } from './nav';
 
 function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
@@ -40,6 +41,8 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
   const navigate = useNavigate();
   const location = useLocation();
   const current = sectionFor(location.pathname)?.id;
+  const waiting =
+    useApi<{ total: number }>('/api/review/summary', { refetchInterval: 60_000 }).data?.total ?? 0;
   // Only the module you are working in is open; the others fold away to keep the menu short.
   const [open, setOpen] = useState<Record<string, boolean>>(() => (current ? { [current]: true } : {}));
   useEffect(() => {
@@ -64,7 +67,19 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
       }
     >
       <item.icon className={cn('shrink-0', nested ? 'h-4 w-4' : 'h-[18px] w-[18px]')} strokeWidth={1.9} />
-      {!collapsed && <span className="truncate">{item.label}</span>}
+      {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+      {/* How many items owners sent that still wait for the office */}
+      {item.to === '/review' && !!waiting && (
+        <span
+          aria-label={`${waiting} waiting for review`}
+          className={cn(
+            'rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white',
+            collapsed && 'absolute ml-5 -mt-5',
+          )}
+        >
+          {waiting > 99 ? '99+' : waiting}
+        </span>
+      )}
     </NavLink>
   );
 
@@ -108,6 +123,15 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
               >
                 {Icon && <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />}
                 <span className="flex-1 truncate">{section.label}</span>
+                {/* Shown while the section is folded, so waiting items are never missed */}
+                {section.id === 'owners-app' && !isOpen && !!waiting && (
+                  <span
+                    aria-label={`${waiting} waiting for review`}
+                    className="rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white"
+                  >
+                    {waiting > 99 ? '99+' : waiting}
+                  </span>
+                )}
                 <ChevronDown
                   className={cn('h-4 w-4 shrink-0 opacity-70 transition-transform', !isOpen && '-rotate-90')}
                 />
@@ -130,20 +154,35 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
           )}
         >
           <LogOut className="h-[18px] w-[18px]" strokeWidth={1.9} />
-          {!collapsed && 'Logout'}
+          {!collapsed && 'Sign Out'}
         </button>
       </div>
     </div>
   );
 }
 
-/** Phone navigation: Home plus the four modules. Tapping a module lists its pages. */
+/** The three modules used most in the field get their own tab; the rest are under "More". */
+const PHONE_TABS = ['registry', 'gis', 'surveillance'];
+
+/**
+ * Phone navigation: one row of five tabs (Home, Registry, Map, Disease, More). Tapping a module
+ * lists its pages; "More" lists the other modules (Owner App, Services, Reports, Administration).
+ */
 function BottomNav() {
   const location = useLocation();
   const { isAdmin } = useAuth();
   const current = sectionFor(location.pathname)?.id;
   const [sheet, setSheet] = useState<NavSection | null>(null);
-  const modules = NAV.filter((s) => s.short);
+  const waiting =
+    useApi<{ total: number }>('/api/review/summary', { refetchInterval: 60_000 }).data?.total ?? 0;
+  const modules = NAV.filter((s) => PHONE_TABS.includes(s.id));
+  const rest = NAV.filter((s) => s.label && !PHONE_TABS.includes(s.id));
+  // "More" is one sheet listing every page of the other modules, under their module names.
+  const more: NavSection = {
+    id: 'more',
+    label: 'More',
+    items: rest.flatMap((m) => m.items.map((i) => ({ ...i, group: m.label! }))),
+  };
   useEffect(() => setSheet(null), [location.pathname]);
   const tab =
     'flex flex-col items-center justify-center gap-1 py-2 text-[12px] font-medium transition-colors';
@@ -177,31 +216,63 @@ function BottomNav() {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setSheet(more)}
+            className={cn(
+              tab,
+              'relative',
+              current && !PHONE_TABS.includes(current) && current !== 'home'
+                ? 'text-brand-strong'
+                : 'text-slate-500',
+            )}
+          >
+            <Menu className="h-[22px] w-[22px]" strokeWidth={1.9} />
+            More
+            {!!waiting && (
+              <span
+                aria-label={`${waiting} waiting for review`}
+                className="absolute right-[22%] top-1.5 min-w-[18px] rounded-full bg-red-600 px-1 text-[11px] font-semibold leading-[18px] text-white"
+              >
+                {waiting > 99 ? '99+' : waiting}
+              </span>
+            )}
+          </button>
         </div>
       </nav>
       <Dialog open={!!sheet} onOpenChange={(o) => !o && setSheet(null)} title={sheet?.label ?? ''} size="sm">
         <div className="-mx-2 space-y-1">
           {sheet?.items
             .filter((i) => !i.hidden && (!i.adminOnly || isAdmin))
-            .map((i) => (
-              <NavLink
-                key={i.to}
-                to={i.to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-3',
-                    isActive ? 'bg-brand-light' : 'hover:bg-slate-50 active:bg-slate-100',
-                  )
-                }
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-light text-brand-strong">
-                  <i.icon className="h-5 w-5" strokeWidth={1.9} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[16px] font-medium text-slate-900">{i.label}</span>
-                  <span className="block text-[13px] text-slate-500">{i.hint}</span>
-                </span>
-              </NavLink>
+            .map((i, k, all) => (
+              <div key={i.to}>
+                {'group' in i &&
+                  (k === 0 ||
+                    (all[k - 1] as { group?: string }).group !== (i as { group: string }).group) && (
+                    <div className="px-3 pb-1 pt-3 text-[12px] font-semibold uppercase tracking-wide text-slate-500">
+                      {(i as { group: string }).group}
+                    </div>
+                  )}
+                <NavLink
+                  key={i.to}
+                  to={i.to}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 rounded-lg px-3 py-3',
+                      isActive ? 'bg-brand-light' : 'hover:bg-slate-50 active:bg-slate-100',
+                    )
+                  }
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-light text-brand-strong">
+                    <i.icon className="h-5 w-5" strokeWidth={1.9} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[16px] font-medium text-slate-900">{i.label}</span>
+                    <span className="block text-[13px] text-slate-500">{i.hint}</span>
+                  </span>
+                  {i.to === '/review' && !!waiting && <Badge tone="red">{waiting}</Badge>}
+                </NavLink>
+              </div>
             ))}
         </div>
       </Dialog>
@@ -460,7 +531,7 @@ function InstallBanner() {
               setHidden(true);
             }}
           >
-            Not now
+            Not Now
           </button>
         </div>
       </div>

@@ -2,8 +2,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { loginSchema, type LoginInput } from '@livestock/shared';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { signInSchema } from '@livestock/shared';
+
+interface LoginInput {
+  email: string;
+  password: string;
+}
 import { ApiError } from '@/lib/api';
 import { SIGNED_OUT_NOTE, useAuth } from '@/lib/auth';
 import { Button, Input } from '@/components/ui';
@@ -42,12 +47,18 @@ export default function LoginPage() {
     }
   });
   const form = useForm<LoginInput>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(signInSchema),
     defaultValues: { email: '', password: '' },
   });
   const e = form.formState.errors;
 
-  if (user) return <Navigate to={(location.state as { from?: string })?.from ?? '/'} replace />;
+  if (user)
+    return (
+      <Navigate
+        to={user.role === 'OWNER' ? '/app' : ((location.state as { from?: string })?.from ?? '/')}
+        replace
+      />
+    );
 
   const onSubmit = form.handleSubmit(async (v) => {
     setError(null);
@@ -124,7 +135,7 @@ function LoginCard({
     <div
       className={`flex flex-col justify-center rounded-[20px] border border-white/70 bg-white/55 px-7 py-10 shadow-[0_8px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-[15%] ${className}`}
     >
-      <h1 className="text-[24px] font-semibold tracking-tight text-slate-900">Sign in</h1>
+      <h1 className="text-[24px] font-semibold tracking-tight text-slate-900">Sign In</h1>
       <p className="mt-1 text-[15px] text-slate-600">Livestock Monitoring System with GIS Integration.</p>
       {note && !error && (
         <p
@@ -137,11 +148,13 @@ function LoginCard({
       <form className={`${note && !error ? 'mt-4' : 'mt-8'} space-y-4`} onSubmit={onSubmit} noValidate>
         <div>
           <label htmlFor="email" className="mb-1.5 block text-[15px] text-slate-800">
-            Email
+            Email or mobile number
           </label>
           <Input
             id="email"
-            type="email"
+            type="text"
+            inputMode="email"
+            placeholder="name@email.com or 09171234567"
             autoComplete="username"
             {...form.register('email')}
             aria-invalid={!!e.email}
@@ -179,9 +192,22 @@ function LoginCard({
           </p>
         )}
         <Button type="submit" className="!mt-12 w-full" loading={form.formState.isSubmitting}>
-          Sign in
+          Sign In
         </Button>
       </form>
+      <div className="mt-5 space-y-2 border-t border-slate-200 pt-4 text-center text-[15px]">
+        <p className="text-slate-700">
+          Livestock owner?{' '}
+          <Link to="/register" className="font-semibold text-brand-dark underline">
+            Create an account
+          </Link>
+        </p>
+        <p>
+          <Link to="/public" className="text-slate-600 underline">
+            Public livestock information
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

@@ -17,13 +17,13 @@ const more = (page: import('@playwright/test').Page) => page.getByRole('button',
 test('there is no delete: an owner is archived, never removed', async ({ page }) => {
   await page.goto('/owners/1');
   await more(page).click();
-  await expect(page.getByRole('menuitem', { name: /Archive owner/ })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: /Delete/ })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: /Archive owner/i })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Delete/i })).toHaveCount(0);
   await shot(page, 'no-delete-owner');
   await page.keyboard.press('Escape');
   await page.goto('/farms/1');
   await more(page).click();
-  await expect(page.getByRole('menuitem', { name: /Delete/ })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: /Delete/i })).toHaveCount(0);
   // The server has no delete route either.
   expect((await page.request.delete('/api/owners/1')).status()).toBe(404);
   expect((await page.request.delete('/api/farms/1')).status()).toBe(404);
@@ -34,7 +34,7 @@ test('void a duplicate case; it leaves the lists and can be undone', async ({ pa
   const title = await page.getByRole('heading', { level: 1 }).textContent();
   const code = title!.split(' · ')[0];
   await more(page).click();
-  await page.getByRole('menuitem', { name: /Void case/ }).click();
+  await page.getByRole('menuitem', { name: /Void case/i }).click();
   await dialog(page).getByLabel('Reason *').fill('Duplicate of an earlier report');
   await dialog(page).getByRole('button', { name: 'Void record' }).click();
   await expectToast(page, `case ${code} voided.`);
@@ -77,11 +77,11 @@ test('archived farms are listed and can be restored', async ({ page }) => {
   const d = dialog(page);
   await d.getByLabel('Owner', { exact: true }).selectOption({ index: 1 });
   await d.getByLabel('Farm name *').fill('Closed Down Farm');
-  await d.getByRole('button', { name: 'Add farm', exact: true }).click();
+  await d.getByRole('button', { name: 'Add Farm', exact: true }).click();
   await expectToast(page, 'Farm added to the masterlist.');
   page.once('dialog', (x) => x.accept());
   await more(page).click();
-  await page.getByRole('menuitem', { name: /Archive farm/ }).click();
+  await page.getByRole('menuitem', { name: /Archive farm/i }).click();
   await expectToast(page, 'Farm archived.');
   await page.getByLabel('Show archived').check();
   await page.getByRole('cell', { name: 'Closed Down Farm' }).click();

@@ -27,37 +27,37 @@ export function QuickNew() {
   const items: { icon: LucideIcon; label: string; hint: string; run: () => void }[] = [
     {
       icon: ClipboardCheck,
-      label: 'Record a farm visit',
+      label: 'Record a Farm Visit',
       hint: 'Head count, deworming and findings in one form',
       run: () => navigate('/services?tab=visits&visit=1'),
     },
     {
       icon: Syringe,
-      label: 'Record deworming or a service',
+      label: 'Record Deworming or a Service',
       hint: 'Deworming, check-up, vaccination or treatment',
       run: () => navigate('/services?tab=records&new=1'),
     },
     {
       icon: FileWarning,
-      label: 'Report a disease incident',
+      label: 'Report a Disease Incident',
       hint: 'Sick or dead animals reported',
       run: () => navigate('/cases/new'),
     },
     {
       icon: UserPlus,
-      label: 'Add an owner',
+      label: 'Add an Owner',
       hint: 'Owner, farm and livestock, step by step',
       run: () => setRaiser(true),
     },
     {
       icon: ClipboardList,
-      label: 'Update a head count',
+      label: 'Update a Head Count',
       hint: 'Count per species for a farm',
       run: () => navigate('/population'),
     },
     {
       icon: CircleAlert,
-      label: 'Report a stray animal',
+      label: 'Report a Stray Animal',
       hint: 'Found wandering, or a violation',
       run: () => navigate('/strays?new=1'),
     },

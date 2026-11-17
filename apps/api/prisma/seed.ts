@@ -832,6 +832,18 @@ async function wipe() {
   await dropAuditLock(DATABASE_URL);
   await prisma.auditEntry.deleteMany();
   await prisma.activityLog.deleteMany();
+  // The owner side (registrations, reports, notifications, zones, activities, announcements).
+  await prisma.notification.deleteMany();
+  await prisma.reportMessage.deleteMany();
+  await prisma.diseaseReport.deleteMany();
+  await prisma.farmRegistration.deleteMany();
+  await prisma.populationRequest.deleteMany();
+  await prisma.activitySignup.deleteMany();
+  await prisma.vaccinationActivity.deleteMany();
+  await prisma.ownerVaccination.deleteMany();
+  await prisma.serviceRequest.deleteMany();
+  await prisma.announcement.deleteMany();
+  await prisma.monitoringZone.deleteMany();
   await prisma.caseStatusHistory.deleteMany();
   await prisma.investigation.deleteMany();
   await prisma.labRecord.deleteMany();

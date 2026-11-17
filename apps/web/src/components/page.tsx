@@ -34,18 +34,22 @@ export function PageHeader({
   };
   return (
     <div className={cn('mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between', className)}>
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-start gap-2">
         {showBack && (
           <button
             type="button"
             onClick={goBack}
-            className="mb-1.5 inline-flex items-center gap-1 rounded-lg py-0.5 pr-1.5 text-[14px] font-medium text-slate-600 hover:text-brand-dark"
+            aria-label="Back"
+            title="Back"
+            className="-ml-2 mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 active:bg-slate-200"
           >
-            <ArrowLeft className="h-4 w-4" /> Back
+            <ArrowLeft className="h-5 w-5" />
           </button>
         )}
-        <h1 className="page-title">{title}</h1>
-        {subtitle && <div className="page-sub">{subtitle}</div>}
+        <div className="min-w-0">
+          <h1 className="page-title">{title}</h1>
+          {subtitle && <div className="page-sub">{subtitle}</div>}
+        </div>
       </div>
       {actions && (
         <div className="flex flex-wrap items-center gap-2 sm:justify-end [&>button]:grow sm:[&>button]:grow-0">

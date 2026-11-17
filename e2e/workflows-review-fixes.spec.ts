@@ -37,10 +37,10 @@ test('population: "See farms raising" can be undone with Back; farms with 0 head
 test('disease reports: quick views on top, then the list; step to the next case', async ({ page }) => {
   await page.goto('/cases');
   const views = page.getByRole('group', { name: 'Quick views' });
-  await expect(views.getByRole('button', { name: /Open cases/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(views.getByRole('button', { name: /Open cases/i })).toHaveAttribute('aria-pressed', 'true');
   // The graphs are folded away below the list.
   await expect(page.getByRole('button', { name: 'Show trends and graphs' })).toBeVisible();
-  await views.getByRole('button', { name: /All cases/ }).click();
+  await views.getByRole('button', { name: /All cases/i }).click();
   await expect(page).toHaveURL(/state=all/);
   const rows = page.locator('tbody tr');
   const n = await rows.count();
@@ -54,7 +54,7 @@ test('disease reports: quick views on top, then the list; step to the next case'
   await nav.getByRole('button', { name: 'Next case ›' }).click();
   await expect(page.getByRole('heading', { name: new RegExp(second) })).toBeVisible();
   await expect(nav.getByText(`Case 2 of ${n}`)).toBeVisible();
-  await nav.getByRole('link', { name: /Back to all cases/ }).click();
+  await nav.getByRole('link', { name: /Back to all cases/i }).click();
   await expect(page).toHaveURL(/\/cases\?state=all/);
 });
 
@@ -83,7 +83,7 @@ test('a confirmed case of another disease has response steps too, each measure s
   await expect(d.getByLabel('Activity type')).toHaveValue('QUARANTINE');
   await d.getByRole('button', { name: 'Save' }).click();
   await expectToast(page, 'Response activity logged.');
-  await expect(step.getByRole('button', { name: /Update|Edit/ })).toBeVisible();
+  await expect(step.getByRole('button', { name: /Update|Edit/i })).toBeVisible();
   // No second list repeating the same measure.
   await expect(page.getByText('Other measures')).toHaveCount(0);
   await expect(page.getByText('Measures logged')).toHaveCount(0);
@@ -119,7 +119,7 @@ test('analytics charts open the matching records', async ({ page }) => {
   await page.mouse.move(box.x + box.width - 30, box.y + box.height / 2);
   await page.mouse.click(box.x + box.width - 30, box.y + box.height / 2);
   await expect(page).toHaveURL(/\/cases\?month=\d{4}-\d{2}&state=all/);
-  await expect(page.getByText(/Reported in /)).toBeVisible();
+  await expect(page.getByText(/^Reported in /)).toBeVisible();
 });
 
 test('a vaccination target opens the vaccination records it counts', async ({ page }) => {
@@ -129,7 +129,7 @@ test('a vaccination target opens the vaccination records it counts', async ({ pa
   });
   await page.goto('/analytics');
   const card = page.locator('.card').filter({ hasText: 'Vaccination targets' });
-  await card.getByRole('link', { name: /Hog Cholera Vaccine/ }).click();
+  await card.getByRole('link', { name: /Hog Cholera Vaccine/i }).click();
   await expect(page).toHaveURL(/tab=records&type=VACCINATION&species=Pig&vaccine=Hog\+Cholera\+Vaccine/);
   await expect(page.getByText('Vaccine: Hog Cholera Vaccine')).toBeVisible();
 });

@@ -38,7 +38,7 @@ export default function StraysPage() {
         actions={
           canEdit && (
             <Button onClick={() => setOpen(true)}>
-              <Plus /> Report incident
+              <Plus /> Report Incident
             </Button>
           )
         }
@@ -74,7 +74,7 @@ export default function StraysPage() {
                   onChange={setStatus}
                   options={[
                     ...STRAY_STATUSES.map((s) => ({ value: s, label: titleCase(s) })),
-                    { value: 'VOIDED', label: 'Voided (reported in error)' },
+                    { value: 'VOIDED', label: 'Voided (Reported in Error)' },
                   ]}
                   all="All statuses"
                   className="w-[calc(50%-4px)] sm:w-32"
@@ -93,7 +93,7 @@ export default function StraysPage() {
                 header: 'Map',
                 sort: (r) => (r.mapped ? 1 : 0),
                 cell: (r) =>
-                  r.mapped ? <Badge tone="green">Pinned</Badge> : <Badge tone="red">No location</Badge>,
+                  r.mapped ? <Badge tone="green">Pinned</Badge> : <Badge tone="red">No Location</Badge>,
               },
               {
                 key: 'status',

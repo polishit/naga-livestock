@@ -31,6 +31,7 @@ import { addMonths, code, isoDate, isoMonth } from '@livestock/shared';
 import { PrismaClient } from '../src/generated/prisma/client.ts';
 import { adapterFromUrl, dropAuditLock } from '../src/lib/adapter.ts';
 import { ensureAuditLock } from '../src/lib/audit.ts';
+import { storage } from '../src/storage.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'mysql://livestock:livestock@localhost:3306/livestock';
 const prisma = new PrismaClient({ adapter: adapterFromUrl(DATABASE_URL) });
@@ -72,6 +73,18 @@ async function wipe() {
   await dropAuditLock(DATABASE_URL);
   await prisma.auditEntry.deleteMany();
   await prisma.activityLog.deleteMany();
+  // The owner side (registrations, reports, notifications, zones, activities, announcements).
+  await prisma.notification.deleteMany();
+  await prisma.reportMessage.deleteMany();
+  await prisma.diseaseReport.deleteMany();
+  await prisma.farmRegistration.deleteMany();
+  await prisma.populationRequest.deleteMany();
+  await prisma.activitySignup.deleteMany();
+  await prisma.vaccinationActivity.deleteMany();
+  await prisma.ownerVaccination.deleteMany();
+  await prisma.serviceRequest.deleteMany();
+  await prisma.announcement.deleteMany();
+  await prisma.monitoringZone.deleteMany();
   await prisma.caseStatusHistory.deleteMany();
   await prisma.investigation.deleteMany();
   await prisma.labRecord.deleteMany();
@@ -1000,6 +1013,198 @@ async function main() {
   });
 
   /* ---------------- settings ---------------- */
+  /* ---------------- owner app ---------------- */
+  // Two owners near the outbreak use the owner app (sign in with the mobile number).
+  const ownerHash = await bcrypt.hash('Owner@2026', 10);
+  const ownerLogin = async (o: typeof elena, phone: string) =>
+    prisma.user.create({
+      data: {
+        name: o.fullName,
+        email: `${phone}@owner.local`,
+        phone,
+        role: 'OWNER',
+        ownerId: o.id,
+        passwordHash: ownerHash,
+        lastLoginAt: DT(`${ago(1)}T18:00:00`),
+      },
+    });
+  const elenaUser = await ownerLogin(elena, '09175551074');
+  const pedroUser = await ownerLogin(pedro, '09175551102');
+
+  // The monitoring zone around the confirmed ASF case: both owners were alerted.
+  const zone = await prisma.monitoringZone.create({
+    data: {
+      code: code('ZONE', 1),
+      caseId: asf.id,
+      disease: asf.disease,
+      barangay: asf.barangay,
+      lat: juanFarm.lat!,
+      lng: juanFarm.lng!,
+      radiusM: 1000,
+      guidance:
+        'Check your pigs every day. Do not move, sell or slaughter pigs without asking the City Veterinary Office. Do not feed swill (kaning-baboy).',
+      createdBy: LIZA,
+      createdAt: DT(`${ago(60)}T15:00:00`),
+    },
+  });
+  for (const [u, f, d] of [
+    [elenaUser, elenaFarm, 540],
+    [pedroUser, pedroFarm, 680],
+  ] as const)
+    await prisma.notification.create({
+      data: {
+        userId: u.id,
+        type: 'ALERT',
+        title: `${asf.disease} confirmed near your farm`,
+        body: `A confirmed case of ${asf.disease} was recorded about ${d} m from your farm ${f.name}. Your farm is inside the monitoring area (1.00 km).\n\n${zone.guidance}`,
+        link: '/app/alerts',
+        refKey: `zone-${zone.id}-farm-${f.id}`,
+        createdAt: zone.createdAt,
+        readAt: u.id === elenaUser.id ? DT(`${ago(59)}T08:00:00`) : null,
+      },
+    });
+
+  // A new owner registered herself in the owner app: owner and farm wait for the office.
+  // A sample ID card (a drawing, not a real ID) so the review screen has something to show.
+  const idCard = (side: 'front' | 'back') =>
+    Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+<rect width="640" height="400" rx="24" fill="#e8f1ec"/><rect x="0" y="0" width="640" height="70" rx="24" fill="#1f6f4a"/>
+<text x="32" y="46" font-family="Arial" font-size="26" fill="#fff" font-weight="bold">REPUBLIC OF THE PHILIPPINES</text>
+${
+  side === 'front'
+    ? `<rect x="32" y="100" width="170" height="210" rx="8" fill="#c9d8cf"/><circle cx="117" cy="175" r="45" fill="#9fb5a8"/>
+<rect x="62" y="230" width="110" height="60" rx="30" fill="#9fb5a8"/>
+<text x="230" y="130" font-family="Arial" font-size="16" fill="#555">Last Name, First Name</text>
+<text x="230" y="162" font-family="Arial" font-size="28" fill="#111" font-weight="bold">VILLANUEVA, NORA</text>
+<text x="230" y="205" font-family="Arial" font-size="16" fill="#555">Address</text>
+<text x="230" y="232" font-family="Arial" font-size="20" fill="#111">Zone 1, Pacol, Naga City</text>
+<text x="230" y="275" font-family="Arial" font-size="16" fill="#555">PhilSys Card Number</text>
+<text x="230" y="302" font-family="Arial" font-size="22" fill="#111">1234-5678-9012-3456</text>`
+    : `<rect x="32" y="110" width="576" height="40" fill="#c9d8cf"/><text x="32" y="210" font-family="Arial" font-size="18" fill="#555">Sample ID for the demo only</text>`
+}
+<text x="32" y="372" font-family="Arial" font-size="14" fill="#888">SAMPLE ONLY - NOT A VALID ID</text></svg>`,
+    );
+  const noraIds = ['ids/demo/nora-front.svg', 'ids/demo/nora-back.svg'];
+  await storage.put(noraIds[0], idCard('front'), 'image/svg+xml').catch(() => undefined);
+  await storage.put(noraIds[1], idCard('back'), 'image/svg+xml').catch(() => undefined);
+  const nora = await prisma.owner.create({
+    data: {
+      code: code('OWN', 5),
+      fullName: 'Nora Villanueva',
+      barangay: 'Pacol',
+      zone: 'Zone 1',
+      contact: '09175552001',
+      source: 'OWNER_APP',
+      status: 'PENDING',
+      selfRegistered: true,
+      registeredAt: DT(`${ago(1)}T09:30:00`),
+      submittedAt: DT(`${ago(1)}T09:30:00`),
+      idType: 'PHILSYS',
+      idNumber: '1234-5678-9012-3456',
+      idPhotoKeys: noraIds,
+    },
+  });
+  await prisma.user.create({
+    data: {
+      name: nora.fullName,
+      email: '09175552001@owner.local',
+      phone: '09175552001',
+      role: 'OWNER',
+      ownerId: nora.id,
+      passwordHash: ownerHash,
+    },
+  });
+  await prisma.farmRegistration.create({
+    data: {
+      code: code('REG', 1),
+      ownerId: nora.id,
+      name: 'Villanueva Backyard',
+      type: 'backyard',
+      barangay: 'Pacol',
+      zone: 'Zone 1',
+      address: 'Near the Pacol chapel',
+      lat: 13.6551,
+      lng: 123.2241,
+      gpsAccuracy: 11,
+      livestock: [
+        { species: 'Goat', count: 6 },
+        { species: 'Chicken', count: 25 },
+      ],
+      submittedAt: DT(`${ago(1)}T09:40:00`),
+    },
+  });
+
+  // Pedro reported weak chickens from the owner app; it waits for review.
+  const rpt = await prisma.diseaseReport.create({
+    data: {
+      code: code('RPT', 1),
+      ownerId: pedro.id,
+      farmId: pedroFarm.id,
+      species: 'Chicken',
+      signs: ['WEAKNESS', 'NO_APPETITE', 'DIARRHEA'],
+      symptoms: 'Five chickens are weak and not eating since yesterday. Two have green droppings.',
+      affected: 5,
+      deaths: 0,
+      observedAt: D(ago(1)),
+      lat: pedroFarm.lat,
+      lng: pedroFarm.lng,
+      locationSource: 'PHONE_GPS',
+      gpsAccuracy: 14,
+      distanceFromFarm: 20,
+      createdAt: DT(`${ago(0)}T07:15:00`),
+    },
+  });
+  await prisma.notification.create({
+    data: {
+      userId: pedroUser.id,
+      type: 'REPORT',
+      title: `Report ${rpt.code} received`,
+      body: 'The City Veterinary Office received your report. Keep the sick animals away from the others.',
+      link: `/app/reports/${rpt.id}`,
+      createdAt: rpt.createdAt,
+    },
+  });
+
+  // A vaccination activity next week in Cararayan, and one advisory.
+  await prisma.vaccinationActivity.create({
+    data: {
+      code: code('ACT', 1),
+      title: 'Hemorrhagic septicemia vaccination',
+      vaccine: 'Hemosep Vaccine',
+      species: 'Cattle',
+      barangay: 'Cararayan',
+      date: D(ahead(7)),
+      time: '8:00 AM to 12:00 NN',
+      venue: 'Cararayan barangay hall',
+      createdBy: LIZA,
+    },
+  });
+  const ann = await prisma.announcement.create({
+    data: {
+      code: code('ANN', 1),
+      title: 'ASF advisory for Cararayan',
+      body: 'African Swine Fever was confirmed in Cararayan. Do not buy pigs or pork from unknown sources, do not feed swill, and report sick pigs in the owner app right away.',
+      audience: 'BARANGAY',
+      barangay: 'Cararayan',
+      recipients: 2,
+      publishedBy: LIZA,
+      publishedAt: DT(`${ago(59)}T09:00:00`),
+    },
+  });
+  for (const u of [elenaUser, pedroUser])
+    await prisma.notification.create({
+      data: {
+        userId: u.id,
+        type: 'ANNOUNCEMENT',
+        title: ann.title,
+        body: ann.body,
+        link: '/app/alerts?tab=announcements',
+        refKey: `ann-${ann.id}`,
+        createdAt: ann.publishedAt,
+      },
+    });
+
   const settings: Record<string, unknown> = {
     officeAddress: 'City Hall Compound, Naga City, Camarines Sur',
     officeContact: '(054) 000-0000',
@@ -1016,6 +1221,7 @@ async function main() {
       '(ASF open, Newcastle closed), 1 lab submission, 6 services, 2 farm visits, 1 insurance application.',
   );
   console.log('Sign in with admin@nagacityvet.gov.ph / Livestock@2026');
+  console.log('Owner app: 09175551074 (Elena Ramos) or 09175551102 (Pedro Santos) / Owner@2026');
 }
 
 main()

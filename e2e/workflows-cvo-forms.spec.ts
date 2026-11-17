@@ -41,7 +41,7 @@ test('send a batch of samples, print the DA forms, enter results and open a case
   await page.getByRole('button', { name: 'Save submission' }).click();
   await expectToast(page, /Lab submission saved/);
   await expect(page).toHaveURL(/\/lab-submissions\/\d+$/);
-  await expect(page.getByRole('heading', { name: /SUB-\d+ · PCR/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /SUB-\d+ · PCR/i })).toBeVisible();
   await expect(page.getByText('2 pending')).toBeVisible();
 
   // Both DA forms print with the samples listed.
@@ -61,7 +61,7 @@ test('send a batch of samples, print the DA forms, enter results and open a case
   const selects = page.locator('select[aria-label^="Result for"]:visible');
   await selects.nth(0).selectOption('POSITIVE');
   await selects.nth(1).selectOption('NEGATIVE');
-  await page.getByRole('button', { name: /Save 2 results/ }).click();
+  await page.getByRole('button', { name: /Save 2 results/i }).click();
   await expectToast(page, /2 result\(s\) saved\. 1 positive/);
 
   // A positive sample opens a disease case with the farm, disease and sample filled in.
@@ -69,7 +69,7 @@ test('send a batch of samples, print the DA forms, enter results and open a case
   await expect(page).toHaveURL(/\/cases\/new\?fromSample=\d+/);
   await expect(page.getByText(/Opened from sample/)).toBeVisible();
   await page
-    .getByRole('button', { name: /Submit|Report incident|Save/ })
+    .getByRole('button', { name: /Submit|Report incident|Save/i })
     .last()
     .click();
   await expectToast(page, 'Disease incident reported.');
@@ -113,7 +113,7 @@ test('pregnancy diagnosis is offered for cattle and counted with its result', as
   await d.getByRole('button', { name: 'Save' }).click();
   await expectToast(page, 'Pregnancy Diagnosis recorded.');
   await expect(page.getByRole('cell', { name: 'Pregnancy Diagnosis' }).first()).toBeVisible();
-  await expect(page.getByRole('cell', { name: /Pregnant/ }).first()).toBeVisible();
+  await expect(page.getByRole('cell', { name: /Pregnant/i }).first()).toBeVisible();
 });
 
 test('population by farm is filtered by farm type and printed', async ({ page, context }) => {

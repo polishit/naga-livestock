@@ -143,7 +143,7 @@ export function FarmsPage() {
                   className="w-[calc(50%-4px)] sm:w-44"
                 />
                 <FilterSelect
-                  label="Livestock raised"
+                  label="Livestock Raised"
                   value={raised}
                   onChange={setRaised}
                   options={LIVESTOCK_RAISED}
@@ -151,7 +151,7 @@ export function FarmsPage() {
                   className="w-[calc(50%-4px)] sm:w-40"
                 />
                 <FilterSelect
-                  label="Farm scale"
+                  label="Farm Scale"
                   value={type}
                   onChange={setType}
                   options={FARM_TYPES.map((t) => ({ value: t, label: FARM_TYPE_LABELS[t] }))}
@@ -159,28 +159,28 @@ export function FarmsPage() {
                   className="w-[calc(50%-4px)] sm:w-36"
                 />
                 <FilterSelect
-                  label="Farm visit"
+                  label="Farm Visit"
                   value={visit}
                   onChange={setVisit}
                   options={[
                     { value: 'due', label: `Not visited in ${VISIT_DUE_DAYS} days` },
-                    { value: 'recent', label: 'Visited recently' },
+                    { value: 'recent', label: 'Visited Recently' },
                   ]}
                   all="Any visit"
                   className="w-[calc(50%-4px)] sm:w-52"
                 />
                 <FilterSelect
-                  label="Map location"
+                  label="Map Location"
                   value={location}
                   onChange={setLocation}
                   options={[
-                    { value: 'mapped', label: 'On the map' },
-                    { value: 'unmapped', label: 'No map location' },
+                    { value: 'mapped', label: 'On the Map' },
+                    { value: 'unmapped', label: 'No Map Location' },
                   ]}
                   all="Any location"
                   className="w-full sm:w-40"
                 />
-                <Checkbox label="Show archived" checked={archived} onChange={setArchived} />
+                <Checkbox label="Show Archived" checked={archived} onChange={setArchived} />
               </>
             }
             columns={[
@@ -226,7 +226,7 @@ export function FarmsPage() {
                 header: 'Map',
                 sort: (r) => (r.mapped ? 1 : 0),
                 cell: (r) =>
-                  r.mapped ? <Badge tone="green">On map</Badge> : <Badge tone="red">No location</Badge>,
+                  r.mapped ? <Badge tone="green">On Map</Badge> : <Badge tone="red">No Location</Badge>,
               },
             ]}
           />
@@ -453,12 +453,12 @@ export function FarmDetailPage() {
                 items={[
                   f.archived
                     ? {
-                        label: 'Restore farm',
+                        label: 'Restore Farm',
                         icon: RotateCcw,
                         onSelect: () => restore(`/api/farms/${f.id}/restore`, 'Farm restored.'),
                       }
                     : {
-                        label: 'Archive farm',
+                        label: 'Archive Farm',
                         icon: Archive,
                         hint: 'Closed down; needs no animals and no open cases',
                         onSelect: archive,
@@ -470,15 +470,15 @@ export function FarmDetailPage() {
         }
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MiniStat label="Total livestock" value={`${f.total} head`} />
-        <MiniStat label="Livestock raised" value={<span className="text-[18px]">{f.livestockRaised}</span>} />
+        <MiniStat label="Total Livestock" value={`${f.total} head`} />
+        <MiniStat label="Livestock Raised" value={<span className="text-[18px]">{f.livestockRaised}</span>} />
         <MiniStat
-          label="Last farm visit"
+          label="Last Farm Visit"
           value={
             <span className="text-[18px]">{f.lastVisitAt ? fmtDate(f.lastVisitAt) : 'Not visited yet'}</span>
           }
         />
-        <MiniStat label="Open disease cases" value={openCases.length} />
+        <MiniStat label="Open Disease Cases" value={openCases.length} />
       </div>
       <Tabs
         className="mt-5"
@@ -508,7 +508,7 @@ export function FarmDetailPage() {
                     ['Address', f.address],
                     [
                       'Map location',
-                      f.mapped ? `${f.lat}, ${f.lng}` : <Badge tone="red">No map location</Badge>,
+                      f.mapped ? `${f.lat}, ${f.lng}` : <Badge tone="red">No Map Location</Badge>,
                     ],
                     ['Source of record', sourceLabel(f.source)],
                     ['Added to masterlist', fmtDate(f.createdAt)],
@@ -548,7 +548,7 @@ export function FarmDetailPage() {
                       This farm has no map location yet.
                       {editable && (
                         <Button variant="outline" size="sm" onClick={() => setDlg('edit')}>
-                          <MapPin /> Set location
+                          <MapPin /> Set Location
                         </Button>
                       )}
                     </div>
@@ -561,7 +561,7 @@ export function FarmDetailPage() {
                 title="Livestock Population"
                 actions={
                   <Button size="xs" variant="outline" onClick={() => setTab('livestock')}>
-                    View details
+                    View Details
                   </Button>
                 }
               />
@@ -648,12 +648,12 @@ export function FarmDetailPage() {
                     actions={
                       <>
                         <Button size="xs" variant="ghost" onClick={() => setActivityGroup(g)}>
-                          <History /> Activity log
+                          <History /> Activity Log
                         </Button>
                         {editable && (
                           <>
                             <Button size="xs" variant="outline" onClick={() => setDlg('update')}>
-                              Update count
+                              Update Count
                             </Button>
                             <Button
                               size="xs"
@@ -663,7 +663,7 @@ export function FarmDetailPage() {
                                 setDlg('group-edit');
                               }}
                             >
-                              Edit details
+                              Edit Details
                             </Button>
                             {g.count === 0 && g.tagged === 0 && (
                               <Button size="xs" variant="ghost" onClick={() => archiveGroup(g)}>

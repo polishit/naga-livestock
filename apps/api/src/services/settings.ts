@@ -15,6 +15,9 @@ export const DEFAULT_SETTINGS: SettingsInput = {
   lockoutAttempts: 5,
   lockoutMinutes: 15,
   idleTimeoutMinutes: 30,
+  popFlagPercent: 50,
+  popFlagMinHeads: 10,
+  reviewDays: 3,
 };
 
 export async function getSettings(): Promise<SettingsInput> {
