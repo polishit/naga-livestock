@@ -174,7 +174,11 @@ export type AddressLookupState =
  * Fill a form's address (and barangay) from a point clicked on the map.
  * An address the user typed themselves is never overwritten; it is offered as a suggestion instead.
  */
-export function useAddressLookup(form: UseFormReturn<any>, fields: { address: string; barangay?: string }) {
+export function useAddressLookup(
+  form: UseFormReturn<any>,
+  fields: { address: string; barangay?: string },
+  url?: string,
+) {
   const [state, setState] = useState<AddressLookupState>({ status: 'idle' });
   const lastAuto = useRef('');
   const seq = useRef(0);
@@ -189,14 +193,15 @@ export function useAddressLookup(form: UseFormReturn<any>, fields: { address: st
     const id = ++seq.current;
     setState({ status: 'loading' });
     try {
-      const r = await reverseGeocode(lat, lng);
+      const r = await reverseGeocode(lat, lng, url);
       if (id !== seq.current) return; // a newer click took over
       if (fields.barangay && r.barangay) {
         form.setValue(fields.barangay, r.barangay, { shouldDirty: true });
         form.clearErrors(fields.barangay);
       }
       const current = String(form.getValues(fields.address) ?? '').trim();
-      if (!r.address) setState({ status: 'failed' });
+      if (!r.address)
+        setState(r.barangay ? { status: 'filled', barangay: r.barangay } : { status: 'failed' });
       else if (!current || current === lastAuto.current) {
         setAddress(r.address);
         setState({ status: 'filled', barangay: r.barangay });

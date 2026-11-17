@@ -361,3 +361,100 @@ export async function notifyZone(zone: {
     });
   return { farms: farms.length, sent };
 }
+
+/* ---------------- monitoring zones follow the laboratory result ---------------- */
+
+/** What owners inside an automatic monitoring zone are told to do (staff can change it later). */
+export const DEFAULT_ZONE_GUIDANCE =
+  'Check your animals every day. Do not move, sell or slaughter animals from your farm without asking the City Veterinary Office. Do not let visitors near your pens.';
+
+/**
+ * One step instead of two: when a case is confirmed POSITIVE (and has a map location), its
+ * monitoring zone is set at once with the default radius and the owners inside are alerted. If the
+ * result is corrected or the case is voided, the zone it got is lifted and the owners are told.
+ * A zone a reviewer lifted by hand is never set again automatically.
+ */
+export async function autoZones(by?: string | null) {
+  const settings = await (await import('./settings')).getSettings();
+  const actor = by ? `${by} (automatic)` : 'System (automatic)';
+  const positive = await prisma.diseaseCase.findMany({
+    where: { status: 'POSITIVE', closedAt: null, voidedAt: null, lat: { not: null }, lng: { not: null } },
+    select: { id: true, code: true, disease: true, barangay: true, lat: true, lng: true },
+  });
+  const zoned = new Set(
+    (
+      await prisma.monitoringZone.findMany({
+        where: { caseId: { in: positive.map((c) => c.id) } },
+        select: { caseId: true },
+      })
+    ).map((z) => z.caseId),
+  );
+  let set = 0;
+  for (const c of positive.filter((x) => !zoned.has(x.id))) {
+    const zone = await prisma.$transaction(async (tx) => {
+      const created = await tx.monitoringZone.create({
+        data: {
+          code: tempCode(),
+          caseId: c.id,
+          disease: c.disease,
+          barangay: c.barangay,
+          lat: c.lat!,
+          lng: c.lng!,
+          radiusM: settings.defaultRadiusMeters,
+          guidance: DEFAULT_ZONE_GUIDANCE,
+          createdBy: actor,
+        },
+      });
+      const z = await tx.monitoringZone.update({
+        where: { id: created.id },
+        data: { code: displayCode('ZONE', created.id) },
+      });
+      await logActivity(
+        'case',
+        c.id,
+        'zone',
+        `Monitoring zone ${z.code} set automatically around ${c.code} when it was confirmed positive: ${formatDistance(z.radiusM)}`,
+        actor,
+        tx,
+      );
+      return z;
+    });
+    await notifyZone(zone);
+    set++;
+  }
+  // Zones whose case is no longer a confirmed, valid case.
+  const active = await prisma.monitoringZone.findMany({ where: { status: 'ACTIVE', caseId: { not: null } } });
+  const cases = new Map(
+    (
+      await prisma.diseaseCase.findMany({
+        where: { id: { in: active.map((z) => z.caseId!) } },
+        select: { id: true, code: true, status: true, voidedAt: true },
+      })
+    ).map((c) => [c.id, c]),
+  );
+  const stale = active
+    .map((z) => ({ ...z, case: cases.get(z.caseId!) }))
+    .filter((z) => z.case && (z.case.voidedAt || z.case.status !== 'POSITIVE'));
+  for (const z of stale) {
+    const reason = z.case?.voidedAt
+      ? `${z.case.code} was voided (reported in error)`
+      : `The laboratory result of ${z.case?.code} was corrected: it is no longer positive`;
+    await prisma.monitoringZone.update({
+      where: { id: z.id },
+      data: { status: 'LIFTED', liftedBy: actor, liftedAt: new Date(), liftReason: reason },
+    });
+    await logActivity('case', z.caseId!, 'zone', `Monitoring zone ${z.code} lifted: ${reason}`, actor);
+    const farms = await farmsInCircle(z.lat, z.lng, z.radiusM);
+    await notifyOwners(
+      farms.map((f) => f.ownerId),
+      {
+        type: 'ALERT',
+        title: `${z.disease} monitoring area lifted`,
+        body: `The monitoring area for ${z.disease} around your farm was lifted by the City Veterinary Office. Keep watching your animals and report any that get sick.`,
+        link: '/app/alerts',
+        refKey: `zone-${z.id}-lifted`,
+      },
+    );
+  }
+  return { set, lifted: stale.length };
+}

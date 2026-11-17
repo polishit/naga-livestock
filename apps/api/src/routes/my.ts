@@ -8,6 +8,7 @@ import {
   farmRegistrationSchema,
   fmtDate,
   insideNaga,
+  nearestBarangay,
   isoDate,
   notifPrefsSchema,
   ownerProfileSchema,
@@ -33,7 +34,7 @@ import {
   stageOfCase,
 } from '../services/ownerSide';
 import { getSettings } from '../services/settings';
-import { filesRouter, uploadsRouter } from './misc';
+import { filesRouter, reverseGeocode, uploadsRouter } from './misc';
 
 /**
  * The owner app API. Every route works only for a signed-in livestock owner and only ever reads or
@@ -366,6 +367,22 @@ myRouter.get(
       })),
       farms,
     });
+  }),
+);
+
+/** The address of a GPS point (farm form). When the map service is down, the nearest barangay only. */
+myRouter.get(
+  '/geocode/reverse',
+  ah(async (req, res) => {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)
+      throw badRequest('Invalid coordinates');
+    try {
+      res.json(await reverseGeocode(lat, lng));
+    } catch {
+      res.json({ address: '', barangay: nearestBarangay(lat, lng) });
+    }
   }),
 );
 

@@ -42,10 +42,10 @@ import {
 } from '@livestock/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { useApi } from '@/lib/hooks';
+import { useAddressLookup, useApi } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
 import { LogoGlyph } from '@/components/Logo';
-import { err, useZodForm } from '@/components/forms';
+import { AddressLookupHint, err, useZodForm } from '@/components/forms';
 import { ErrorBox, Loading } from '@/components/page';
 import { Badge, Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { DiseaseMapLegend } from '@/components/DiseaseMapLegend';
@@ -845,6 +845,12 @@ function FarmForm() {
     setLoaded(true);
   }, [home.data, reg, loaded, form]);
   const { busy, run } = useSubmit();
+  // GPS or a tap on the map fills in the barangay and the address (the owner can still edit them).
+  const addr = useAddressLookup(
+    form,
+    { address: 'address', barangay: 'barangay' },
+    '/api/my/geocode/reverse',
+  );
   const e = form.formState.errors;
   const [lineError, setLineError] = useState<string | null>(null);
 
@@ -888,45 +894,18 @@ function FarmForm() {
         </Panel>
       )}
       <form noValidate onSubmit={submit} className="space-y-4">
-        <Panel className="space-y-4">
-          <Field label="Farm Name *" error={err(e, 'name')} hint="For example: Reyes Piggery">
-            <Input className={big} {...form.register('name')} />
-          </Field>
-          <Field label="Farm Type *" error={err(e, 'type')}>
-            <Select className={big} {...form.register('type')}>
-              {FARM_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t === 'backyard' ? 'Backyard (small, at home)' : 'Commercial'}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Barangay *" error={err(e, 'barangay')}>
-            <Select className={big} {...form.register('barangay')}>
-              <option value="">Select…</option>
-              {BARANGAYS.map((b) => (
-                <option key={b}>{b}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Zone / Purok" error={err(e, 'zone')}>
-            <Input className={big} {...form.register('zone')} />
-          </Field>
-          <Field label="Street or Landmark" error={err(e, 'address')}>
-            <Input className={big} {...form.register('address')} />
-          </Field>
-        </Panel>
-
         <Panel className="space-y-3">
-          <h2 className="text-[17px] font-semibold">Where is the farm? *</h2>
+          <h2 className="text-[17px] font-semibold">Where Is the Farm? *</h2>
           <p className="text-[14px] text-slate-600">
-            Stand at the farm and tap the button. You can also tap the map to move the pin.
+            Stand at the farm and tap the button. The barangay and address are filled in for you. You can also
+            tap the map to move the pin.
           </p>
           <LocateButton
             onFix={(f) => {
               setPin({ lat: f.lat, lng: f.lng });
               setAccuracy(f.accuracy);
               form.clearErrors(['lat', 'lng']);
+              void addr.lookup(f.lat, f.lng);
             }}
           />
           <div className="isolate h-64 overflow-hidden rounded-xl border border-slate-200">
@@ -935,7 +914,12 @@ function FarmForm() {
                 className="h-full w-full"
                 pick={{
                   value: pin,
-                  onChange: (p) => (setPin(p), setAccuracy(null), form.clearErrors(['lat', 'lng'])),
+                  onChange: (p) => (
+                    setPin(p),
+                    setAccuracy(null),
+                    form.clearErrors(['lat', 'lng']),
+                    void addr.lookup(p.lat, p.lng)
+                  ),
                 }}
                 fitKey={pin ? `${pin.lat},${pin.lng}` : 'none'}
                 focusCircle={
@@ -965,6 +949,36 @@ function FarmForm() {
                 : 'Set the farm location first.'}
             </p>
           )}
+        </Panel>
+
+        <Panel className="space-y-4">
+          <Field label="Farm Name *" error={err(e, 'name')} hint="For example: Reyes Piggery">
+            <Input className={big} {...form.register('name')} />
+          </Field>
+          <Field label="Farm Type *" error={err(e, 'type')}>
+            <Select className={big} {...form.register('type')}>
+              {FARM_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t === 'backyard' ? 'Backyard (small, at home)' : 'Commercial'}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Barangay *" error={err(e, 'barangay')}>
+            <Select className={big} {...form.register('barangay')}>
+              <option value="">Select…</option>
+              {BARANGAYS.map((b) => (
+                <option key={b}>{b}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Zone / Purok" error={err(e, 'zone')}>
+            <Input className={big} {...form.register('zone')} />
+          </Field>
+          <Field label="Street or Landmark" error={err(e, 'address')}>
+            <Input className={big} {...form.register('address')} />
+            <AddressLookupHint state={addr.state} onApplySuggestion={addr.applySuggestion} />
+          </Field>
         </Panel>
 
         <Panel className="space-y-3">

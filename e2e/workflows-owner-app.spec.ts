@@ -254,16 +254,9 @@ test('the owner reports sick pigs; the office validates, confirms and alerts; th
   expect(lab.ok()).toBeTruthy();
   await page.reload();
   await expect(page.getByText('Owner sees: Confirmed')).toBeVisible();
-  await page.getByRole('link', { name: 'Set a monitoring zone and alert nearby owners' }).click();
-  const d = dialog(page);
-  await expect(d.getByLabel('Confirmed case (epicenter)')).toHaveValue(String(caseId));
-  await d.getByLabel('Radius').selectOption('3000');
-  await d.getByRole('button', { name: 'Set zone and alert owners' }).click();
-  await expectToast(page, /ZONE-\d+ set\./);
-  await page
-    .getByRole('button', { name: /ZONE-\d+ · African Swine Fever/i })
-    .first()
-    .click();
+  // One step: the positive result set the monitoring zone and alerted the owners nearby.
+  await page.getByRole('link', { name: /Monitoring zone ZONE-\d+ \(active\)/i }).click();
+  await expect(page.getByRole('heading', { name: /ZONE-\d+: African Swine Fever/i })).toBeVisible();
   await expect(page.getByText(/alert\(s\) sent · /).first()).toBeVisible();
   await shot(page, 'zones');
 

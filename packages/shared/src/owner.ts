@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BARANGAYS, BARANGAY_CENTERS, CLINICAL_SIGNS, FARM_TYPES, SERVICE_TYPES, SPECIES } from './constants';
 import { intField, newPassword, optDate, optText, pastDate, reqDate, reqText } from './schemas';
+import { distanceMeters } from './geo';
 
 /**
  * The livestock owner side: registration, farm registration, head count updates, disease reports,
@@ -24,6 +25,25 @@ export const insideNaga = (lat: number, lng: number) =>
   lat <= NAGA_BOUNDS.maxLat &&
   lng >= NAGA_BOUNDS.minLng &&
   lng <= NAGA_BOUNDS.maxLng;
+
+/**
+ * The barangay whose centre is nearest to a point (within `maxM` metres), for when the map service
+ * does not know the barangay. A guess the owner or staff can still change.
+ */
+export function nearestBarangay(lat: number, lng: number, maxM = 4000): (typeof BARANGAYS)[number] | null {
+  let best: (typeof BARANGAYS)[number] | null = null;
+  let bestD = Infinity;
+  for (const b of BARANGAYS) {
+    const c = BARANGAY_CENTERS[b];
+    if (!c) continue;
+    const d = distanceMeters(lat, lng, c[0], c[1]);
+    if (d < bestD) {
+      bestD = d;
+      best = b;
+    }
+  }
+  return bestD <= maxM ? best : null;
+}
 
 /** A mobile number as 11 digits starting with 09 (accepts +63 and spaces); null when not valid. */
 export function normalizePhone(v: string | null | undefined): string | null {

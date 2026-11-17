@@ -219,13 +219,16 @@ export function ZonesPage() {
   const confirmed = (cases.data ?? []).filter(
     (c) => c.status === 'POSITIVE' && !c.closed && !c.voided && !zoned.has(c.id),
   );
+  const allCases = (cases.data ?? []).filter((c) => !c.closed && !c.voided);
+  const waitingLab = allCases.filter((c) => c.status !== 'POSITIVE' && c.status !== 'NEGATIVE').length;
+  const noPin = confirmed.filter((c) => c.lat == null).length;
   const setOpen = (id: number | null) => setParams(id ? { zone: String(id) } : {}, { replace: true });
   const z = detail.data;
   return (
     <div>
       <PageHeader
         title="Monitoring Zones"
-        subtitle="An epicenter with a radius around a confirmed case. Owners of the farms inside are alerted in the owner app, with the distance to their own farm."
+        subtitle="A radius around a confirmed (positive) case, set automatically when the laboratory result is positive. Owners of the farms inside are alerted in the owner app, with the distance to their own farm. Change the radius or lift a zone here."
         actions={
           isReviewer && (
             <Button onClick={() => (setEditing(null), setCreating(true))}>
@@ -400,6 +403,25 @@ export function ZonesPage() {
             }
           })}
         >
+          {!editing && confirmed.length === 0 && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-[14px] text-sky-900">
+              <b>No confirmed case is waiting for a zone.</b> A zone is set automatically when a case is
+              confirmed positive by the laboratory, so most cases already have one.
+              {waitingLab > 0 && (
+                <>
+                  {' '}
+                  {waitingLab} open case(s) are still suspected (waiting for the laboratory result): they show
+                  on the staff map but get a zone only when the result is positive.
+                </>
+              )}
+            </div>
+          )}
+          {!editing && noPin > 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-[14px] text-amber-900">
+              {noPin} confirmed case(s) have no map location yet. Add the location on the case and the zone is
+              set automatically.
+            </p>
+          )}
           {!editing && (
             <Field
               label="Confirmed Case (Epicenter) *"

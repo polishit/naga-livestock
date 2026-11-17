@@ -1753,6 +1753,42 @@ describe('CVO forms: laboratory submissions, cattle and carabao services, search
     await admin.post(`/api/cases/${c.body.id}/void`).send({ reason: 'Test case' });
   });
 
+  it('a sample sent for an open case moves it: positive sets the zone at once, a correction lifts it', async () => {
+    const c = await admin.post('/api/cases').send({
+      ownerId: 1,
+      farmId: 1,
+      species: 'Pig',
+      disease: 'African Swine Fever (ASF)',
+      affected: 2,
+      deaths: 0,
+    });
+    expect(c.status).toBe(201);
+    const b = await batch([pig('INV-LINK-1')], { purpose: 'DISEASE_INVESTIGATION' });
+    expect(b.status).toBe(201);
+    let s = (await admin.get(`/api/lab-submissions/${b.body.id}`)).body;
+    expect(s.samples[0].caseId).toBe(c.body.id);
+    await admin.post(`/api/lab-submissions/${b.body.id}/results`).send({
+      resultDate: today,
+      results: [{ id: s.samples[0].id, result: 'POSITIVE' }],
+    });
+    let detail = (await admin.get(`/api/cases/${c.body.id}`)).body;
+    expect(detail.case.status).toBe('POSITIVE');
+    const zone = (await admin.get('/api/zones')).body.find(
+      (z: { caseId: number; status: string }) => z.caseId === c.body.id && z.status === 'ACTIVE',
+    );
+    expect(zone).toBeTruthy();
+    // The result was typed wrong: corrected to negative, the zone is lifted.
+    await admin.post(`/api/lab-submissions/${b.body.id}/results`).send({
+      resultDate: today,
+      results: [{ id: s.samples[0].id, result: 'NEGATIVE' }],
+    });
+    detail = (await admin.get(`/api/cases/${c.body.id}`)).body;
+    expect(detail.case.status).toBe('NEGATIVE');
+    s = (await admin.get(`/api/zones/${zone.id}`)).body;
+    expect(s).toMatchObject({ status: 'LIFTED', liftReason: expect.stringMatching(/corrected/) });
+    await admin.post(`/api/cases/${c.body.id}/void`).send({ reason: 'Test case' });
+  });
+
   it('cases are classified Reported → Suspected → Active / Negative → Closed', async () => {
     const c = await admin.post('/api/cases').send({
       ownerId: 1,
@@ -2512,20 +2548,25 @@ describe('the owner app: registration, head counts, reports, alerts', () => {
     // Only for a confirmed case, and only by a reviewer.
     expect((await admin.post('/api/zones').send({ caseId: 6, radiusM: 1000 })).status).toBe(400);
     expect((await viewer.post('/api/zones').send({ caseId, radiusM: 100 })).status).toBe(403);
-    const z = await admin
-      .post('/api/zones')
-      .send({ caseId, radiusM: 100, guidance: 'Do not move pigs out of the area.' });
-    expect(z.status).toBe(201);
-    expect(z.body.code).toMatch(/^ZONE-/);
+    // One step: the positive result already set the zone (default radius) and alerted Ben (~300 m).
+    const auto = (await admin.get('/api/zones')).body.find(
+      (x: { caseId: number; status: string }) => x.caseId === caseId && x.status === 'ACTIVE',
+    );
+    expect(auto).toMatchObject({ radiusM: 1000, createdBy: expect.stringMatching(/automatic/) });
+    const z = { body: auto as { id: number } };
+    expect((await ben.get('/api/my/alerts')).body[0]).toMatchObject({ radiusM: 1000 });
     expect((await admin.post('/api/zones').send({ caseId, radiusM: 500 })).body.error).toMatch(
       /already has an active monitoring zone/,
     );
-    // Ben's farm is about 300 m away: outside 100 m.
+    // Narrowed to 100 m, Ben's farm is outside; widened to 500 m it is inside again (no second alert).
+    await admin
+      .patch(`/api/zones/${z.body.id}`)
+      .send({ radiusM: 100, guidance: 'Do not move pigs out of the area.' });
     expect((await ben.get('/api/my/alerts')).body).toEqual([]);
     const wider = await admin
       .patch(`/api/zones/${z.body.id}`)
       .send({ radiusM: 500, guidance: 'Do not move pigs out of the area.' });
-    expect(wider.body.newlyNotified).toBeGreaterThanOrEqual(1);
+    expect(wider.body.newlyNotified).toBe(0);
     const alerts = (await ben.get('/api/my/alerts')).body;
     expect(alerts[0]).toMatchObject({
       disease: 'African Swine Fever (ASF)',

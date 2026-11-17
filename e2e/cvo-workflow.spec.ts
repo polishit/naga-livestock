@@ -93,7 +93,7 @@ test('dashboard boxes open their records; no shortcut buttons at the top', async
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Record Farm Visit' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Report Incident' })).toHaveCount(0);
-  await page.getByRole('link', { name: /Confirmed Positive/i }).click();
+  await page.getByRole('link', { name: /^Confirmed Positive/ }).click();
   await expect(page).toHaveURL(/\/cases\?status=POSITIVE/);
   await page.goto('/');
   await page

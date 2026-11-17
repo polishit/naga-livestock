@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/node';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import { autoZones } from './services/ownerSide';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -76,6 +77,20 @@ export function createApp() {
   // The CVO system: staff accounts only, and never with a temporary password still in use.
   api.use(requireAuth, staffOnly, passwordChanged);
   // Delete (entered by mistake), void, restore and edit actions on the records below.
+  // A lab result, a map location or a voided case can confirm or un-confirm a case: its monitoring
+  // zone follows before the answer is sent (so the CVO does it in one step, not two).
+  api.use((req, res, next) => {
+    if (req.method === 'GET' || !/^\/(cases|labs|lab-submissions|farms)(\/|$)/.test(req.path)) return next();
+    const send = res.json.bind(res);
+    res.json = ((body: unknown) => {
+      if (res.statusCode >= 400) return send(body);
+      autoZones(req.user?.name)
+        .catch((e) => console.error('Automatic monitoring zone failed', e))
+        .finally(() => send(body));
+      return res;
+    }) as typeof res.json;
+    next();
+  });
   api.use('/', recordActionsRouter);
   api.use('/owners', ownersRouter);
   api.use('/farms', farmsRouter);

@@ -160,8 +160,9 @@ export interface ReverseGeocodeResult {
   address: string;
   barangay: string | null;
 }
-export const reverseGeocode = (lat: number, lng: number) =>
-  api.get<ReverseGeocodeResult>(`/api/geocode/reverse?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`);
+/** The address of a point. The owner app uses its own route (`/api/my/geocode/reverse`). */
+export const reverseGeocode = (lat: number, lng: number, url = '/api/geocode/reverse') =>
+  api.get<ReverseGeocodeResult>(`${url}?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`);
 
 export function runSync() {
   return syncOutbox(

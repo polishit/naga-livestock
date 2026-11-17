@@ -18,6 +18,7 @@ import {
   ROLE_LABELS,
   USER_STATUS_LABELS,
   changePasswordSchema,
+  nearestBarangay,
   normalizePhone,
   ownerRegisterSchema,
   signInSchema,
@@ -632,14 +633,10 @@ export async function reverseGeocode(lat: number, lng: number) {
       throw new HttpError(502, 'Address lookup is unavailable right now. Type the address manually.');
     }
     const a = data.address ?? {};
-    const barangay = matchBarangay(
-      a.quarter,
-      a.neighbourhood,
-      a.suburb,
-      a.village,
-      a.hamlet,
-      a.city_district,
-    );
+    // Many Naga barangays are not named on the map: fall back to the nearest barangay centre.
+    const barangay =
+      matchBarangay(a.quarter, a.neighbourhood, a.suburb, a.village, a.hamlet, a.city_district) ??
+      nearestBarangay(lat, lng);
     const street = [a.house_number, a.road].filter(Boolean).join(' ');
     const parts = [
       street,

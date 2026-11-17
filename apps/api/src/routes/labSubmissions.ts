@@ -174,6 +174,47 @@ labSubmissionsRouter.get(
   }),
 );
 
+/**
+ * A sample sent for a disease investigation or diagnosis belongs to the case already open on its
+ * farm for that disease and livestock, so its result moves that case: a positive result confirms
+ * the case without a second step. Other samples stay unlinked ("Needs a case").
+ */
+async function linkOpenCases(tx: Prisma.TransactionClient, submissionId: number, by?: string | null) {
+  // Only samples taken because animals are sick; surveillance samples are matched by hand.
+  const sub = await tx.labSubmission.findUnique({ where: { id: submissionId } });
+  if (!sub || !['DISEASE_INVESTIGATION', 'DIAGNOSTICS'].includes(sub.purpose)) return;
+  const exam = sub.examination.toLowerCase();
+  const sameDisease = (disease: string) => {
+    const d = disease.toLowerCase();
+    const short = /\(([^)]+)\)/.exec(d)?.[1];
+    return exam.includes(d.replace(/\s*\([^)]*\)/, '').trim()) || (!!short && exam.includes(short));
+  };
+  const loose = await tx.labRecord.findMany({
+    where: { submissionId, caseId: null, voidedAt: null, farmId: { not: null } },
+  });
+  const touched = new Set<number>();
+  for (const x of loose) {
+    const open = await tx.diseaseCase.findMany({
+      where: { farmId: x.farmId!, closedAt: null, voidedAt: null },
+      orderBy: { id: 'desc' },
+      select: { id: true, code: true, species: true, disease: true },
+    });
+    const c = open.find((o) => (!x.species || o.species === x.species) && sameDisease(o.disease));
+    if (!c) continue;
+    await tx.labRecord.update({ where: { id: x.id }, data: { caseId: c.id } });
+    await logActivity(
+      'case',
+      c.id,
+      'lab',
+      `Sample ${x.sampleId} (lab submission) attached to ${c.code}`,
+      by,
+      tx,
+    );
+    touched.add(c.id);
+  }
+  for (const id of touched) await syncCaseStatus(tx, id, by);
+}
+
 labSubmissionsRouter.post(
   '/',
   ah(async (req, res) => {
@@ -201,6 +242,7 @@ labSubmissionsRouter.post(
       await tx.labRecord.createMany({
         data: d.samples.map((x) => ({ submissionId: s.id, ...sampleData(x), ...headerOnSample(d) })),
       });
+      await linkOpenCases(tx, s.id, req.user?.name);
       await logActivity(
         'lab-submission',
         s.id,
@@ -266,6 +308,7 @@ labSubmissionsRouter.patch(
           if (old.caseId) await syncCaseStatus(tx, old.caseId, req.user?.name);
         } else await tx.labRecord.create({ data: { submissionId: id, ...data } });
       }
+      await linkOpenCases(tx, id, req.user?.name);
       await logActivity('lab-submission', id, 'updated', `${before.code} updated`, req.user?.name, tx);
     });
     res.json({ id });
@@ -314,6 +357,7 @@ labSubmissionsRouter.post(
         });
         if (x.caseId) await syncCaseStatus(tx, x.caseId, req.user?.name);
       }
+      await linkOpenCases(tx, id, req.user?.name);
       const pos = d.results.filter((r) => r.result === 'POSITIVE').length;
       await logActivity(
         'lab-submission',
