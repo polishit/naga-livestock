@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays } from 'lucide-react';
+import {} from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BARANGAYS,
@@ -29,8 +29,17 @@ import { DataTable } from '@/components/DataTable';
 import { ExportButtons } from '@/components/ExportButtons';
 import { CompareKpis, DataQualityCard, HotspotsCard, TargetsCard } from '@/components/insights';
 import { MapView } from '@/components/MapView';
-import { ErrorBox, FilterSelect, Loading, PageHeader, SummaryChips } from '@/components/page';
-import { Button, Card, Field, Input, Tabs } from '@/components/ui';
+import {
+  ErrorBox,
+  FilterField,
+  FilterSelect,
+  Loading,
+  MoreFilters,
+  PageHeader,
+  SummaryChips,
+} from '@/components/page';
+import MonthlyReportPage from './MonthlyReportPage';
+import { Card, Field, Input, Tabs } from '@/components/ui';
 import type { CaseRow, FarmSummary, Overview } from './types';
 
 /* ---------------- Analytics ---------------- */
@@ -57,14 +66,6 @@ export function AnalyticsPage() {
               className="w-full sm:w-48"
             />
             <FilterSelect
-              label="Species"
-              value={species}
-              onChange={setSpecies}
-              options={SPECIES}
-              all="All species"
-              className="w-[calc(50%-4px)] sm:w-36"
-            />
-            <FilterSelect
               label="Period"
               value={months}
               onChange={setMonths}
@@ -75,6 +76,15 @@ export function AnalyticsPage() {
               ]}
               className="w-[calc(50%-4px)] sm:w-40"
             />
+            <MoreFilters active={species ? 1 : 0} onClear={() => (setSpecies(''))} align="right">
+              <FilterSelect
+                label="Species"
+                value={species}
+                onChange={setSpecies}
+                options={SPECIES}
+                all="All species"
+              />
+            </MoreFilters>
           </>
         }
       />
@@ -212,52 +222,55 @@ function ReportFilters({
   setF: (v: { barangay: string; species: string; from: string; to: string }) => void;
 }) {
   return (
-    <Card className="p-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(240px,320px)_190px_140px_150px_150px]">
-        <Field label="Report Type" className="col-span-2 md:col-span-1">
-          <FilterSelect
-            label="Report Type"
-            value={type}
-            onChange={setType}
-            options={types.map((t) => ({ value: t.id, label: t.title }))}
-          />
-        </Field>
-        <Field label="Barangay">
+    <Card className="flex flex-wrap items-center gap-2 p-3">
+      <FilterSelect
+        label="Report Type"
+        value={type}
+        onChange={setType}
+        options={types.map((t) => ({ value: t.id, label: t.title }))}
+        className="w-full sm:w-96"
+      />
+      {type !== 'monthly-report' && (
+        <>
           <FilterSelect
             label="Barangay"
             value={f.barangay}
             onChange={(v) => setF({ ...f, barangay: v })}
             options={BARANGAYS}
             all="All barangays"
+            className="w-[calc(50%-4px)] sm:w-48"
           />
-        </Field>
-        <Field label="Species">
-          <FilterSelect
-            label="Species"
-            value={f.species}
-            onChange={(v) => setF({ ...f, species: v })}
-            options={SPECIES}
-            all="All species"
-          />
-        </Field>
-        <Field label="From">
-          <Input
-            type="date"
-            min={MIN_DATE}
-            max={f.to || undefined}
-            value={f.from}
-            onChange={(e) => setF({ ...f, from: e.target.value })}
-          />
-        </Field>
-        <Field label="To">
-          <Input
-            type="date"
-            min={f.from || MIN_DATE}
-            value={f.to}
-            onChange={(e) => setF({ ...f, to: e.target.value })}
-          />
-        </Field>
-      </div>
+          <MoreFilters
+            active={[f.species, f.from || f.to].filter(Boolean).length}
+            onClear={() => setF({ ...f, species: '', from: '', to: '' })}
+          >
+            <FilterSelect
+              label="Species"
+              value={f.species}
+              onChange={(v) => setF({ ...f, species: v })}
+              options={SPECIES}
+              all="All species"
+            />
+            <FilterField label="From">
+              <Input
+                type="date"
+                min={MIN_DATE}
+                max={f.to || undefined}
+                value={f.from}
+                onChange={(e) => setF({ ...f, from: e.target.value })}
+              />
+            </FilterField>
+            <FilterField label="To">
+              <Input
+                type="date"
+                min={f.from || MIN_DATE}
+                value={f.to}
+                onChange={(e) => setF({ ...f, to: e.target.value })}
+              />
+            </FilterField>
+          </MoreFilters>
+        </>
+      )}
     </Card>
   );
 }
@@ -327,7 +340,6 @@ function OutbreakReport({ initialCase, initialRadius }: { initialCase?: string; 
 }
 
 export function ReportsPage() {
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // Opens on the accomplishment report; links can pick a tab and report, e.g. ?tab=population&type=...
   const tab = (params.get('tab') as ReportCategory) ?? 'summary';
@@ -341,7 +353,7 @@ export function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   const { data, isLoading, error } = useApi<ReportResult>(
-    tab !== 'outbreak' && type ? `/api/reports/${type}${qs(f)}` : null,
+    tab !== 'outbreak' && type && type !== 'monthly-report' ? `/api/reports/${type}${qs(f)}` : null,
   );
 
   return (
@@ -349,11 +361,6 @@ export function ReportsPage() {
       <PageHeader
         title="Reports"
         subtitle={`${REPORT_TYPES.length} ready-made reports — view, print or download as Excel, CSV or PDF (with letterhead).`}
-        actions={
-          <Button onClick={() => navigate('/monthly-report')}>
-            <CalendarDays /> Monthly Report
-          </Button>
-        }
       />
       <Tabs
         value={tab}
@@ -369,7 +376,16 @@ export function ReportsPage() {
         ) : (
           <>
             <ReportFilters types={types} type={type} setType={setType} f={f} setF={setF} />
-            {error ? <ErrorBox error={error} /> : <ReportTable report={data} loading={isLoading} />}
+            {type === 'monthly-report' ? (
+              // The monthly report has its own view: graphs and the printed office report.
+              <div className="mt-4">
+                <MonthlyReportPage embedded />
+              </div>
+            ) : error ? (
+              <ErrorBox error={error} />
+            ) : (
+              <ReportTable report={data} loading={isLoading} />
+            )}
           </>
         )}
       </div>

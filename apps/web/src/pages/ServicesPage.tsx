@@ -1,4 +1,4 @@
-import { CloudOff, Plus, Printer, RefreshCw, Trash2, Wifi, X } from 'lucide-react';
+import { CloudOff, MapPin, Plus, Printer, RefreshCw, Trash2, Wifi } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -9,8 +9,6 @@ import {
   SERVICE_SPECIES_ORDER,
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
-  VISIT_PURPOSES,
-  VISIT_PURPOSE_LABELS,
   fmtDate,
   fmtMonth,
   isoMonth,
@@ -27,8 +25,17 @@ import { ChartCard, ServiceTrendBars, SpeciesHeadBars } from '@/components/chart
 import { DataTable, type Column } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { ActivityTimeline } from '@/components/livestock';
-import { ScheduleCalendar } from '@/components/ScheduleCalendar';
-import { ErrorBox, FilterBar, FilterSelect, Loading, PageHeader, StatCard } from '@/components/page';
+import {} from '@/components/ScheduleCalendar';
+import {
+  ErrorBox,
+  FilterBar,
+  FilterField,
+  FilterSelect,
+  Loading,
+  MoreFilters,
+  PageHeader,
+  StatCard,
+} from '@/components/page';
 import { Badge, Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
 import { VoidDialog } from '@/dialogs/surveillance';
 import {
@@ -55,9 +62,32 @@ interface MonthlySummary {
   trend: { month: string; label: string; dewormed: number; checkups: number; visits: number }[];
 }
 
-/** Activity Log tabs. The old Service Records list is the Activity Log itself; Field Visits is now Field Visits. */
-type Tab = 'log' | 'upcoming' | 'coverage' | 'summary';
-const OLD_TABS: Record<string, Tab> = { records: 'log', overview: 'summary' };
+/**
+ * Activity Log tabs. Field visits are part of the log (type "Farm Visit"); the upcoming schedule is on
+ * the Vaccination Schedule page.
+ */
+type Tab = 'log' | 'coverage' | 'summary';
+const OLD_TABS: Record<string, Tab> = { records: 'log', overview: 'summary', visits: 'log' };
+/** The "Farm Visit" choice of the Service filter. */
+const VISIT = 'VISIT';
+
+/** One line of the Activity Log: a service given, or a visit to a farm. */
+interface LogRow {
+  key: string;
+  date: string;
+  label: string;
+  tone: 'blue' | 'amber' | 'green' | 'violet' | 'slate' | 'red';
+  farmId: number;
+  farmName: string | null;
+  barangay: string | null;
+  species: string | null;
+  count: number | null;
+  product: string;
+  by: string | null;
+  remarks: string | null;
+  service?: VaccinationRow;
+  visit?: VisitRecord;
+}
 
 const SERVICE_TONE: Record<string, 'blue' | 'amber' | 'green' | 'violet' | 'slate'> = {
   DEWORMING: 'blue',
@@ -80,12 +110,12 @@ const speciesRank = (s: string) => {
  */
 export default function ServicesPage() {
   const [params] = useSearchParams();
-  // Old links to the Field Visits tab open the Field Visits page.
+  // Old links to the Field Visits tab list the farm visits in the log.
   if (params.get('tab') === 'visits') {
     const p = new URLSearchParams(params);
     p.delete('tab');
-    const q = p.toString();
-    return <Navigate to={`/field-visits${q ? `?${q}` : ''}`} replace />;
+    p.set('type', VISIT);
+    return <Navigate to={`/services?${p.toString()}`} replace />;
   }
   return <ActivityLog />;
 }
@@ -97,8 +127,7 @@ function ActivityLog() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('tab') ?? '';
   const tab: Tab =
-    OLD_TABS[raw] ??
-    ((['log', 'upcoming', 'coverage', 'summary'] as string[]).includes(raw) ? (raw as Tab) : 'log');
+    OLD_TABS[raw] ?? ((['log', 'coverage', 'summary'] as string[]).includes(raw) ? (raw as Tab) : 'log');
   const setTab = (t: Tab) =>
     setParams(
       (p) => {
@@ -122,6 +151,17 @@ function ActivityLog() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<VaccinationRow | null>(null);
   const [voiding, setVoiding] = useState<VaccinationRow | null>(null);
+  const [visitOpen, setVisitOpen] = useState(false);
+  const [editVisit, setEditVisit] = useState<VisitRecord | null>(null);
+  const [voidVisit, setVoidVisit] = useState<VisitRecord | null>(null);
+  // ?visit=1 (from the "+ New" menu) opens the farm visit form.
+  useEffect(() => {
+    if (params.get('visit') !== '1') return;
+    setVisitOpen(true);
+    const p = new URLSearchParams(params);
+    p.delete('visit');
+    setParams(p, { replace: true });
+  }, [params, setParams]);
   // "+ New" links (?new=1) open the form even when this page is already open.
   useEffect(() => {
     if (params.get('new') !== '1') return;
@@ -135,37 +175,75 @@ function ActivityLog() {
     tab === 'summary' ? `/api/monthly-summary${qs({ month, barangay })}` : null,
   );
   const records = useApi<VaccinationRow[]>(
-    tab === 'log' ? `/api/vaccinations${qs({ barangay, type })}` : null,
+    tab === 'log' && type !== VISIT ? `/api/vaccinations${qs({ barangay, type })}` : null,
+  );
+  const visits = useApi<VisitRecord[]>(
+    tab === 'log' && (!type || type === VISIT) ? `/api/farm-visits${qs({ barangay, from, to })}` : null,
   );
   const upcoming = useApi<{
     days: number;
     overdueDays: number;
     rows: (VaccinationRow & { overdue?: boolean })[];
-  }>(
-    tab === 'upcoming' || tab === 'summary'
-      ? // The calendar shows the next 6 months.
-        `/api/vaccinations/upcoming${qs({ barangay, days: tab === 'upcoming' ? '183' : '' })}`
-      : null,
-  );
+  }>(tab === 'summary' ? `/api/vaccinations/upcoming${qs({ barangay })}` : null);
   const coverage = useApi<{ from: string; to: string; rows: CoverageRow[] }>(
     tab === 'coverage' ? `/api/vaccinations/coverage${qs({ barangay, from, to })}` : null,
   );
 
-  const rows = (records.data ?? []).filter(
-    (r) =>
-      !r.voided &&
-      (!species || r.species === species) &&
-      (!from || r.date >= from) &&
-      (!to || r.date <= to) &&
-      (!vaccine || (r.vaccine ?? '').trim().toLowerCase() === vaccine.trim().toLowerCase()),
-  );
+  const services = type === VISIT ? [] : (records.data ?? []);
+  const serviceRows: LogRow[] = services
+    .filter(
+      (r) =>
+        !r.voided &&
+        (!species || r.species === species) &&
+        (!from || r.date >= from) &&
+        (!to || r.date <= to) &&
+        (!vaccine || (r.vaccine ?? '').trim().toLowerCase() === vaccine.trim().toLowerCase()),
+    )
+    .map((r) => ({
+      key: `s${r.id}`,
+      date: r.date,
+      label: r.serviceLabel,
+      tone: SERVICE_TONE[r.serviceType] ?? 'slate',
+      farmId: r.farmId,
+      farmName: r.farmName,
+      barangay: r.barangay,
+      species: r.species,
+      count: r.count,
+      product: [r.resultLabel, r.vaccine].filter(Boolean).join(' · ') || '—',
+      by: r.administeredBy ?? null,
+      remarks: r.remarks ?? null,
+      service: r,
+    }));
+  // Farm visits have no species or head count, so a species or vaccine filter leaves them out.
+  const visitRows: LogRow[] =
+    type && type !== VISIT
+      ? []
+      : (species || vaccine ? [] : (visits.data ?? [])).map((v) => ({
+          key: `v${v.id}`,
+          date: v.date,
+          label: 'Farm Visit',
+          tone: v.findings === 'SICK_ANIMALS' ? 'red' : 'slate',
+          farmId: v.farmId,
+          farmName: v.farmName,
+          barangay: v.barangay,
+          species: null,
+          count: null,
+          product: [v.purposeLabel, v.findingsLabel, v.caseCode && `Case ${v.caseCode}`]
+            .filter(Boolean)
+            .join(' · '),
+          by: v.visitedBy,
+          remarks: v.remarks,
+          visit: v,
+        }));
+  const rows = [...serviceRows, ...visitRows].sort((a, b) => b.date.localeCompare(a.date));
+  const heads = rows.reduce((a, x) => a + (x.count ?? 0), 0);
 
-  const columns: Column<VaccinationRow>[] = [
+  const columns: Column<LogRow>[] = [
     { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date) },
     {
-      key: 'serviceType',
-      header: 'Service',
-      cell: (r) => <Badge tone={SERVICE_TONE[r.serviceType] ?? 'slate'}>{r.serviceLabel}</Badge>,
+      key: 'label',
+      header: 'Activity',
+      cell: (r) => <Badge tone={r.tone}>{r.label}</Badge>,
     },
     {
       key: 'farmName',
@@ -177,14 +255,10 @@ function ActivityLog() {
       ),
     },
     { key: 'barangay', header: 'Barangay' },
-    { key: 'species', header: 'Species' },
-    { key: 'count', header: 'No. of Heads', className: 'font-semibold' },
-    {
-      key: 'vaccine',
-      header: 'Product / Result',
-      cell: (r) => [r.resultLabel, r.vaccine].filter(Boolean).join(' · ') || '—',
-    },
-    { key: 'administeredBy', header: 'Done By' },
+    { key: 'species', header: 'Species', cell: (r) => r.species ?? '—' },
+    { key: 'count', header: 'No. of Heads', className: 'font-semibold', cell: (r) => r.count ?? '—' },
+    { key: 'product', header: 'Product / Purpose / Result' },
+    { key: 'by', header: 'Done By', cell: (r) => r.by ?? '—' },
     { key: 'remarks', header: 'Remarks', cell: (r) => r.remarks ?? '—' },
     ...(canEdit
       ? [
@@ -192,13 +266,21 @@ function ActivityLog() {
             key: 'actions',
             header: '',
             sort: false as const,
-            cell: (r: VaccinationRow) => (
+            cell: (r: LogRow) => (
               <span className="inline-flex gap-1">
-                <Button size="xs" variant="ghost" onClick={() => setEditing(r)}>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => (r.service ? setEditing(r.service) : setEditVisit(r.visit!))}
+                >
                   Edit
                 </Button>
                 {isReviewer && (
-                  <Button size="xs" variant="ghost" onClick={() => setVoiding(r)}>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => (r.service ? setVoiding(r.service) : setVoidVisit(r.visit!))}
+                  >
                     Remove
                   </Button>
                 )}
@@ -212,9 +294,12 @@ function ActivityLog() {
   const printRecords = () => {
     const r: ReportResult = {
       id: 'service-records',
-      title: type
-        ? `${SERVICE_TYPE_LABELS[type as ServiceType]} — Activity Log`
-        : 'Veterinary Field Services — Activity Log',
+      title:
+        type === VISIT
+          ? 'Farm Visits — Activity Log'
+          : type
+            ? `${SERVICE_TYPE_LABELS[type as ServiceType]} — Activity Log`
+            : 'Veterinary Field Services — Activity Log',
       subtitle: [
         barangay || 'All barangays',
         species,
@@ -225,29 +310,29 @@ function ActivityLog() {
         .join(' · '),
       columns: [
         { key: 'date', label: 'Date' },
-        { key: 'service', label: 'Service' },
+        { key: 'service', label: 'Activity' },
         { key: 'farm', label: 'Farm' },
         { key: 'barangay', label: 'Barangay' },
         { key: 'species', label: 'Species' },
         { key: 'head', label: 'No. of Heads', align: 'right' },
-        { key: 'product', label: 'Product Used' },
+        { key: 'product', label: 'Product / Purpose / Result' },
         { key: 'by', label: 'Done By' },
         { key: 'remarks', label: 'Remarks' },
       ],
       rows: rows.map((v) => ({
         date: fmtDate(v.date),
-        service: v.serviceLabel,
-        farm: v.farmName,
-        barangay: v.barangay,
-        species: v.species,
-        head: v.count,
-        product: [v.resultLabel, v.vaccine].filter(Boolean).join(' · ') || '—',
-        by: v.administeredBy ?? '—',
+        service: v.label,
+        farm: v.farmName ?? '—',
+        barangay: v.barangay ?? '—',
+        species: v.species ?? '—',
+        head: v.count ?? '—',
+        product: v.product,
+        by: v.by ?? '—',
         remarks: v.remarks ?? '—',
       })),
       summary: [
         { label: 'Records', value: rows.length },
-        { label: 'Heads Served', value: rows.reduce((a, x) => a + x.count, 0) },
+        { label: 'Heads Served', value: heads },
       ],
     };
     printReport(r, lh);
@@ -256,7 +341,6 @@ function ActivityLog() {
   const s = summary.data;
   const svc = (t: ServiceType) => s?.services.find((x) => x.type === t);
   const deworm = svc('DEWORMING');
-  const overdue = upcoming.data?.rows.filter((r) => r.overdue).length ?? 0;
 
   const filtered = !!(barangay || type || species || from || to || vaccine);
   const clearFilters = () => {
@@ -280,22 +364,26 @@ function ActivityLog() {
           aria-label="Month"
         />
       )}
-      <FilterSelect
-        label="Barangay"
-        value={barangay}
-        onChange={setBarangay}
-        options={BARANGAYS}
-        all="All barangays"
-        className="w-[calc(50%-4px)] sm:w-44"
-      />
-      {tab === 'log' && (
+      {tab === 'log' ? (
         <FilterSelect
-          label="Service"
+          label="Activity"
           value={type}
           onChange={setType}
-          options={SERVICE_TYPES.map((t) => ({ value: t, label: SERVICE_TYPE_LABELS[t] }))}
-          all="All services"
+          options={[
+            ...SERVICE_TYPES.map((t) => ({ value: t, label: SERVICE_TYPE_LABELS[t] })),
+            { value: VISIT, label: 'Farm Visit' },
+          ]}
+          all="All activities"
           className="w-[calc(50%-4px)] sm:w-48"
+        />
+      ) : (
+        <FilterSelect
+          label="Barangay"
+          value={barangay}
+          onChange={setBarangay}
+          options={BARANGAYS}
+          all="All barangays"
+          className="w-[calc(50%-4px)] sm:w-44"
         />
       )}
       {tab === 'log' && vaccine && (
@@ -312,26 +400,35 @@ function ActivityLog() {
         </span>
       )}
       {tab === 'log' && (
-        <FilterSelect
-          label="Species"
-          value={species}
-          onChange={setSpecies}
-          options={[...SERVICE_SPECIES_ORDER]}
-          all="All species"
-          className="w-[calc(50%-4px)] sm:w-36"
-        />
+        <MoreFilters
+          active={[barangay, species, from || to].filter(Boolean).length}
+          onClear={() => (setBarangay(''), setSpecies(''), setFrom(''), setTo(''))}
+        >
+          <FilterSelect
+            label="Barangay"
+            value={barangay}
+            onChange={setBarangay}
+            options={BARANGAYS}
+            all="All barangays"
+          />
+          <FilterSelect
+            label="Species"
+            value={species}
+            onChange={setSpecies}
+            options={[...SERVICE_SPECIES_ORDER]}
+            all="All species"
+          />
+          <FilterField label="Date">
+            <div className="flex gap-2">
+              <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
+            </div>
+          </FilterField>
+        </MoreFilters>
       )}
-      {(tab === 'log' || tab === 'coverage') && (
-        <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
-      )}
+      {tab === 'coverage' && <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />}
       {tab === 'log' && (
         <Button variant="outline" className="sm:ml-auto" onClick={printRecords}>
           <Printer /> Print List
-        </Button>
-      )}
-      {filtered && (
-        <Button variant="ghost" onClick={clearFilters}>
-          <X /> Clear Filters
         </Button>
       )}
     </>
@@ -341,12 +438,17 @@ function ActivityLog() {
     <div>
       <PageHeader
         title="Activity Log"
-        subtitle="Every deworming, check-up, vaccination and other service given. Works offline and syncs automatically."
+        subtitle="Every deworming, check-up, vaccination, other service and farm visit. Works offline and syncs automatically."
         actions={
           canEdit && (
-            <Button onClick={() => setOpen(true)}>
-              <Plus /> Record Service
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setVisitOpen(true)}>
+                <MapPin /> Record Farm Visit
+              </Button>
+              <Button onClick={() => setOpen(true)}>
+                <Plus /> Record Service
+              </Button>
+            </>
           )
         }
       />
@@ -356,10 +458,6 @@ function ActivityLog() {
         onChange={setTab}
         tabs={[
           { id: 'log', label: 'Activity Log' },
-          {
-            id: 'upcoming',
-            label: `Upcoming Schedule${overdue ? ` (${overdue} overdue)` : ''}`,
-          },
           { id: 'coverage', label: 'Vaccination Coverage' },
           { id: 'summary', label: 'Monthly Summary' },
         ]}
@@ -445,7 +543,7 @@ function ActivityLog() {
                 <CardHeader
                   title="Due Soon"
                   actions={
-                    <Button size="xs" variant="outline" onClick={() => setTab('upcoming')}>
+                    <Button size="xs" variant="outline" onClick={() => navigate('/vaccination-schedule')}>
                       View Schedule
                     </Button>
                   }
@@ -476,11 +574,11 @@ function ActivityLog() {
             <Card>
               <DataTable
                 rows={rows}
-                empty="Nothing logged for this selection. Select “Record Service” after each deworming or field service — it works without internet too."
-                loading={records.isLoading}
-                rowKey={(r) => r.id}
+                empty="Nothing logged for this selection. Select “Record Service” after each deworming or field service, or “Record Farm Visit” — it works without internet too."
+                loading={records.isLoading || visits.isLoading}
+                rowKey={(r) => r.key}
                 searchText={(r) =>
-                  `${r.farmName} ${r.barangay} ${r.species} ${r.vaccine ?? ''} ${r.administeredBy ?? ''}`
+                  `${r.label} ${r.farmName ?? ''} ${r.barangay ?? ''} ${r.species ?? ''} ${r.product} ${r.by ?? ''}`
                 }
                 searchPlaceholder="Search farm, barangay or product..."
                 toolbar={filterControls}
@@ -489,64 +587,11 @@ function ActivityLog() {
                 defaultSort={{ key: 'date', dir: 'desc' }}
                 sortable={false}
                 footerNote={
-                  rows.length
-                    ? `${rows.reduce((a, x) => a + x.count, 0).toLocaleString()} heads served in the records shown`
-                    : undefined
+                  rows.length ? `${heads.toLocaleString()} heads served in the records shown` : undefined
                 }
               />
             </Card>
           ))}
-
-        {tab === 'upcoming' && (
-          <Card>
-            {!upcoming.data ? (
-              <Loading />
-            ) : (
-              <ScheduleCalendar
-                items={upcoming.data.rows
-                  .filter((r) => r.nextDate)
-                  .map((r) => ({
-                    id: r.id,
-                    date: r.nextDate!,
-                    label: `${r.serviceLabel} · ${r.species}`,
-                    tone: r.overdue ? 'red' : (SERVICE_TONE[r.serviceType] ?? 'slate'),
-                    detail: (
-                      <>
-                        <b className="font-medium text-slate-800">{r.farmName}</b> · {r.barangay} ·{' '}
-                        {r.targetLabel}
-                        {r.vaccine ? ` · ${r.vaccine}` : ''} · last given {fmtDate(r.date)}
-                        {r.overdue && (
-                          <span className="ml-1.5">
-                            <Badge tone="red">Overdue</Badge>
-                          </span>
-                        )}
-                      </>
-                    ),
-                    action: (
-                      <Button size="xs" variant="outline" onClick={() => navigate(`/farms/${r.farmId}`)}>
-                        Open Farm
-                      </Button>
-                    ),
-                  }))}
-                empty="Nothing scheduled. Enter a next schedule date when recording a service to get a reminder."
-              />
-            )}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-600">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-sky-200" /> Deworming
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-amber-200" /> Vaccination
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-emerald-200" /> Check-up
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-red-200" /> Overdue (not yet given)
-              </span>
-            </div>
-          </Card>
-        )}
 
         {tab === 'coverage' &&
           (!coverage.data ? (
@@ -591,6 +636,23 @@ function ActivityLog() {
 
       <ServiceDialog open={open} onOpenChange={setOpen} defaultType={(type as ServiceType) || 'DEWORMING'} />
       <ServiceEditDialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)} record={editing} />
+      <FarmVisitLauncher open={visitOpen} onOpenChange={setVisitOpen} />
+      {editVisit && (
+        <FarmVisitDialog
+          open
+          onOpenChange={(o) => !o && setEditVisit(null)}
+          farm={{ id: editVisit.farmId, name: editVisit.farmName ?? '' }}
+          visit={editVisit}
+        />
+      )}
+      {voidVisit && (
+        <VoidDialog
+          open
+          onOpenChange={(o) => !o && setVoidVisit(null)}
+          url={`/api/farm-visits/${voidVisit.id}/void`}
+          what={`farm visit ${voidVisit.code}`}
+        />
+      )}
       {voiding && (
         <VoidDialog
           open
@@ -724,139 +786,5 @@ export function OfflineSyncPanel({ match }: { match: string[] }) {
         </ul>
       )}
     </Card>
-  );
-}
-
-/* ---------------- Field Visits (formerly Field Visits) ---------------- */
-
-/** Visits of the office to farms, why, what was found, and the services given on them. */
-export function FieldVisitsPage() {
-  const { canEdit, isReviewer } = useAuth();
-  const [params, setParams] = useSearchParams();
-  const [barangay, setBarangay] = useState(params.get('barangay') ?? '');
-  const [purpose, setPurpose] = useState(params.get('purpose') ?? '');
-  const [from, setFrom] = useState(params.get('from') ?? '');
-  const [to, setTo] = useState(params.get('to') ?? '');
-  const [visitOpen, setVisitOpen] = useState(false);
-  const [voidVisit, setVoidVisit] = useState<VisitRecord | null>(null);
-  const [editVisit, setEditVisit] = useState<VisitRecord | null>(null);
-  useEffect(() => {
-    if (params.get('visit') !== '1') return;
-    setVisitOpen(true);
-    const p = new URLSearchParams(params);
-    p.delete('visit');
-    setParams(p, { replace: true });
-  }, [params, setParams]);
-  const visits = useApi<VisitRecord[]>(`/api/farm-visits${qs({ barangay, purpose, from, to })}`);
-  return (
-    <div>
-      <PageHeader
-        title="Field Visits"
-        subtitle="Visits to farms: the purpose, what was found, and the services given. Can be recorded offline."
-        actions={
-          canEdit && (
-            <Button onClick={() => setVisitOpen(true)}>
-              <Plus /> Record Field Visit
-            </Button>
-          )
-        }
-      />
-      <OfflineSyncPanel match={LOG_URLS} />
-      <FilterBar
-        active={!!(barangay || purpose || from || to)}
-        onClear={() => {
-          setBarangay('');
-          setPurpose('');
-          setFrom('');
-          setTo('');
-        }}
-      >
-        <FilterSelect
-          label="Barangay"
-          value={barangay}
-          onChange={setBarangay}
-          options={BARANGAYS}
-          all="All barangays"
-          className="w-[calc(50%-4px)] sm:w-44"
-        />
-        <FilterSelect
-          label="Purpose"
-          value={purpose}
-          onChange={setPurpose}
-          options={VISIT_PURPOSES.map((p) => ({ value: p, label: VISIT_PURPOSE_LABELS[p] }))}
-          all="Any purpose"
-          className="w-[calc(50%-4px)] sm:w-56"
-        />
-        <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
-      </FilterBar>
-      {visits.error ? (
-        <ErrorBox error={visits.error} />
-      ) : !visits.data ? (
-        <Loading />
-      ) : (
-        <Card>
-          <CardHeader title={`Field Visits (${visits.data.length})`} />
-          <ActivityTimeline
-            items={visits.data.map((v) => ({
-              key: v.id,
-              date: v.date,
-              tone: v.findings === 'SICK_ANIMALS' ? 'red' : 'green',
-              title: (
-                <>
-                  <Link to={`/farms/${v.farmId}`} className="link">
-                    {v.farmName}
-                  </Link>
-                  <span className="font-normal text-slate-500">· {v.barangay}</span>
-                </>
-              ),
-              tag: (
-                <>
-                  <Badge tone="blue">{v.purposeLabel}</Badge>
-                  <Badge tone={v.findings === 'SICK_ANIMALS' ? 'red' : 'green'}>{v.findingsLabel}</Badge>
-                </>
-              ),
-              body: (
-                <>
-                  {[v.visitedBy && `By ${v.visitedBy}`, v.caseCode && `Related case ${v.caseCode}`]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  {v.remarks && <div className="text-slate-500">{v.remarks}</div>}
-                </>
-              ),
-              actions: canEdit ? (
-                <span className="inline-flex gap-1">
-                  <Button size="xs" variant="ghost" onClick={() => setEditVisit(v)}>
-                    Edit
-                  </Button>
-                  {isReviewer && (
-                    <Button size="xs" variant="ghost" onClick={() => setVoidVisit(v)}>
-                      Void
-                    </Button>
-                  )}
-                </span>
-              ) : undefined,
-            }))}
-            empty="No field visits for this selection."
-          />
-        </Card>
-      )}
-      <FarmVisitLauncher open={visitOpen} onOpenChange={setVisitOpen} />
-      {editVisit && (
-        <FarmVisitDialog
-          open
-          onOpenChange={(o) => !o && setEditVisit(null)}
-          farm={{ id: editVisit.farmId, name: editVisit.farmName ?? '' }}
-          visit={editVisit}
-        />
-      )}
-      {voidVisit && (
-        <VoidDialog
-          open
-          onOpenChange={(o) => !o && setVoidVisit(null)}
-          url={`/api/farm-visits/${voidVisit.id}/void`}
-          what={`field visit ${voidVisit.code}`}
-        />
-      )}
-    </div>
   );
 }

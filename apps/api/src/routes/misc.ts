@@ -728,7 +728,7 @@ metricsRouter.get(
 /* ---------------- search, notifications, lookups ---------------- */
 
 /**
- * Search everything: owners, farms, tagged animals, disease cases, strays, laboratory samples and
+ * Search everything: owners, farms, tagged animals, disease cases, laboratory samples and
  * submissions. The top bar asks for a few of each; the Search page asks for more, and can narrow
  * by type, barangay and species.
  */
@@ -745,7 +745,7 @@ metricsRouter.get(
     const like = q.length >= 2 ? { contains: q } : undefined;
     const want = (t: string) => !type || type === t;
     const or = <T>(xs: T[]) => (like ? { OR: xs } : {});
-    const [owners, farms, animals, cases, strays, samples, submissions] = await Promise.all([
+    const [owners, farms, animals, cases, samples, submissions] = await Promise.all([
       want('owner') && !species
         ? prisma.owner.findMany({
             where: {
@@ -796,18 +796,6 @@ metricsRouter.get(
             },
             include: { farm: true, _count: { select: { investigations: { where: { voidedAt: null } } } } },
             orderBy: { reportedAt: 'desc' },
-            take,
-          })
-        : [],
-      want('stray')
-        ? prisma.strayIncident.findMany({
-            where: {
-              ...(barangay ? { barangay } : {}),
-              ...(species ? { species } : {}),
-              ...or([{ code: like }, { earTag: like }, { owner: { fullName: like } }, { location: like }]),
-            },
-            include: { owner: true },
-            orderBy: { discoveredAt: 'desc' },
             take,
           })
         : [],
@@ -865,21 +853,13 @@ metricsRouter.get(
         species: c.species,
         href: `/cases/${c.id}`,
       })),
-      ...strays.map((x) => ({
-        type: 'Stray',
-        label: `${x.code} · ${x.species}`,
-        sub: `${x.barangay} · ${x.owner?.fullName ?? 'Unknown owner'} · ${x.status === 'CLOSED' ? 'Closed' : 'Reported'}`,
-        barangay: x.barangay,
-        species: x.species,
-        href: `/strays?open=${x.id}`,
-      })),
       ...samples.map((l) => ({
         type: 'Sample',
         label: `${l.sampleId} · ${titleCase(l.result)}`,
         sub: `${l.farm?.owner.fullName ?? '—'} · ${l.farm?.barangay ?? '—'} · ${l.case ? l.case.code : (l.submission?.code ?? '')}`,
         barangay: l.farm?.barangay,
         species: l.species,
-        href: l.case ? `/cases/${l.caseId}?tab=laboratory` : `/lab-submissions/${l.submissionId}`,
+        href: `/laboratory?sample=${l.id}`,
       })),
       ...submissions.map((b) => ({
         type: 'Lab batch',
@@ -974,7 +954,7 @@ metricsRouter.get(
           kind: 'vaccination',
           title: `${v.vaccine ?? SERVICE_TYPE_LABELS[v.serviceType as ServiceType] ?? 'Service'} ${nd < start ? 'overdue' : 'due'} ${fmtDate(nd)}`,
           sub: `${v.farm.name} · ${v.target === 'GROUP' ? `${v.group?.code} · ${v.count} head` : v.animal?.code}`,
-          href: '/services?tab=upcoming',
+          href: '/vaccination-schedule',
         };
       }),
       ...farms

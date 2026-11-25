@@ -36,7 +36,8 @@ import { DataTable } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { MapView } from '@/components/MapView';
 import { MoreMenu } from '@/components/MoreMenu';
-import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/components/page';
+import { ErrorBox, FilterSelect, KV, Loading, MiniStat, MoreFilters, PageHeader } from '@/components/page';
+import { PendingFarms } from './ReviewPages';
 import { ActiveBadge, CaseStatusBadge, RecordStatusBadge, SpeciesChip } from '@/components/status';
 import { ActivityTimeline, LastVisit, RaisedBadge, SpeciesCard, sourceLabel } from '@/components/livestock';
 import { Badge, Button, Card, CardHeader, Checkbox, Tabs } from '@/components/ui';
@@ -101,6 +102,7 @@ export function FarmsPage() {
           )
         }
       />
+      {canEdit && <PendingFarms />}
       {!archived && (
         <div className="mb-4 flex flex-wrap gap-2" aria-label="Livestock raised">
           {LIVESTOCK_RAISED.filter((r) => counts.get(r)).map((r) => (
@@ -142,45 +144,52 @@ export function FarmsPage() {
                   all="All barangays"
                   className="w-[calc(50%-4px)] sm:w-44"
                 />
-                <FilterSelect
-                  label="Livestock Raised"
-                  value={raised}
-                  onChange={setRaised}
-                  options={LIVESTOCK_RAISED}
-                  all="All livestock"
-                  className="w-[calc(50%-4px)] sm:w-40"
-                />
-                <FilterSelect
-                  label="Farm Scale"
-                  value={type}
-                  onChange={setType}
-                  options={FARM_TYPES.map((t) => ({ value: t, label: FARM_TYPE_LABELS[t] }))}
-                  all="Any scale"
-                  className="w-[calc(50%-4px)] sm:w-36"
-                />
-                <FilterSelect
-                  label="Field Visit"
-                  value={visit}
-                  onChange={setVisit}
-                  options={[
-                    { value: 'due', label: `Not visited in ${VISIT_DUE_DAYS} days` },
-                    { value: 'recent', label: 'Visited Recently' },
-                  ]}
-                  all="Any visit"
-                  className="w-[calc(50%-4px)] sm:w-52"
-                />
-                <FilterSelect
-                  label="Map Location"
-                  value={location}
-                  onChange={setLocation}
-                  options={[
-                    { value: 'mapped', label: 'On the Map' },
-                    { value: 'unmapped', label: 'No Map Location' },
-                  ]}
-                  all="Any location"
-                  className="w-full sm:w-40"
-                />
-                <Checkbox label="Show Archived" checked={archived} onChange={setArchived} />
+                <MoreFilters
+                  active={[raised, type, visit, location].filter(Boolean).length + (archived ? 1 : 0)}
+                  onClear={() => (
+                    setRaised(''), setType(''), setVisit(''), setLocation(''), setArchived(false)
+                  )}
+                >
+                  <FilterSelect
+                    label="Livestock Raised"
+                    value={raised}
+                    onChange={setRaised}
+                    options={LIVESTOCK_RAISED}
+                    all="All livestock"
+                    className="w-[calc(50%-4px)] sm:w-40"
+                  />
+                  <FilterSelect
+                    label="Farm Scale"
+                    value={type}
+                    onChange={setType}
+                    options={FARM_TYPES.map((t) => ({ value: t, label: FARM_TYPE_LABELS[t] }))}
+                    all="Any scale"
+                    className="w-[calc(50%-4px)] sm:w-36"
+                  />
+                  <FilterSelect
+                    label="Field Visit"
+                    value={visit}
+                    onChange={setVisit}
+                    options={[
+                      { value: 'due', label: `Not visited in ${VISIT_DUE_DAYS} days` },
+                      { value: 'recent', label: 'Visited Recently' },
+                    ]}
+                    all="Any visit"
+                    className="w-[calc(50%-4px)] sm:w-52"
+                  />
+                  <FilterSelect
+                    label="Map Location"
+                    value={location}
+                    onChange={setLocation}
+                    options={[
+                      { value: 'mapped', label: 'On the Map' },
+                      { value: 'unmapped', label: 'No Map Location' },
+                    ]}
+                    all="Any location"
+                    className="w-full sm:w-40"
+                  />
+                  <Checkbox label="Show Archived" checked={archived} onChange={setArchived} />
+                </MoreFilters>
               </>
             }
             columns={[

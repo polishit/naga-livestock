@@ -1,5 +1,5 @@
 import { ArrowLeft, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn, toTitle } from '@/lib/utils';
 import { Spinner, VALUE_TONES, toneOptions, type Tone } from './ui';
@@ -250,6 +250,112 @@ export function FilterBar({
   );
 }
 
+/**
+ * The rest of a page's filters, behind one "Filters" button (panel revision: one or two filters on
+ * the page, the others in one place). Shows how many are set and clears them all at once.
+ */
+/** True inside the Filters panel: filters there show their label above the box. */
+const InFilterPanel = createContext(false);
+
+export function MoreFilters({
+  children,
+  active = 0,
+  onClear,
+  align = 'left',
+}: {
+  children: ReactNode;
+  /** How many of the filters inside are set */
+  active?: number;
+  onClear?: () => void;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent) {
+        if (e.key === 'Escape') setOpen(false);
+        return;
+      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen(!open)}
+        className={cn(
+          'inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-[15px] font-medium',
+          active
+            ? 'border-brand-strong bg-brand-light text-brand-dark'
+            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+        )}
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+        Filters
+        {active > 0 && (
+          <span className="min-w-[20px] rounded-full bg-brand-strong px-1.5 text-center text-[12px] font-semibold leading-5 text-white">
+            {active}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Filters"
+          className={cn(
+            'absolute z-[960] mt-2 w-[min(92vw,320px)] space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xl [&_select]:w-full [&>*]:w-full',
+            align === 'right' ? 'right-0' : 'left-0',
+          )}
+        >
+          <InFilterPanel.Provider value={true}>{children}</InFilterPanel.Provider>
+          <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+            {onClear ? (
+              <button
+                type="button"
+                onClick={() => onClear()}
+                disabled={!active}
+                className="text-[14px] font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
+              >
+                Clear All
+              </button>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="h-9 rounded-lg bg-brand-strong px-4 text-[14px] font-semibold text-white hover:bg-brand-dark"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A labelled control inside the Filters panel. */
+export function FilterField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[13px] font-semibold text-slate-600">{label}</span>
+      {children}
+    </label>
+  );
+}
+
 export function FilterSelect({
   value,
   onChange,
@@ -269,8 +375,9 @@ export function FilterSelect({
   tones?: Record<string, Tone>;
 }) {
   const tone = value ? tones[value] : undefined;
-  return (
-    <div className={cn('relative', className)}>
+  const inPanel = useContext(InFilterPanel);
+  const box = (
+    <div className={cn('relative', !inPanel && className)}>
       {tone && (
         <span
           aria-hidden
@@ -318,6 +425,7 @@ export function FilterSelect({
       </svg>
     </div>
   );
+  return inPanel ? <FilterField label={label}>{box}</FilterField> : box;
 }
 
 const FILTER_TONE: Record<Tone, string> = {

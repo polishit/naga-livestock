@@ -29,7 +29,7 @@ test('population: "See farms raising" can be undone with Back; farms with 0 head
   await page.goBack();
   await expect(page).toHaveURL(/\/population$/);
   await expect(page.getByRole('tab', { name: 'By Species' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByLabel('Species').first()).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
 });
 
 test('disease reports: one Status filter above the list; step to the next case', async ({ page }) => {

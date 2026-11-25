@@ -53,7 +53,7 @@ test('void a duplicate case; it leaves the lists and can be undone', async ({ pa
 });
 
 test('fix a typo in a vaccination and in a site visit', async ({ page }) => {
-  await page.goto('/services?tab=records&type=VACCINATION');
+  await page.goto('/services?type=VACCINATION');
   await page.getByRole('row').nth(1).getByRole('button', { name: 'Edit' }).click();
   const d = dialog(page);
   await d.getByLabel('Batch / lot no.').fill('LOT-FIXED-1');
@@ -88,13 +88,4 @@ test('archived farms are listed and can be restored', async ({ page }) => {
   await more(page).click();
   await page.getByRole('menuitem', { name: 'Restore farm' }).click();
   await expectToast(page, 'Farm restored.');
-});
-
-test('a stray report is voided with a reason, never deleted', async ({ page }) => {
-  await page.goto('/strays');
-  await page.getByLabel('Status').selectOption('CLOSED');
-  await page.getByRole('row').nth(1).click();
-  const d = dialog(page);
-  await expect(d.getByRole('button', { name: 'Void (reported in error)' })).toBeVisible();
-  await expect(d.getByRole('button', { name: 'Delete (entered by mistake)' })).toHaveCount(0);
 });

@@ -41,7 +41,8 @@ const HELP: Record<string, Help> = {
     title: 'Livestock Owners',
     purpose: 'The owner masterlist, built from the DA list and field visits.',
     steps: [
-      'Search by name, contact or RSBSA Control Number, or filter by barangay or source.',
+      'Owners who registered in the owner app wait in "Pending Owner Registrations" at the top. Open one to check the ID and approve it, or return it with a reason.',
+      'Search by name, contact or RSBSA Control Number, or choose a barangay. Other choices are under "Filters".',
       'New entry from the DA list or a visit? Select "Add Owner, Farm and Livestock" and follow the steps.',
       'Select a row to open the owner: personal information first, then ownership and insurance.',
     ],
@@ -61,6 +62,7 @@ const HELP: Record<string, Help> = {
       'Owner Profile tab: personal information, then ownership records and PCIC insurance below it.',
       'Farms tab: one card per farm with the livestock raised and the last visit. Select a card to open the farm.',
       'Select "Add Farm" for each place where the owner keeps animals.',
+      'Owner App Login (below the personal information): give the owner a login, or reset a forgotten password.',
       '"More" holds Archive (stopped raising livestock).',
     ],
     terms: REMOVE_TERMS,
@@ -69,6 +71,7 @@ const HELP: Record<string, Help> = {
     title: 'Farms',
     purpose: 'The farm masterlist: where each farm is, what it raises and when it was last visited.',
     steps: [
+      'Farms added by owners in the owner app wait in "Pending Farm Registrations" at the top. Open one to check the location and approve it.',
       'Use the cards at the top (Piggery, Goat Only, Mixed…) or the filters to narrow the list.',
       'Filter "Not visited in 90 days" to plan the next field visits.',
       'Select "Add Farm", choose the owner, then click the map where the farm is.',
@@ -101,6 +104,7 @@ const HELP: Record<string, Help> = {
     title: 'Population Monitoring',
     purpose: 'Head count from the masterlist, by species, farm and barangay.',
     steps: [
+      'Unusually large head count changes sent by owners wait in "Pending Head Count Updates" at the top. Accept, or cancel with a reason.',
       'By Species: total heads per species.',
       'Search: type a farm, owner, barangay, species or breed to list the matching farms.',
       'By Farm: each farm’s count per species. Select a row to open the farm.',
@@ -135,58 +139,34 @@ const HELP: Record<string, Help> = {
       'Transfers out of a farm under quarantine are blocked until the quarantine is lifted.',
     ],
   },
-  '/strays': {
-    title: 'Stray Livestock',
-    purpose: 'Animals found wandering, whose they are, and what was done.',
-    steps: [
-      'Select "Report incident", describe the animal and click where it was found.',
-      'Select the incident to update it: the owner and the actions taken. Set the status to Closed when it is settled.',
-    ],
-  },
   '/gis-map': {
-    title: 'Livestock & Disease Map',
-    purpose: 'Farms, disease reports and livestock population on one map.',
+    title: 'Livestock Map',
+    purpose: 'Every farm on the map, and the barangays shaded by livestock population.',
     steps: [
-      'Filter by barangay, disease, livestock or farm type (livestock raised).',
-      'Turn layers on or off: farms, disease reports, population by barangay, radius rings, strays.',
-      'Click a disease report to see the farms inside its radius and record a monitoring visit.',
-      'Click a farm to see its livestock and last visit.',
+      'Search a farm or owner, or choose a barangay. More choices (livestock, farm type, shading) are under "Filters".',
+      'Tap a barangay on the map or in the Barangay Summary to see its farms, head count and open cases.',
+      'Tap a farm to see its livestock and last visit, record a visit, or report a disease.',
     ],
   },
-  '/barangay-map': {
-    title: 'Barangay Summary',
-    purpose: 'Each barangay shaded by the figure you choose. Darker means more.',
+  '/disease-monitoring': {
+    title: 'Disease Monitoring',
+    purpose: 'Disease reports, monitoring zones and the farms around each case, in one place.',
     steps: [
-      'Choose what to show (livestock, farms, cases…) and a species.',
-      'Click a barangay to see its numbers on the right.',
-    ],
-  },
-  '/outbreak-map': {
-    title: 'Outbreak Timeline',
-    purpose: 'How the disease reports appeared and spread, month by month.',
-    steps: [
-      'Press play to watch the reports appear over time, or drag the slider to a month.',
-      'Open the "Open Reports" tab for the reports still open, and add a location to those not yet on the map.',
-    ],
-  },
-  '/radius': {
-    title: 'Farms to Monitor',
-    purpose: 'Farms near a disease report, and whether each one was visited since the report.',
-    steps: [
-      'Choose the disease report, then the radius (for example 500 m or 1 km).',
-      'Start with "Not yet visited": visit each farm and select "Record visit" to note the findings.',
-      'If sick animals are found, select "Report" to file an incident for that farm.',
-      'Download the Outbreak-Area Report for the response team.',
+      'Map: tap a case to see the farms inside the radius and record a monitoring visit. Choose the disease and barangay at the top; the radius is under "Filters".',
+      'Outbreak Timeline: press play, or drag the slider to a month, to see how the cases spread.',
+      'Farms in Radius: the list of farms to visit around one case, with the Outbreak-Area Report.',
+      'Monitoring Zones: set a zone around a confirmed case (owners inside are alerted), widen it, or lift it with a reason.',
     ],
     terms: [
-      ['Not yet visited', 'No field visit recorded since the disease report.'],
-      ['Left out', 'Farms without a map location cannot be measured. Set their locations first.'],
+      ['Active zone', 'The monitoring area is in force.'],
+      ['Lifted', 'Ended. It stays on record.'],
     ],
   },
   '/cases': {
     title: 'Disease Reports',
     purpose: 'Disease reports for ASF and the other monitored diseases.',
     steps: [
+      'Reports sent by owners from the owner app wait in "Pending Reports from Owners" at the top. Open one to validate it (a case is opened), ask a question, or reject it.',
       'Select "Report Incident" when a raiser reports sick or dead animals.',
       'Use the Status filter (open cases, a lab stage, closed or all) and the search box to find a report.',
       'Select a report to open it. Its Steps tab shows what to do next.',
@@ -226,28 +206,17 @@ const HELP: Record<string, Help> = {
       ],
     ],
   },
-  '/investigation': {
-    title: 'Samples & Lab Results',
-    purpose: 'Lab results not back yet and field visits that are due, across all open reports.',
+  '/laboratory': {
+    title: 'Laboratory',
+    purpose: 'Every sample sent for testing, from disease cases and surveillance batches.',
     steps: [
-      'Work from the top: the samples waiting longest and the overdue visits come first.',
-      'Select a row to open the report, then enter the result or record the visit.',
-    ],
-  },
-  '/lab-submissions': {
-    title: 'Lab Submissions',
-    purpose:
-      'A batch of samples sent to the laboratory (RADDL), in four steps shown at the top of each batch.',
-    steps: [
-      'Step 1 · Prepare: select "New Submission", choose the purpose and the test, and add one row per sample (farm, species, age, sex, live or dead, specimen).',
-      'Step 2 · Print and send: print the Analysis Request Form and the Sample Collection Form, send them with the samples, and enter the date sent.',
-      'Step 3 · Enter results: when the laboratory answers (negatives usually by email), open the batch and select "Enter Results".',
-      'Step 4 · Act on positives: a positive sample shows "Open Case"; the disease case starts as Active with the sample attached. A batch with only negatives is complete.',
+      'A sample added on a disease case (step 3, "Add Sample") appears here at once.',
+      'Select "Enter Date Sent" when the sample leaves, then "Enter Result" when the laboratory answers. The case updates by itself.',
+      'Batch Submissions: send a batch of surveillance samples with the Analysis Request and Sample Collection forms. A positive sample with no case shows "Report Incident".',
     ],
     terms: [
-      ['Draft', 'Being prepared; not yet sent to the laboratory.'],
-      ['Sent', 'At the laboratory; waiting for results.'],
-      ['Results in', 'Every sample has a result.'],
+      ['Waiting for Result', 'Sent (or about to be sent); no result yet.'],
+      ['Positive / Negative / Inconclusive', 'The laboratory result. A case sample sets the case status.'],
     ],
   },
   '/analytics': {
@@ -291,44 +260,14 @@ const HELP: Record<string, Help> = {
       ['Locked', 'Too many wrong passwords. It unlocks by itself after a while, or you can unlock it.'],
     ],
   },
-  '/review': {
-    title: 'Review Queue',
-    purpose: 'What livestock owners sent from the owner app and is waiting for the office.',
-    steps: [
-      'Registrations: verify a new owner first, then the farm. Return it with a reason if something must be corrected.',
-      'Head count updates: only unusually large changes wait here. Accept, or cancel with a reason.',
-      'Disease reports: validate (a disease case is opened), ask the owner a question, or reject with a reason.',
-      'Vaccination records sent by owners are in their own tab. Service requests are in Veterinary Field Services → Service Requests.',
-      'Owner logins: give a login to an owner already in the masterlist, or reset a forgotten password.',
-    ],
-    terms: [
-      ['Pending', 'Sent by the owner, waiting for the office.'],
-      ['Returned for correction', 'Sent back to the owner with a reason; it comes back when corrected.'],
-      ['Verified', 'Accepted: it is now part of the official records.'],
-      ['Flagged', 'A head count change larger than the limit in the System Settings.'],
-    ],
-  },
-  '/zones': {
-    title: 'Monitoring Zones',
-    purpose: 'An epicenter with a radius around a confirmed case, and the owners alerted.',
-    steps: [
-      'Select "Set a monitoring zone", choose the confirmed case and the radius.',
-      'Owners of the farms inside get an alert in the owner app with the distance to their own farm.',
-      'Owners without the app are marked: tell them by phone or visit.',
-      'Widen the radius to alert more farms, and lift the zone with a reason when it is over.',
-    ],
-    terms: [
-      ['Active', 'The monitoring area is in force.'],
-      ['Lifted', 'Ended. It stays on record.'],
-    ],
-  },
-  '/vaccination-activities': {
+  '/vaccination-schedule': {
     title: 'Vaccination Schedule',
-    purpose: 'Vaccination activities by barangay, and the owners who signed up.',
+    purpose: 'Owner requests, vaccination activities and the doses due, in one calendar.',
     steps: [
-      'Select "Schedule an activity" and choose the barangay, livestock and date. Owners there are told.',
-      'On the day, open the activity and mark each sign-up as attended. The vaccination goes on the farm record.',
-      'Mark the activity completed, or cancel it with a reason (owners are told).',
+      'Pending requests from owners are at the top: open one to schedule it, mark it done, or decline it with a reason.',
+      'The calendar shows activities, scheduled owner requests and the next deworming or vaccination due. Tap a day for the list.',
+      'Select "Schedule an Activity" to plan a vaccination day for a barangay. Owners there are told and can sign up.',
+      'On the day, open the activity and mark each sign-up as attended.',
     ],
   },
   '/announcements': {
@@ -369,8 +308,9 @@ const HELP: Record<string, Help> = {
     steps: [
       'Select "Record Service": choose the service (Deworming is first), the farm and species, and the number of heads.',
       'No signal in the field? Keep recording. Entries are saved on this phone, listed as "Waiting to Sync", and sent automatically when the internet returns (or select "Sync Now").',
-      'Filter by service, species, barangay or dates; select "Print List" for a paper copy.',
-      'Upcoming Schedule: the next deworming or vaccination that is due.',
+      'Select "Record Farm Visit" for a visit to a farm: purpose, findings, head count and services in one form. Visits show in the log as "Farm Visit".',
+      'Choose the activity type at the top; barangay, species and dates are under "Filters". Select "Print List" for a paper copy.',
+      'What is due next is on the Vaccination Schedule.',
     ],
     terms: [
       ['Waiting to Sync', 'Saved on this device; it is sent when the connection returns.'],
@@ -378,31 +318,6 @@ const HELP: Record<string, Help> = {
         'Not Accepted',
         'The server refused the entry (the reason is shown). Record it again, then discard it.',
       ],
-    ],
-  },
-  '/field-visits': {
-    title: 'Field Visits',
-    purpose: 'Visits of the office to farms, the purpose, what was found, and the services given.',
-    steps: [
-      'Select "Record Field Visit" to record a visit with its head count and services in one form.',
-      'Filter by barangay, purpose or dates. Works offline like the Activity Log.',
-    ],
-  },
-  '/service-requests': {
-    title: 'Service Requests',
-    purpose: 'Services that livestock owners asked for in the owner app.',
-    steps: [
-      'Open a request, then schedule it (with a date), mark it done, or decline it with a reason.',
-      'The owner sees your answer in the owner app.',
-    ],
-  },
-  '/monthly-report': {
-    title: 'Monthly Report',
-    purpose: 'The month’s population, disease reports, deworming, check-ups and field visits.',
-    steps: [
-      'Choose the month (and a barangay if needed). The graphs update by themselves.',
-      'Select "Print Monthly Report" for the printed report with the letterhead and signatures.',
-      'Use XLSX, CSV or PDF to download the same figures as a table.',
     ],
   },
 };

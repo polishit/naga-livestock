@@ -50,41 +50,23 @@ test('move a tagged animal to another group on its farm', async ({ page }) => {
   await expect(page.getByText(/Moved from GRP-0021 to GRP-\d+ — Now adult/)).toBeVisible();
 });
 
-test('stray report shows the owner’s earlier incidents', async ({ page }) => {
-  await page.goto('/strays');
-  await page.getByRole('button', { name: 'Report incident' }).click();
-  const d = dialog(page);
-  await d.getByLabel('Ear tag / Animal ID (if any)').fill('ET-2409');
-  await d.getByLabel('Ear tag / Animal ID (if any)').blur();
-  await expect(d.getByText(/Registered animal NC-K-0009/)).toBeVisible();
-  await expect(d.getByText(/stray incident|No earlier stray incidents/)).toBeVisible();
-  await d.getByLabel('Barangay *').selectOption('Pacol');
-  await d.getByLabel('Location *').fill('Pacol road');
-  await d.getByRole('button', { name: 'Save report' }).click();
-  await expectToast(page, 'Stray livestock report saved.');
-  await page.getByRole('button', { name: 'Report incident' }).click();
-  await d.getByLabel('Ear tag / Animal ID (if any)').fill('ET-2409');
-  await d.getByLabel('Ear tag / Animal ID (if any)').blur();
-  await expect(d.getByText(/Earlier incident: 1 earlier stray incident/)).toBeVisible();
-  await shot(page, 'stray-history');
-});
-
-test('barangay map shades barangays and ranks them', async ({ page }) => {
+test('the livestock map shades barangays and ranks them in the side panel', async ({ page }) => {
+  // The old Barangay Summary page is now the side panel of the Livestock Map.
   await page.goto('/barangay-map');
-  await expect(page.locator('path.leaflet-interactive')).toHaveCount(27);
-  await expect(page.getByText(/Ranking · [\d,]+ head in total/i)).toBeVisible();
+  await expect(page).toHaveURL(/\/gis-map$/);
+  await expect(page.getByRole('heading', { name: 'Livestock Map' })).toBeVisible();
+  await expect(page.getByText(/[\d,]+ head in total/i)).toBeVisible();
   await shot(page, 'barangay-livestock');
-  await page.getByLabel('Show').selectOption('openCases');
-  await expect(page.getByText(/Ranking · \d+ cases in total/i)).toBeVisible();
   await page.getByRole('button', { name: /^Cararayan/i }).click();
-  await expect(page.getByRole('heading', { name: 'Cararayan' })).toBeVisible();
-  await shot(page, 'barangay-cases');
+  await expect(page.getByRole('heading', { name: 'Barangay Cararayan' })).toBeVisible();
+  await shot(page, 'barangay-summary');
 });
 
 test('outbreak timeline replays the cases by month', async ({ page }) => {
   await page.goto('/outbreak-map');
-  // The timeline is the first tab.
-  await expect(page.getByRole('heading', { name: 'Outbreak Timeline' })).toBeVisible();
+  // The timeline is a tab of Disease Monitoring.
+  await expect(page).toHaveURL(/\/disease-monitoring\?view=timeline/);
+  await expect(page.getByRole('tab', { name: 'Outbreak Timeline' })).toHaveAttribute('aria-selected', 'true');
   const slider = page.getByRole('slider', { name: 'Month' });
   // Wait for the cases to load (the slider then spans the months since the first case).
   await expect(slider).not.toHaveAttribute('max', '0');
@@ -119,25 +101,6 @@ test('print a farm profile and an owner ID card with QR codes', async ({ page, c
   await cardWin.close();
 });
 
-test('stray incident has no violation fields (removed), and no fine or penalty', async ({ page }) => {
-  const s = await page.request.post('/api/strays', {
-    data: { species: 'Goat', barangay: 'Pacol', location: 'National highway', ownerId: 5 },
-  });
-  expect(s.status()).toBe(201);
-  const { id, code } = await s.json();
-  // Opened straight from a link (as from the owner's page).
-  await page.goto(`/strays?open=${id}`);
-  const d = dialog(page);
-  await expect(d.getByText(`${code} · Stray goat`)).toBeVisible();
-  await expect(d.getByLabel(/Violation/)).toHaveCount(0);
-  await expect(d.getByText('Penalty')).toHaveCount(0);
-  await expect(d.getByLabel(/Fine/)).toHaveCount(0);
-  await d.getByLabel('Remarks / Actions Taken').fill('Returned to the owner.');
-  await d.getByRole('button', { name: 'Save changes' }).click();
-  await expectToast(page, 'Incident updated.');
-  await expect(page.getByRole('columnheader', { name: /Violations|Fine/i })).toHaveCount(0);
-});
-
 test('farms have no pasture fields', async ({ page }) => {
   await page.goto('/farms/10');
   await page.getByRole('button', { name: 'Edit Farm' }).click();
@@ -146,19 +109,6 @@ test('farms have no pasture fields', async ({ page }) => {
   await d.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByText('Pasture location')).toHaveCount(0);
   await expect(page.locator('.leaflet-marker-icon').filter({ hasText: 'P' })).toHaveCount(0);
-});
-
-test('stray incident has no impound, fine or payment fields', async ({ page }) => {
-  await page.goto('/strays');
-  await page.waitForLoadState('networkidle');
-  await page.getByRole('row').nth(1).click();
-  const d = dialog(page);
-  await expect(d.getByLabel('Status')).toBeVisible();
-  await d.getByLabel('Status').selectOption('CLOSED');
-  await expect(d.getByLabel('Impound date')).toHaveCount(0);
-  await expect(d.getByLabel('Release date')).toHaveCount(0);
-  await expect(d.getByLabel(/Fine/)).toHaveCount(0);
-  await expect(d.getByLabel(/Official receipt/)).toHaveCount(0);
 });
 
 test('cowlick is asked only for cattle and carabao', async ({ page }) => {
@@ -191,6 +141,8 @@ test('PCIC application lists its insured ear tags', async ({ page }) => {
 
 test('owners can be filtered by RSBSA registration', async ({ page }) => {
   await page.goto('/owners');
+  // The less used filters are under "Filters".
+  await page.getByRole('button', { name: 'Filters' }).click();
   await page.getByLabel('RSBSA').selectOption('no');
   await expect(page.getByRole('button', { name: 'RSBSA Control No.' })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: 'OWN-0002' }).getByText('—').first()).toBeVisible();

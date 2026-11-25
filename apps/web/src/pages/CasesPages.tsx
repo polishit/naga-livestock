@@ -89,6 +89,7 @@ import {
   type ResponseEditRecord,
 } from '@/dialogs/surveillance';
 import type { CaseRow, RadiusResult } from './types';
+import { PendingReports } from './ReviewPages';
 import type { loadSampleForCase } from './LabSubmissionsPages';
 
 /* ---------------- Incident list ---------------- */
@@ -203,6 +204,7 @@ export function CasesPage() {
           )
         }
       />
+      {canEdit && <PendingReports />}
       {error ? (
         <ErrorBox error={error} />
       ) : (
@@ -978,15 +980,15 @@ function CaseDetail() {
             {!c.mapped && !c.closed && <GeotagBadge />}
             {!c.voided && <Badge tone="slate">Owner sees: {data.stageLabel}</Badge>}
             {data.ownerReport && (
-              <Link
-                to={`/review?tab=reports&report=${data.ownerReport.id}`}
-                className="text-[14px] underline"
-              >
+              <Link to={`/cases?pending=${data.ownerReport.id}`} className="text-[14px] underline">
                 From owner report {data.ownerReport.code}
               </Link>
             )}
             {data.zone ? (
-              <Link to={`/zones?zone=${data.zone.id}`} className="text-[14px] underline">
+              <Link
+                to={`/disease-monitoring?view=zones&zone=${data.zone.id}`}
+                className="text-[14px] underline"
+              >
                 Monitoring zone {data.zone.code} ({data.zone.status === 'ACTIVE' ? 'active' : 'lifted'})
               </Link>
             ) : (
@@ -994,7 +996,10 @@ function CaseDetail() {
               c.status === 'POSITIVE' &&
               !c.closed &&
               !c.voided && (
-                <Link to={`/zones?case=${c.id}`} className="text-[14px] font-medium text-red-700 underline">
+                <Link
+                  to={`/disease-monitoring?view=zones&case=${c.id}`}
+                  className="text-[14px] font-medium text-red-700 underline"
+                >
                   Set a monitoring zone and alert nearby owners
                 </Link>
               )
@@ -1222,13 +1227,13 @@ function CaseDetail() {
                       : ''}. The case status was set from this result.
                   </>
                 ) : sent ? (
-                  `Waiting for the result of ${sent.sampleId} (sent ${fmtDate(sent.sentAt)}${sent.laboratory ? ` to ${sent.laboratory}` : ''}). Enter it as soon as it arrives.`
+                  `Waiting for the result of ${sent.sampleId} (sent ${fmtDate(sent.sentAt)}${sent.laboratory ? ` to ${sent.laboratory}` : ''}). Enter it on the Laboratory page as soon as it arrives.`
                 ) : notSent ? (
-                  `Sample ${notSent.sampleId} is collected. Enter the date it was sent to the laboratory.`
+                  `Sample ${notSent.sampleId} is collected. Enter the date it was sent on the Laboratory page.`
                 ) : inconclusive ? (
                   'The result was inconclusive. Collect a new sample and send it for testing.'
                 ) : (
-                  'Collect samples and add them here. The case status updates by itself as each sample is sent and its result comes back.'
+                  'Collect samples and add them here. Each sample goes to the Laboratory page, where its result is entered; the case status updates by itself.'
                 )
               }
             >
@@ -1263,14 +1268,17 @@ function CaseDetail() {
                       </div>
                       <span className="flex items-center gap-1.5">
                         <LabResultBadge result={l.result} />
-                        {!l.voided && canEdit && (
-                          <Button
-                            size="xs"
-                            variant={l.result === 'PENDING' ? 'default' : 'ghost'}
-                            onClick={() => openLab(l)}
+                        {!l.voided && (
+                          <Link
+                            to={`/laboratory?sample=${l.id}`}
+                            className="inline-flex h-8 items-center rounded-md px-2 text-[13px] font-medium text-brand-strong underline hover:bg-slate-50"
                           >
-                            {l.result !== 'PENDING' ? 'Edit' : l.sentAt ? 'Enter Result' : 'Enter Date Sent'}
-                          </Button>
+                            {l.result === 'PENDING' && canEdit
+                              ? l.sentAt
+                                ? 'Enter Result in Laboratory'
+                                : 'Enter Date Sent in Laboratory'
+                              : 'Open in Laboratory'}
+                          </Link>
                         )}
                         {!l.voided && isReviewer && !c.closed && (
                           <Button
@@ -1594,6 +1602,7 @@ function CaseDetail() {
         caseId={c.id}
         code={c.code}
         lab={labEdit}
+        hideResult={!labEdit}
         minDate={caseStart}
       />
       <CaseCloseDialog
@@ -1761,7 +1770,11 @@ function MonitoringCard({ c }: { c: CaseRow }) {
         title="Farms to Monitor (1 km)"
         actions={
           c.mapped && (
-            <Button size="xs" variant="outline" onClick={() => navigate(`/radius?case=${c.id}&radius=1000`)}>
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => navigate(`/disease-monitoring?view=radius&case=${c.id}&radius=1000`)}
+            >
               <Radar /> Open List
             </Button>
           )
@@ -1839,115 +1852,3 @@ export type CaseWorklist = {
     late: boolean;
   })[];
 };
-
-function CaseCell({ r }: { r: WorkCase }) {
-  return (
-    <div>
-      <div className="font-medium text-slate-900">{r.caseCode}</div>
-      <div className="text-[13px] text-slate-500">
-        {r.disease} · {r.farmName}, {r.barangay}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- Investigation & Lab ---------------- */
-
-export function InvestigationPage() {
-  const navigate = useNavigate();
-  const { data, isLoading, error } = useApi<CaseWorklist>('/api/case-worklist');
-  if (error) return <ErrorBox error={error} />;
-  const overdue = data?.visits.filter((v) => v.overdue).length ?? 0;
-  return (
-    <div>
-      <PageHeader
-        title="Investigation & Laboratory"
-        subtitle="What is waiting on open cases: lab results not back yet and field visits that are due. Select a row to work on it in the case."
-      />
-      <div className="space-y-4">
-        <Card>
-          <CardHeader
-            title={`Lab samples awaiting results${data ? ` (${data.labs.length})` : ''}`}
-            className="border-b-0"
-          />
-          <DataTable
-            rows={data?.labs}
-            loading={isLoading}
-            rowKey={(r) => r.id}
-            onRowClick={(r) => navigate(`/cases/${r.caseId}?tab=laboratory`)}
-            pageSize={0}
-            hideFooter
-            mobileTitle="sampleId"
-            minWidth={820}
-            defaultSort={{ key: 'waitingDays', dir: 'desc' }}
-            columns={[
-              { key: 'sampleId', header: 'Sample ID' },
-              { key: 'caseCode', header: 'Case', cell: (r) => <CaseCell r={r} /> },
-              {
-                key: 'sampleType',
-                header: 'Sample / test',
-                cell: (r) => (r.testMethod ? `${r.sampleType} · ${r.testMethod}` : r.sampleType),
-              },
-              { key: 'laboratory', header: 'Laboratory' },
-              {
-                key: 'sentAt',
-                header: 'Sent',
-                cell: (r) => (r.sent ? fmtDate(r.sentAt) : <Badge tone="amber">Not Sent Yet</Badge>),
-              },
-              {
-                key: 'waitingDays',
-                header: 'Waiting',
-                sort: (r) => r.waitingDays ?? -1,
-                cell: (r) =>
-                  r.waitingDays == null ? '—' : `${r.waitingDays} day${r.waitingDays === 1 ? '' : 's'}`,
-              },
-            ]}
-            empty="No samples are waiting for results."
-          />
-        </Card>
-        <Card>
-          <CardHeader
-            title={`Field visits due${data ? ` (${data.visits.length})` : ''}`}
-            actions={overdue ? <Badge tone="red">{overdue} overdue</Badge> : undefined}
-            className="border-b-0"
-          />
-          <DataTable
-            rows={data?.visits}
-            loading={isLoading}
-            rowKey={(r) => `${r.caseId}-${r.kind}`}
-            onRowClick={(r) => navigate(`/cases/${r.caseId}?tab=investigation`)}
-            pageSize={0}
-            hideFooter
-            mobileTitle="caseCode"
-            minWidth={720}
-            defaultSort={{ key: 'due', dir: 'asc' }}
-            columns={[
-              { key: 'caseCode', header: 'Case', cell: (r) => <CaseCell r={r} /> },
-              {
-                key: 'kind',
-                header: 'Visit',
-                cell: (r) => (r.kind === 'INITIAL' ? 'Initial investigation' : 'Follow-up'),
-              },
-              {
-                key: 'lastVisit',
-                header: 'Last visit',
-                cell: (r) => (r.lastVisit ? fmtDate(r.lastVisit) : '—'),
-              },
-              {
-                key: 'due',
-                header: 'Due',
-                cell: (r) => (
-                  <span className="inline-flex flex-wrap items-center gap-1.5">
-                    {fmtDate(r.due)}
-                    {r.overdue && <Badge tone="red">Overdue</Badge>}
-                  </span>
-                ),
-              },
-            ]}
-            empty="No field visits are due. Set a next visit date when recording an investigation."
-          />
-        </Card>
-      </div>
-    </div>
-  );
-}

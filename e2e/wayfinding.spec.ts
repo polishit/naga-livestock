@@ -100,9 +100,11 @@ test('add owner: owner, farm and livestock with Back and Next, then one success 
 test('reports open on the monthly report; analytics compares periods and links to records', async ({
   page,
 }) => {
-  await page.goto('/reports');
-  await expect(page.getByRole('heading', { name: /Monthly Livestock Monitoring Report/i })).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'Total livestock (heads)' })).toBeVisible();
+  // The monthly report is the first report in All Reports (it was its own page before).
+  await page.goto('/monthly-report');
+  await expect(page).toHaveURL(/\/reports\?tab=summary&type=monthly-report/);
+  await expect(page.getByRole('button', { name: 'Print Monthly Report' })).toBeVisible();
+  await expect(page.getByText('Updates automatically')).toBeVisible();
   await page.getByLabel('Report Type', { exact: true }).selectOption({ label: 'Accomplishment Report' });
   await expect(page.getByRole('heading', { name: 'Accomplishment Report' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Vaccine doses given' })).toBeVisible();
@@ -133,6 +135,9 @@ test('reports open on the monthly report; analytics compares periods and links t
     .getByRole('link', { name: 'Fix' })
     .click();
   await expect(page).toHaveURL(/\/owners\?rsbsa=no/);
+  // The filter is set (shown as a count on the Filters button).
+  await expect(page.getByRole('button', { name: /Filters\s*1/ })).toBeVisible();
+  await page.getByRole('button', { name: /Filters/ }).click();
   await expect(page.getByLabel('RSBSA')).toHaveValue('no');
 
   // Clicking a bar opens the records behind it.

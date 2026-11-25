@@ -37,47 +37,51 @@ test('record a field visit with head count and deworming in one form', async ({ 
   await expect(page.getByText('Not visited yet')).toHaveCount(0);
 });
 
-test('one map with filters and layers leads to the farms to monitor', async ({ page }) => {
+test('disease monitoring: one map of the cases leads to the farms in the radius', async ({ page }) => {
   await page.goto('/gis-map');
-  await expect(page.getByRole('heading', { name: 'Livestock & Disease Map' })).toBeVisible();
-  await page.getByLabel('Livestock population (by barangay)').check();
-  // The colour key sits above the map.
+  await expect(page.getByRole('heading', { name: 'Livestock Map' })).toBeVisible();
+  // The colour key sits above the map; the barangay summary is the side panel.
   await expect(page.getByRole('group', { name: 'Map legend' })).toContainText('Livestock (head)');
-  await expect(page.getByRole('heading', { name: /^Farms \(/i })).toBeVisible();
-  // Filtering by disease shows only the disease reports on the right.
+  await expect(page.getByRole('tab', { name: 'Barangay Summary' })).toBeVisible();
+  await page.getByRole('tab', { name: /^Farms \(/ }).click();
+  await expect(page.getByRole('button', { name: /Ground Zero Piggery/ })).toBeVisible();
+
+  await page.goto('/disease-monitoring');
+  await expect(page.getByRole('heading', { name: 'Disease Monitoring' })).toBeVisible();
   await page.getByLabel('Disease', { exact: true }).selectOption('African Swine Fever (ASF)');
-  await expect(page.getByRole('heading', { name: /^Farms \(/i })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /^Disease Reports \(/i })).toBeVisible();
   await page.getByRole('button', { name: /African Swine Fever \(ASF\).*CASE-0001/i }).click();
   // The ground-zero farm (the case's own farm) is not in the list of farms to monitor.
-  await expect(
-    page.getByText(/farm\(s\) to monitor within 1\.00 km \(ground-zero farm not included\)/),
-  ).toBeVisible();
-  // The box closes with an X.
+  await expect(page.getByText(/farm\(s\) within 1\.00 km \(ground-zero farm not included\)/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Farms to monitor' }).click();
-  await expect(page).toHaveURL(/\/radius\?case=1/);
-  await expect(page.getByRole('heading', { name: 'Farms to Monitor' })).toBeVisible();
+  await page.getByRole('button', { name: 'Farms in Radius' }).click();
+  await expect(page).toHaveURL(/view=radius&case=1/);
+  await expect(page.getByRole('heading', { name: /Farms to Monitor Within/ })).toBeVisible();
+  // Old links land on the same place.
+  await page.goto('/radius?case=1');
+  await expect(page).toHaveURL(/\/disease-monitoring\?case=1&view=radius/);
 });
 
-test('deworming records are filtered by service and the field visits are listed', async ({ page }) => {
-  await page.goto('/services?tab=records');
-  await page.getByLabel('Service', { exact: true }).selectOption('DEWORMING');
+test('the activity log lists services and farm visits together', async ({ page }) => {
+  await page.goto('/services');
+  await page.getByLabel('Activity', { exact: true }).selectOption('DEWORMING');
   // Plain headers: no click-to-sort on this page.
   await expect(page.getByRole('columnheader', { name: 'Date' }).getByRole('button')).toHaveCount(0);
   await expect(page.getByRole('cell', { name: 'Albendazole' }).first()).toBeVisible();
-  // Field Visits (formerly Farm Visits) is its own page in Veterinary Field Services.
-  await page.goto('/services?tab=visits');
-  await expect(page).toHaveURL(/\/field-visits/);
-  await expect(page.getByRole('link', { name: 'Pacol Goat Farm' })).toBeVisible();
+  // Field visits are part of the log, as "Farm Visit" (old links still work).
+  await page.goto('/field-visits');
+  await expect(page).toHaveURL(/\/services\?type=VISIT/);
+  await expect(page.getByText('Farm Visit').first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Pacol Goat Farm' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Record Farm Visit' })).toBeVisible();
 });
 
 test('monthly report shows the month with graphs and prints the standard report', async ({
   page,
   context,
 }) => {
-  await page.goto('/monthly-report');
-  await expect(page.getByRole('heading', { name: 'Monthly Report' })).toBeVisible();
+  // The monthly report is a report type in All Reports.
+  await page.goto('/reports?tab=summary&type=monthly-report');
   await expect(page.getByText('Updates automatically')).toBeVisible();
   await expect(page.getByText('Heads dewormed').first()).toBeVisible();
   const [win] = await Promise.all([
@@ -105,26 +109,27 @@ test('dashboard boxes open their records; no shortcut buttons at the top', async
   await expect(page).toHaveURL(/\/owners/);
 });
 
-test('the registry menu holds owners, farms, population, ear tags, ownership and strays', async ({
+test('the registry menu holds owners, farms, population, ear tags and ownership (no strays)', async ({
   page,
 }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await nav.getByRole('button', { name: 'Livestock Registry' }).click();
+  // Every module of the menu is open; the module name folds it.
   for (const name of [
     'Livestock Owners',
     'Farms',
     'Population Monitoring',
     'Animal ID / Ear Tags',
     'Ownership Records',
-    'Stray Livestock',
   ])
     await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Stray Livestock' })).toHaveCount(0);
 });
 
-test('upcoming deworming and vaccination schedule is a calendar', async ({ page }) => {
+test("the vaccination schedule is one calendar under the owners' pending requests", async ({ page }) => {
   await page.goto('/services?tab=upcoming');
-  await expect(page.getByRole('button', { name: 'Record Field Visit' })).toHaveCount(0);
+  await page.goto('/vaccination-schedule');
+  await expect(page.getByRole('heading', { name: 'Vaccination Schedule' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Previous month' })).toBeVisible();
   await expect(page.getByText(/scheduled in/)).toBeVisible();
   await page.getByRole('button', { name: 'Next month' }).click();

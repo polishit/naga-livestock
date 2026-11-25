@@ -15,7 +15,6 @@ import {
   RESPONSE_STATUS_LABELS,
   RESPONSE_TYPE_LABELS,
   fmtDate,
-  fmtDateTime,
   fmtMonth,
   formatRadius,
   isoDate,
@@ -993,43 +992,6 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           remarks: x.remarks ?? '—',
         })),
         summary: [{ label: 'Transfers', value: rows.length }],
-      };
-    }
-    case 'stray-incidents': {
-      const s = await prisma.strayIncident.findMany({
-        where: {
-          voidedAt: null,
-          ...(p.barangay ? { barangay: p.barangay } : {}),
-          ...(p.species ? { species: p.species } : {}),
-        },
-        include: { owner: true },
-        orderBy: { discoveredAt: 'desc' },
-      });
-      const rows = s.filter((x) => inRange(x.discoveredAt, p));
-      return {
-        ...base,
-        columns: [
-          col('code', 'Incident'),
-          col('discovered', 'Discovered'),
-          col('species', 'Species'),
-          col('tag', 'Tag'),
-          col('owner', 'Owner'),
-          col('barangay', 'Barangay'),
-          col('status', 'Status'),
-        ],
-        rows: rows.map((x) => ({
-          code: x.code,
-          discovered: fmtDateTime(x.discoveredAt),
-          species: x.species,
-          tag: x.earTag ?? '—',
-          owner: x.owner?.fullName ?? 'Unknown',
-          barangay: `${x.barangay} — ${x.location}`,
-          status: titleCase(x.status),
-        })),
-        summary: [
-          { label: 'Incidents', value: rows.length },
-          { label: 'Closed', value: rows.filter((x) => x.status === 'CLOSED').length },
-        ],
       };
     }
     case 'pcic-policies': {

@@ -1,6 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  CircleAlert,
   ClipboardCheck,
   ClipboardList,
   FileWarning,
@@ -29,7 +28,7 @@ export function QuickNew() {
       icon: ClipboardCheck,
       label: 'Record a Field Visit',
       hint: 'Head count, deworming and findings in one form',
-      run: () => navigate('/field-visits?visit=1'),
+      run: () => navigate('/services?visit=1'),
     },
     {
       icon: Syringe,
@@ -54,12 +53,6 @@ export function QuickNew() {
       label: 'Update a Head Count',
       hint: 'Count per species for a farm',
       run: () => navigate('/population'),
-    },
-    {
-      icon: CircleAlert,
-      label: 'Report a Stray Animal',
-      hint: 'An animal found wandering',
-      run: () => navigate('/strays?new=1'),
     },
   ];
   return (

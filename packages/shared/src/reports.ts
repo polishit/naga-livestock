@@ -59,7 +59,6 @@ export const REPORT_TYPES: ReportTypeDef[] = [
   { id: 'farm-registry', title: 'Farm Masterlist', category: 'ownership' },
   { id: 'animal-registry', title: 'Animal ID / Ear Tag Registry', category: 'ownership' },
   { id: 'ownership-transfers', title: 'Ownership Transfers', category: 'ownership' },
-  { id: 'stray-incidents', title: 'Stray Livestock Incidents', category: 'ownership' },
   { id: 'pcic-policies', title: 'PCIC Livestock Insurance Policies', category: 'ownership' },
   { id: 'rsbsa-registration', title: 'RSBSA Registration by Barangay', category: 'ownership' },
   { id: 'incomplete-records', title: 'Incomplete Records', category: 'ownership' },

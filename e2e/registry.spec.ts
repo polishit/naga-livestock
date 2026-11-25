@@ -171,29 +171,6 @@ test('duplicate ear tags are rejected with a field error', async ({ page }) => {
   await expect(d.getByText('Ear tag already used by NC-C-0001')).toBeVisible();
 });
 
-test('report a stray animal and update the incident', async ({ page }) => {
-  await page.goto('/strays');
-  await page.getByRole('button', { name: 'Report incident' }).click();
-  const d = dialog(page);
-  await d.getByLabel('Species').selectOption('Goat');
-  await d.getByLabel('Barangay').selectOption('Balatas');
-  await d.getByLabel('Location', { exact: false }).first().fill('Balatas covered court');
-  await clickMap(page, d, 0.5, 0.5);
-  await d.getByRole('button', { name: 'Save report' }).click();
-  await expectToast(page, 'Stray livestock report saved.');
-  const row = page.getByRole('row', { name: /STR-0007/i });
-  await expect(row).toContainText('Pinned');
-  await row.click();
-  const u = dialog(page);
-  // Only two statuses: Reported and Closed (no impound or release).
-  await expect(u.getByLabel('Status').locator('option')).toHaveText(['Reported', 'Closed']);
-  await u.getByLabel('Number of violations').fill('1');
-  await u.getByLabel('Status').selectOption('CLOSED');
-  await u.getByRole('button', { name: 'Save changes' }).click();
-  await expectToast(page, 'Incident updated.');
-  await expect(page.getByRole('row', { name: /STR-0007/i })).toContainText('Closed');
-});
-
 test('set the location of a farm without coordinates (old geotagging link)', async ({ page }) => {
   await page.route('**/api/geocode/reverse**', (route) =>
     route.fulfill({ json: { address: 'Pacol Road, Pacol, Naga', barangay: 'Pacol' } }),
@@ -241,15 +218,6 @@ test('clicking the map fills in the address and barangay', async ({ page }) => {
   await d.getByRole('button', { name: 'Use it' }).click();
   await expect(d.getByLabel('Farm address')).toHaveValue('Pacol Road, Pacol, Naga');
   await d.getByRole('button', { name: 'Cancel' }).click();
-
-  // Stray reports fill the Location field the same way.
-  await page.goto('/strays');
-  await page.getByRole('button', { name: 'Report incident' }).click();
-  await clickMap(page, dialog(page), 0.5, 0.5);
-  await expect(dialog(page).getByLabel('Location', { exact: false }).first()).toHaveValue(
-    'Pacol Road, Pacol, Naga',
-  );
-  await expect(dialog(page).getByLabel('Barangay')).toHaveValue('Pacol');
 });
 
 test('a failed address lookup tells the user to type it', async ({ page }) => {

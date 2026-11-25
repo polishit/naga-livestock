@@ -1,12 +1,4 @@
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsUpDown,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  SlidersHorizontal,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsUpDown, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { cn, toTitle } from '@/lib/utils';
 import { EmptyState, Input, Spinner } from './ui';
@@ -124,9 +116,6 @@ export function DataTable<T>({
             toolbarDivider ? 'border-b-2 border-slate-700/80' : 'border-b border-slate-200',
           )}
         >
-          <span className="hidden items-center gap-1.5 pr-1 text-[13px] font-semibold uppercase tracking-wide text-slate-500 sm:inline-flex">
-            <SlidersHorizontal className="h-4 w-4" /> Filter
-          </span>
           {searchText && (
             <div className="relative w-full sm:w-80">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

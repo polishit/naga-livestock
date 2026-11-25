@@ -15,7 +15,6 @@ import {
   type FarmType,
   type ReportResult,
   fmtDate,
-  fmtDateTime,
   titleCase,
 } from '@livestock/shared';
 import { api } from '@/lib/api';
@@ -30,8 +29,9 @@ import { DocumentLinks } from '@/components/forms';
 import { MapView } from '@/components/MapView';
 import { openMessages } from '@/components/MessagesFab';
 import { MoreMenu } from '@/components/MoreMenu';
-import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/components/page';
-import { ActiveBadge, CaseStatusBadge, SpeciesChip, StrayStatusBadge } from '@/components/status';
+import { ErrorBox, FilterSelect, KV, Loading, MiniStat, MoreFilters, PageHeader } from '@/components/page';
+import { OwnerLoginCard, PendingOwners } from './ReviewPages';
+import { ActiveBadge, CaseStatusBadge, SpeciesChip } from '@/components/status';
 import { ActivityTimeline, LastVisit, RaisedBadge, sourceLabel } from '@/components/livestock';
 import { Badge, Button, Card, CardHeader, Checkbox, Tabs } from '@/components/ui';
 import {
@@ -155,6 +155,7 @@ export function OwnersPage() {
           </>
         }
       />
+      {canEdit && <PendingOwners />}
       {error ? (
         <ErrorBox error={error} />
       ) : (
@@ -177,61 +178,77 @@ export function OwnersPage() {
                   all="All barangays"
                   className="w-[calc(50%-4px)] sm:w-48"
                 />
-                <FilterSelect
-                  label="Status"
-                  value={status}
-                  onChange={setStatus}
-                  options={OWNER_STATUSES.map((s) => ({ value: s, label: titleCase(s) }))}
-                  all="All statuses"
-                  className="w-[calc(50%-4px)] sm:w-36"
-                />
-                <FilterSelect
-                  label="RSBSA"
-                  value={rsbsa}
-                  onChange={setRsbsa}
-                  options={[
-                    { value: 'yes', label: 'With RSBSA Control No.' },
-                    { value: 'no', label: 'No RSBSA Control No.' },
-                  ]}
-                  all="RSBSA: all"
-                  className="w-[calc(50%-4px)] sm:w-40"
-                />
-                <FilterSelect
-                  label="Livestock Raised"
-                  value={species}
-                  onChange={setSpecies}
-                  options={SPECIES}
-                  all="Any livestock"
-                  className="w-[calc(50%-4px)] sm:w-40"
-                />
-                <FilterSelect
-                  label="Farm Type"
-                  value={farmType}
-                  onChange={setFarmType}
-                  options={FARM_TYPES.map((t) => ({ value: t, label: FARM_TYPE_LABELS[t] }))}
-                  all="Any farm type"
-                  className="w-[calc(50%-4px)] sm:w-44"
-                />
-                <FilterSelect
-                  label="Insurance"
-                  value={insured}
-                  onChange={setInsured}
-                  options={[
-                    { value: 'yes', label: 'Insured (PCIC)' },
-                    { value: 'no', label: 'Not Insured' },
-                  ]}
-                  all="Insurance: all"
-                  className="w-[calc(50%-4px)] sm:w-40"
-                />
-                <FilterSelect
-                  label="Source"
-                  value={source}
-                  onChange={setSource}
-                  options={RECORD_SOURCES.map((x) => ({ value: x, label: RECORD_SOURCE_LABELS[x] }))}
-                  all="Any source"
-                  className="w-[calc(50%-4px)] sm:w-44"
-                />
-                <Checkbox label="Show Archived" checked={archived} onChange={setArchived} />
+                <MoreFilters
+                  active={
+                    [status, rsbsa, species, farmType, insured, source].filter(Boolean).length +
+                    (archived ? 1 : 0)
+                  }
+                  onClear={() => (
+                    setStatus(''),
+                    setRsbsa(''),
+                    setSpecies(''),
+                    setFarmType(''),
+                    setInsured(''),
+                    setSource(''),
+                    setArchived(false)
+                  )}
+                >
+                  <FilterSelect
+                    label="Status"
+                    value={status}
+                    onChange={setStatus}
+                    options={OWNER_STATUSES.map((s) => ({ value: s, label: titleCase(s) }))}
+                    all="All statuses"
+                    className="w-[calc(50%-4px)] sm:w-36"
+                  />
+                  <FilterSelect
+                    label="RSBSA"
+                    value={rsbsa}
+                    onChange={setRsbsa}
+                    options={[
+                      { value: 'yes', label: 'With RSBSA Control No.' },
+                      { value: 'no', label: 'No RSBSA Control No.' },
+                    ]}
+                    all="RSBSA: all"
+                    className="w-[calc(50%-4px)] sm:w-40"
+                  />
+                  <FilterSelect
+                    label="Livestock Raised"
+                    value={species}
+                    onChange={setSpecies}
+                    options={SPECIES}
+                    all="Any livestock"
+                    className="w-[calc(50%-4px)] sm:w-40"
+                  />
+                  <FilterSelect
+                    label="Farm Type"
+                    value={farmType}
+                    onChange={setFarmType}
+                    options={FARM_TYPES.map((t) => ({ value: t, label: FARM_TYPE_LABELS[t] }))}
+                    all="Any farm type"
+                    className="w-[calc(50%-4px)] sm:w-44"
+                  />
+                  <FilterSelect
+                    label="Insurance"
+                    value={insured}
+                    onChange={setInsured}
+                    options={[
+                      { value: 'yes', label: 'Insured (PCIC)' },
+                      { value: 'no', label: 'Not Insured' },
+                    ]}
+                    all="Insurance: all"
+                    className="w-[calc(50%-4px)] sm:w-40"
+                  />
+                  <FilterSelect
+                    label="Source"
+                    value={source}
+                    onChange={setSource}
+                    options={RECORD_SOURCES.map((x) => ({ value: x, label: RECORD_SOURCE_LABELS[x] }))}
+                    all="Any source"
+                    className="w-[calc(50%-4px)] sm:w-44"
+                  />
+                  <Checkbox label="Show Archived" checked={archived} onChange={setArchived} />
+                </MoreFilters>
               </>
             }
             columns={[
@@ -397,7 +414,7 @@ export function OwnerDetailPage() {
           { id: 'profile', label: 'Owner Profile' },
           { id: 'farms', label: `Farms (${data.farms.length})` },
           { id: 'services', label: `Deworming & Services (${services.length})` },
-          { id: 'incidents', label: 'Disease & Incidents' },
+          { id: 'incidents', label: `Disease Cases (${data.cases.length})` },
           { id: 'animals', label: `Ear Tags (${data.animals.length})` },
         ]}
       />
@@ -424,6 +441,12 @@ export function OwnerDetailPage() {
                   />
                 </div>
               </Card>
+              <OwnerLoginCard
+                ownerId={o.id}
+                ownerName={o.fullName}
+                ownerStatus={o.status}
+                contact={o.contact}
+              />
               <Card>
                 <CardHeader title="Ownership Records" />
                 {data.transfers.length ? (
@@ -663,23 +686,6 @@ export function OwnerDetailPage() {
                   { key: 'status', header: 'Status', cell: (r) => <CaseStatusBadge status={r.status} /> },
                 ]}
                 empty="No disease cases."
-              />
-            </Card>
-            <Card>
-              <CardHeader title="Stray Incidents" />
-              <DataTable
-                rows={data.strays}
-                rowKey={(r) => r.id}
-                onRowClick={(r) => navigate(`/strays?open=${r.id}`)}
-                pageSize={0}
-                columns={[
-                  { key: 'code', header: 'Incident No.' },
-                  { key: 'discoveredAt', header: 'Date Found', cell: (r) => fmtDateTime(r.discoveredAt) },
-                  { key: 'species', header: 'Species' },
-                  { key: 'barangay', header: 'Barangay' },
-                  { key: 'status', header: 'Status', cell: (r) => <StrayStatusBadge status={r.status} /> },
-                ]}
-                empty="No stray incidents."
               />
             </Card>
           </div>

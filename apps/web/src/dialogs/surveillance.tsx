@@ -616,6 +616,7 @@ export function LabDialog({
   caseId,
   code,
   lab,
+  hideResult,
   minDate,
   onSaved,
 }: DialogProps & {
@@ -623,6 +624,8 @@ export function LabDialog({
   code: string;
   /** Edit this record (e.g. enter the result when it comes back) instead of adding a new one. */
   lab?: LabEditRecord | null;
+  /** Leave out the result fields: the result is entered on the Laboratory page. */
+  hideResult?: boolean;
   /** First day of the case; sample dates cannot be earlier. */
   minDate?: string;
   onSaved?: (values: { result: string; sentAt?: string }) => void;
@@ -793,35 +796,46 @@ export function LabDialog({
             <option key={t} value={t} />
           ))}
         </datalist>
-        <Field label="Result" error={err(e, 'result')}>
-          <Select {...form.register('result')}>
-            {LAB_RESULTS.map((r) => (
-              <option key={r} value={r}>
-                {titleCase(r)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={result === 'PENDING' ? 'Result date' : 'Result date *'} error={err(e, 'resultDate')}>
-          <Input
-            type="date"
-            min={sent || collected || start}
-            max={isoDate()}
-            {...form.register('resultDate')}
-          />
-        </Field>
-        {result !== 'PENDING' && (
-          <Field label="Result Received By" error={err(e, 'receivedVia')}>
-            <Select {...form.register('receivedVia')}>
-              {RESULT_RECEIVED_VIA.map((v) => (
-                <option key={v} value={v}>
-                  {RESULT_RECEIVED_LABELS[v]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+        {!hideResult && (
+          <>
+            <Field label="Result" error={err(e, 'result')}>
+              <Select {...form.register('result')}>
+                {LAB_RESULTS.map((r) => (
+                  <option key={r} value={r}>
+                    {titleCase(r)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label={result === 'PENDING' ? 'Result date' : 'Result date *'}
+              error={err(e, 'resultDate')}
+            >
+              <Input
+                type="date"
+                min={sent || collected || start}
+                max={isoDate()}
+                {...form.register('resultDate')}
+              />
+            </Field>
+            {result !== 'PENDING' && (
+              <Field label="Result Received By" error={err(e, 'receivedVia')}>
+                <Select {...form.register('receivedVia')}>
+                  {RESULT_RECEIVED_VIA.map((v) => (
+                    <option key={v} value={v}>
+                      {RESULT_RECEIVED_LABELS[v]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+          </>
         )}
-        <Field label="Remarks / Result Details" error={err(e, 'remarks')} className="sm:col-span-3">
+        <Field
+          label={hideResult ? 'Remarks' : 'Remarks / Result Details'}
+          error={err(e, 'remarks')}
+          className="sm:col-span-3"
+        >
           <Textarea rows={2} {...form.register('remarks')} />
         </Field>
         {lab?.updatedAt && (

@@ -2,20 +2,14 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ANIMAL_STATUSES,
-  BARANGAYS,
   MAX_PHOTOS,
   MAX_PHOTO_MB,
   MIN_DATE,
   MIN_DOB,
-  SPECIES,
-  STRAY_STATUSES,
   animalCreateSchema,
   animalMoveSchema,
   animalUpdateSchema,
-  fmtDate,
   isoDate,
-  strayCreateSchema,
-  strayUpdateSchema,
   titleCase,
   transferCreateSchema,
   ANIMAL_PURPOSES,
@@ -23,20 +17,13 @@ import {
   isLargeRuminant,
 } from '@livestock/shared';
 import { toast } from 'sonner';
-import { api, isQueued, uploadFile } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
-import { useAddressLookup, useApi, useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
-import { MapView } from '@/components/MapView';
-import {
-  AddressLookupHint,
-  DocumentPicker,
-  PhotoGallery,
-  PhotoPicker,
-  err,
-  useZodForm,
-} from '@/components/forms';
-import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
-import { VoidDialog } from './surveillance';
+import { isQueued, uploadFile } from '@/lib/api';
+import {} from '@/lib/auth';
+import { useLookups, useResetOnOpen, useSave } from '@/lib/hooks';
+import {} from '@/components/MapView';
+import { DocumentPicker, PhotoPicker, err, useZodForm } from '@/components/forms';
+import { Button, Dialog, Field, Input, Select } from '@/components/ui';
+import {} from './surveillance';
 
 interface DialogProps {
   open: boolean;
@@ -375,43 +362,6 @@ export function MoveGroupDialog({ open, onOpenChange, animal }: DialogProps & { 
   );
 }
 
-/** Earlier stray incidents of an owner, so repeat offenders are noticed. */
-export function OwnerStrayHistory({
-  ownerId,
-  exceptId,
-}: {
-  ownerId?: number | string | null;
-  exceptId?: number;
-}) {
-  const id = Number(ownerId) || 0;
-  const { data } = useApi<{
-    incidents: number;
-    violations: number;
-    open: number;
-    last: { code: string; discoveredAt: string } | null;
-  }>(id ? `/api/strays/owner/${id}/summary${exceptId ? `?except=${exceptId}` : ''}` : null);
-  if (!id || !data) return null;
-  if (!data.incidents)
-    return <p className="text-[13px] text-slate-500">No earlier stray incidents for this owner.</p>;
-  const repeat = data.incidents >= 2;
-  return (
-    <div
-      role="status"
-      className={
-        repeat
-          ? 'rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[14px] text-red-800'
-          : 'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[14px] text-amber-800'
-      }
-    >
-      <b className="font-semibold">{repeat ? 'Repeat offender: ' : 'Earlier incident: '}</b>
-      {data.incidents} earlier stray incident{data.incidents === 1 ? '' : 's'}
-      {data.last
-        ? ` — last ${data.last.code} on ${fmtDate(data.last.discoveredAt)}`
-        : ''}.{data.open ? ` ${data.open} still open.` : ''}
-    </div>
-  );
-}
-
 export function TransferDialog({ open, onOpenChange, animal }: DialogProps & { animal: AnimalRecord }) {
   const { data: lookups } = useLookups();
   const form = useZodForm(transferCreateSchema, {});
@@ -483,328 +433,6 @@ export function TransferDialog({ open, onOpenChange, animal }: DialogProps & { a
           The animal moves to the receiving farm's {animal.species.toLowerCase()} group; one head is moved
           between the group counts.
         </p>
-      </form>
-    </Dialog>
-  );
-}
-
-export function StrayDialog({ open, onOpenChange }: DialogProps) {
-  const { data: lookups } = useLookups();
-  const [photos, setPhotos] = useState<File[]>([]);
-  const form = useZodForm(strayCreateSchema, {});
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  useResetOnOpen(open, form, {
-    earTag: '',
-    ownerId: '',
-    species: 'Cattle',
-    discoveredAt: local,
-    barangay: '',
-    location: '',
-    description: '',
-    lat: '',
-    lng: '',
-  } as any);
-  const geo = useAddressLookup(form, { address: 'location', barangay: 'barangay' });
-  const [tagHint, setTagHint] = useState<string | null>(null);
-  useEffect(() => {
-    if (open) {
-      geo.reset();
-      setTagHint(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-  /** A registered ear tag tells us the species and the owner. */
-  const lookupTag = async (tag: string) => {
-    const q = tag.trim();
-    if (!q) return setTagHint(null);
-    try {
-      const a = await api.get<{
-        code: string;
-        species: string;
-        ownerId: number;
-        ownerName: string;
-        farmName: string;
-      }>(`/api/animals/lookup?q=${encodeURIComponent(q)}`);
-      // A registered tag decides the species and owner (the server checks they match).
-      form.setValue('species', a.species as any, { shouldValidate: true });
-      form.setValue('ownerId', String(a.ownerId) as any, { shouldValidate: true });
-      setTagHint(`Registered animal ${a.code} (${a.species}) of ${a.ownerName}, ${a.farmName}.`);
-    } catch {
-      setTagHint('No registered animal has this tag — fill in the species and owner yourself.');
-    }
-  };
-  const save = useSave<any>('POST', '/api/strays', {
-    success: 'Stray livestock report saved.',
-    label: (b) => `Stray report (${b.species}, ${b.barangay})`,
-    form,
-    files: () => photos,
-    photoField: 'photoKeys',
-    onDone: () => {
-      setPhotos([]);
-      onOpenChange(false);
-    },
-  });
-  const e = form.formState.errors;
-  const lat = form.watch('lat');
-  const lng = form.watch('lng');
-  const point = lat && lng ? { lat: Number(lat), lng: Number(lng) } : null;
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Report Stray Livestock"
-      size="lg"
-      footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button form="stray-form" type="submit" loading={save.isPending}>
-            Save Report
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="stray-form"
-        noValidate
-        onSubmit={form.handleSubmit((v) => save.mutate(v))}
-        className="grid grid-cols-1 gap-5 lg:grid-cols-2"
-      >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field
-            label="Ear Tag / Animal ID (If Any)"
-            error={err(e, 'earTag')}
-            hint={tagHint ?? 'If the animal is registered, its species and owner are filled in.'}
-            className="sm:col-span-2"
-          >
-            <Input {...form.register('earTag', { onBlur: (ev) => lookupTag(ev.target.value) })} />
-          </Field>
-          <Field
-            label="Owner (If Known)"
-            error={err(e, 'ownerId')}
-            hint="Leave blank if the owner is unknown."
-            className="sm:col-span-2"
-          >
-            <Select {...form.register('ownerId')}>
-              <option value="">Unknown owner</option>
-              {lookups?.owners.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.fullName} · {o.barangay}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="sm:col-span-2 empty:hidden">
-            <OwnerStrayHistory ownerId={form.watch('ownerId')} />
-          </div>
-          <Field label="Species" error={err(e, 'species')}>
-            <Select {...form.register('species')}>
-              {SPECIES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Date & Time Discovered" error={err(e, 'discoveredAt')}>
-            <Input
-              type="datetime-local"
-              min={`${MIN_DATE}T00:00`}
-              max={local}
-              {...form.register('discoveredAt')}
-            />
-          </Field>
-          <Field label="Barangay *" error={err(e, 'barangay')}>
-            <Select {...form.register('barangay')} aria-invalid={!!e.barangay}>
-              <option value="">Select...</option>
-              {BARANGAYS.map((b) => (
-                <option key={b}>{b}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Location *" error={err(e, 'location')}>
-            <Input
-              {...form.register('location')}
-              aria-invalid={!!e.location}
-              placeholder="Landmark or street"
-            />
-          </Field>
-          <Field label="Description" error={err(e, 'description')} className="sm:col-span-2">
-            <Textarea rows={3} {...form.register('description')} />
-          </Field>
-          <Field
-            label={`Photos (up to ${MAX_PHOTOS}, max ${MAX_PHOTO_MB} MB each)`}
-            className="sm:col-span-2"
-          >
-            <PhotoPicker files={photos} onFilesChange={setPhotos} />
-          </Field>
-        </div>
-        <div>
-          <p className="mb-2 text-[13px] text-slate-500">
-            Pin location (optional) — clicking the map also fills in the location and barangay.
-          </p>
-          <MapView
-            className="h-64 sm:h-[300px]"
-            pick={{
-              value: point,
-              onChange: (p) => {
-                form.setValue('lat', String(p.lat) as any);
-                form.setValue('lng', String(p.lng) as any);
-                geo.lookup(p.lat, p.lng);
-              },
-            }}
-            fitKey={open ? 1 : 0}
-          />
-          {point && (
-            <p className="mt-1 text-[13px] text-slate-500">
-              {point.lat.toFixed(6)}, {point.lng.toFixed(6)}
-            </p>
-          )}
-          <AddressLookupHint state={geo.state} onApplySuggestion={geo.applySuggestion} />
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
-export interface StrayRecord {
-  id: number;
-  code: string;
-  status: string;
-  violations: number;
-  violationType: string | null;
-  ownerId: number | null;
-  remarks: string | null;
-  species: string;
-  barangay: string;
-  location: string;
-  description: string | null;
-  discoveredAt: string;
-  earTag: string | null;
-  ownerName: string | null;
-  photoKeys: string[];
-  lat: number | null;
-  lng: number | null;
-  /** Voided: reported in error. Kept, read-only, and left out of every figure. */
-  voided?: boolean;
-  voidedBy?: string | null;
-  voidReason?: string | null;
-}
-
-/** Incident details. Read-only users can view it. */
-export function StrayUpdateDialog({
-  open,
-  onOpenChange,
-  stray,
-}: DialogProps & { stray: StrayRecord | null }) {
-  const { data: lookups } = useLookups();
-  const { canEdit: canWrite, isReviewer } = useAuth();
-  const [action, setAction] = useState<null | 'void'>(null);
-  const form = useZodForm(strayUpdateSchema, {});
-  useResetOnOpen(open, form, {
-    status: stray?.status ?? 'REPORTED',
-    ownerId: stray?.ownerId ? String(stray.ownerId) : '',
-    remarks: stray?.remarks ?? '',
-  } as any);
-  const save = useSave<any>('PATCH', `/api/strays/${stray?.id}`, {
-    success: 'Incident updated.',
-    form,
-    onDone: () => onOpenChange(false),
-  });
-  const e = form.formState.errors;
-  if (!stray) return null;
-  // A voided report is read-only. A report entered in error is voided with a reason, never deleted.
-  const canEdit = canWrite && !stray.voided;
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={`${stray.code} · Stray ${stray.species.toLowerCase()}`}
-      size="lg"
-      footer={
-        <>
-          {isReviewer && !stray.voided && (
-            <Button variant="ghost" className="text-red-600 sm:mr-auto" onClick={() => setAction('void')}>
-              Void (Reported in Error)
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-          {canEdit && (
-            <Button form="stray-update" type="submit" loading={save.isPending}>
-              Save Changes
-            </Button>
-          )}
-        </>
-      }
-    >
-      {stray.voided && (
-        <p
-          role="status"
-          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[14px] text-red-800"
-        >
-          <b className="font-medium">Voided</b>
-          {stray.voidedBy ? ` by ${stray.voidedBy}` : ''}: {stray.voidReason}. It no longer counts in any
-          figure or report.
-        </p>
-      )}
-      {action === 'void' && (
-        <VoidDialog
-          open
-          onOpenChange={(o) => !o && setAction(null)}
-          url={`/api/strays/${stray.id}/void`}
-          what={`stray report ${stray.code}`}
-          onVoided={() => onOpenChange(false)}
-        />
-      )}
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-        <div className="space-y-1 text-[15px] text-slate-700">
-          <div>
-            <span className="text-slate-500">Location:</span> {stray.location}, {stray.barangay}
-          </div>
-          <div>
-            <span className="text-slate-500">Discovered:</span>{' '}
-            {new Date(stray.discoveredAt).toLocaleString()}
-          </div>
-          {stray.earTag && (
-            <div>
-              <span className="text-slate-500">Tag:</span> {stray.earTag}
-            </div>
-          )}
-          {stray.description && <div className="text-slate-600">{stray.description}</div>}
-        </div>
-        <PhotoGallery keys={stray.photoKeys} className="sm:max-w-[264px]" />
-      </div>
-      <form id="stray-update" noValidate onSubmit={form.handleSubmit((v) => save.mutate(v))}>
-        <fieldset disabled={!canEdit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Status" error={err(e, 'status')}>
-            <Select {...form.register('status')}>
-              {STRAY_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {titleCase(s)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Owner" error={err(e, 'ownerId')}>
-            <Select {...form.register('ownerId')}>
-              <option value="">Unknown owner</option>
-              {lookups?.owners.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.fullName} · {o.barangay}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="sm:col-span-2 empty:hidden">
-            <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />
-          </div>
-
-          <Field label="Remarks / Actions Taken" error={err(e, 'remarks')} className="sm:col-span-2">
-            <Textarea rows={3} {...form.register('remarks')} />
-          </Field>
-        </fieldset>
       </form>
     </Dialog>
   );

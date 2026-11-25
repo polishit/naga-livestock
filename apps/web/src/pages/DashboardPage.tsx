@@ -32,7 +32,7 @@ import {
 } from '@/components/charts';
 import type { MonthlyReportData } from '@/lib/print';
 import { MapView } from '@/components/MapView';
-import { ErrorBox, FilterSelect, Loading, PageHeader, StatCard } from '@/components/page';
+import { ErrorBox, FilterSelect, Loading, MoreFilters, PageHeader, StatCard } from '@/components/page';
 import { HotspotBanner, MyTasksCard, WelcomeCard } from '@/components/insights';
 import { CaseLegend } from '@/components/status';
 import { Button, Card, CardHeader } from '@/components/ui';
@@ -75,22 +75,22 @@ export default function DashboardPage() {
               all="All barangays"
               className="w-full sm:w-48"
             />
-            <FilterSelect
-              label="Species"
-              value={species}
-              onChange={setSpecies}
-              options={SPECIES}
-              all="All species"
-              className="w-[calc(50%-4px)] sm:w-36"
-            />
-            <FilterSelect
-              label="Case Status"
-              value={caseStatus}
-              onChange={setCaseStatus}
-              options={CASE_STATUSES.map((s) => ({ value: s, label: CASE_STATUS_LABELS[s] }))}
-              all="All case statuses"
-              className="w-[calc(50%-4px)] sm:w-44"
-            />
+            <MoreFilters active={[species, caseStatus].filter(Boolean).length} onClear={() => (setSpecies(''), setCaseStatus(''))} align="right">
+              <FilterSelect
+                label="Species"
+                value={species}
+                onChange={setSpecies}
+                options={SPECIES}
+                all="All species"
+              />
+              <FilterSelect
+                label="Case Status"
+                value={caseStatus}
+                onChange={setCaseStatus}
+                options={CASE_STATUSES.map((s) => ({ value: s, label: CASE_STATUS_LABELS[s] }))}
+                all="All case statuses"
+              />
+            </MoreFilters>
           </>
         }
       />
@@ -136,7 +136,7 @@ export default function DashboardPage() {
               value={data.stats.inLab}
               icon={FlaskConical}
               tone="blue"
-              to="/investigation"
+              to="/laboratory"
             />
             <StatCard
               label="Confirmed Positive"
@@ -155,7 +155,7 @@ export default function DashboardPage() {
             />
             <StatCard
               label="Field Visits This Month"
-              to="/field-visits"
+              to="/services?type=VISIT"
               value={month?.visits.total ?? 0}
               sub={
                 data.stats.awaitingGeotag

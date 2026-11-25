@@ -16,7 +16,8 @@ export async function login(page: Page, email = ADMIN, password = PASSWORD) {
 }
 
 /** The open dialog. */
-export const dialog = (page: Page) => page.getByRole('dialog');
+/** The dialog on top (a decision opens over the pending item's side panel). */
+export const dialog = (page: Page) => page.getByRole('dialog').last();
 
 export async function expectToast(page: Page, text: string | RegExp) {
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: text }).first()).toBeVisible();

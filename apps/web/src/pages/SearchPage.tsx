@@ -23,13 +23,12 @@ const TYPES: { value: string; label: string; hit: string; tone: Tone }[] = [
   { value: 'case', label: 'Disease cases', hit: 'Case', tone: 'red' },
   { value: 'sample', label: 'Lab samples', hit: 'Sample', tone: 'violet' },
   { value: 'submission', label: 'Lab batches', hit: 'Lab batch', tone: 'violet' },
-  { value: 'stray', label: 'Strays', hit: 'Stray', tone: 'orange' },
 ];
 const toneOf = (t: string) => TYPES.find((x) => x.hit === t)?.tone ?? 'slate';
 
 /**
  * One place to find any record: owners (name, RSBSA no.), farms, animals (ear tag, certificate),
- * disease cases, lab samples and batches, and strays — narrowed by type, barangay and species.
+ * disease cases, lab samples and batches — narrowed by type, barangay and species.
  */
 export default function SearchPage() {
   const navigate = useNavigate();
@@ -70,7 +69,7 @@ export default function SearchPage() {
     <div>
       <PageHeader
         title="Search"
-        subtitle="Find any record: owner, RSBSA no., farm, ear tag, ownership certificate, case, lab sample or batch, stray."
+        subtitle="Find any record: owner, RSBSA no., farm, ear tag, ownership certificate, case, lab sample or batch."
       />
       <Card className="p-4 sm:p-5">
         <div className="relative">

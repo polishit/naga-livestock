@@ -40,7 +40,6 @@ import {
   fmtDate,
   isoDate,
   ownerProfileSchema,
-  ownerVaccinationSchema,
   reportReplySchema,
   serviceRequestSchema,
   signupSchema,
@@ -841,7 +840,7 @@ export function VaccinationScreen() {
   const { data, isLoading, error } = useApi<VaccData>('/api/my/vaccination');
   const [tab, setTab] = useState<'schedule' | 'records' | 'requests'>('schedule');
   const [open, setOpen] = useState<
-    null | { kind: 'signup'; activityId: number } | { kind: 'submit' } | { kind: 'request' }
+    null | { kind: 'signup'; activityId: number } | { kind: 'request' }
   >(null);
   const { busy, run } = useSubmit();
   if (isLoading) return <Loading />;
@@ -860,7 +859,7 @@ export function VaccinationScreen() {
       />
       {noFarm && (
         <Panel tone="amber">
-          <p className="text-[15px]">You need a verified farm to sign up or send records.</p>
+          <p className="text-[15px]">You need a verified farm to sign up or request a service.</p>
         </Panel>
       )}
       {tab === 'schedule' && (
@@ -928,16 +927,6 @@ export function VaccinationScreen() {
       )}
       {tab === 'records' && (
         <div className="space-y-3">
-          {!noFarm && open?.kind !== 'submit' && (
-            <Button
-              variant="outline"
-              className={cn(big, 'w-full')}
-              onClick={() => setOpen({ kind: 'submit' })}
-            >
-              <Plus /> Add a Vaccination Given by a Private Vet
-            </Button>
-          )}
-          {open?.kind === 'submit' && <OwnerVaccForm data={data} onDone={() => setOpen(null)} />}
           {data.submitted.map((v) => (
             <Panel key={`s${v.id}`} tone={v.status === 'SUBMITTED' ? 'amber' : undefined}>
               <div className="flex items-center justify-between gap-2">
@@ -1085,72 +1074,6 @@ function SignupForm({
           </Button>
           <Button type="submit" loading={busy} className={big}>
             Sign Up
-          </Button>
-        </div>
-      </form>
-    </Panel>
-  );
-}
-
-function OwnerVaccForm({ data, onDone }: { data: VaccData; onDone: () => void }) {
-  const form = useZodForm(ownerVaccinationSchema, {
-    farmId: '',
-    species: '',
-    vaccine: '',
-    date: isoDate(),
-    heads: '',
-    givenBy: '',
-    proofKeys: [],
-  });
-  const [files, setFiles] = useState<File[]>([]);
-  const { busy, run } = useSubmit();
-  const e = form.formState.errors;
-  return (
-    <Panel tone="blue">
-      <h2 className="text-[17px] font-semibold">Vaccination by a Private Vet</h2>
-      <p className="text-[14px] text-slate-600">
-        The office checks it before it goes on your official record.
-      </p>
-      <form
-        noValidate
-        className="mt-3 space-y-3"
-        onSubmit={form.handleSubmit(async (v) => {
-          const ok = await run(
-            form,
-            async () =>
-              api.post('/api/my/vaccinations', { ...v, proofKeys: await uploadAll(files, 'vaccinations') }),
-            'Sent for verification.',
-          );
-          if (ok) onDone();
-        })}
-      >
-        <FarmAndSpecies data={data} form={form} />
-        <Field label="Vaccine *" error={err(e, 'vaccine')}>
-          <Input className={big} {...form.register('vaccine')} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Date Given *" error={err(e, 'date')}>
-            <Input className={big} type="date" max={isoDate()} {...form.register('date')} />
-          </Field>
-          <Field label="Head *" error={err(e, 'heads')}>
-            <Input className={big} inputMode="numeric" {...form.register('heads')} />
-          </Field>
-        </div>
-        <Field label="Who gave it? *" error={err(e, 'givenBy')} hint="Name of the veterinarian or technician">
-          <Input className={big} {...form.register('givenBy')} />
-        </Field>
-        <div>
-          <div className="mb-1 text-[14px] font-medium text-slate-700">
-            Proof (photo of the card, receipt or vial)
-          </div>
-          <PhotoPicker files={files} onFilesChange={setFiles} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Button type="button" variant="outline" className={big} onClick={onDone}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={busy} className={big}>
-            Send
           </Button>
         </div>
       </form>

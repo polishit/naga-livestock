@@ -31,6 +31,8 @@ export default {
           activeBg: '#e3f1de',
           accent: '#f4c430',
         },
+        // The staff menu: sage green with white text; the page you are on is a white pill.
+        nav: { DEFAULT: '#76a865', deep: '#689a58', text: '#ffffff', soft: '#e8f3e3', active: '#1f5f2a' },
         // strong = buttons and active states (white text passes WCAG AA contrast)
         brand: { DEFAULT: '#7aad69', strong: '#3a7d2f', dark: '#166534', mid: '#16a34a', light: '#eef7ea' },
       },

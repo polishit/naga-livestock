@@ -42,29 +42,45 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
   const navigate = useNavigate();
   const location = useLocation();
   const current = sectionFor(location.pathname)?.id;
-  const counts = useApi<{ total: number; services: number }>('/api/review/summary', {
+  const counts = useApi<Partial<Record<string, number>>>('/api/review/summary', {
     refetchInterval: 60_000,
   }).data;
-  // Service requests have their own page (Veterinary Field Services); the rest wait in the Review Queue.
-  const requests = counts?.services ?? 0;
-  const waiting = (counts?.total ?? 0) - requests;
+  // What owners sent that still waits for the office, shown on the page where it is handled.
+  const pending: Record<string, number> = {
+    '/owners': counts?.owners ?? 0,
+    '/farms': counts?.farms ?? 0,
+    '/population': counts?.population ?? 0,
+    '/cases': counts?.reports ?? 0,
+    '/vaccination-schedule': counts?.services ?? 0,
+  };
   const navRef = useRef<HTMLElement>(null);
-  // Only the module you are working in is open; the others fold away to keep the menu short.
-  const [open, setOpen] = useState<Record<string, boolean>>(() => (current ? { [current]: true } : {}));
+  // Every module is open, like the CVO's printed menu; a module can be folded with its arrow.
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
   useEffect(() => {
-    if (current) setOpen((o) => (o[current] ? o : { ...o, [current]: true }));
+    if (current) setFolded((o) => (o[current] ? { ...o, [current]: false } : o));
   }, [current]);
   // Keep the page you are on in view when the menu is longer than the screen.
   useEffect(() => {
     const t = setTimeout(() => {
-      navRef.current
-        ?.querySelector('[aria-current="page"]')
-        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
     }, 60);
     return () => clearTimeout(t);
-  }, [location.pathname, open]);
+  }, [location.pathname]);
 
-  const link = (item: NavSection['items'][number], nested: boolean) => (
+  const badge = (n: number, label: string) =>
+    n > 0 ? (
+      <span
+        aria-label={`${n} ${label}`}
+        className={cn(
+          'min-w-[20px] rounded-full bg-red-600 px-1.5 text-center text-[12px] font-semibold leading-5 text-white',
+          collapsed && 'absolute right-1 top-0.5',
+        )}
+      >
+        {n > 99 ? '99+' : n}
+      </span>
+    ) : null;
+
+  const link = (item: NavSection['items'][number]) => (
     <NavLink
       key={item.to}
       to={item.to}
@@ -73,113 +89,57 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
       title={collapsed ? item.label : item.hint}
       className={({ isActive }) =>
         cn(
-          'relative flex items-center gap-3 rounded-lg py-2 text-[15px] transition-colors',
-          collapsed ? 'justify-center px-0' : nested ? 'pl-9 pr-2.5' : 'px-2.5',
+          'relative flex h-10 items-center gap-3 rounded-xl text-[15px] transition-colors',
+          collapsed ? 'justify-center px-0' : 'px-3',
           isActive
-            ? 'bg-sidebar-activeBg font-semibold text-sidebar-active before:absolute before:inset-y-1.5 before:left-0 before:w-1 before:rounded-full before:bg-sidebar-accent'
-            : 'text-slate-700 hover:bg-sidebar-hover hover:text-sidebar-ink',
+            ? 'bg-white font-semibold text-nav-active shadow-sm'
+            : 'text-white hover:bg-white/15 active:bg-white/25',
         )
       }
     >
-      <item.icon className={cn('shrink-0', nested ? 'h-4 w-4' : 'h-[18px] w-[18px]')} strokeWidth={1.9} />
+      <item.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />
       {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-      {item.to === '/service-requests' && !!requests && (
-        <span
-          aria-label={`${requests} service requests waiting`}
-          className={cn(
-            'rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white',
-            collapsed && 'absolute ml-5 -mt-5',
-          )}
-        >
-          {requests > 99 ? '99+' : requests}
-        </span>
-      )}
-      {/* How many items owners sent that still wait for the office */}
-      {item.to === '/review' && !!waiting && (
-        <span
-          aria-label={`${waiting} waiting for review`}
-          className={cn(
-            'rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white',
-            collapsed && 'absolute ml-5 -mt-5',
-          )}
-        >
-          {waiting > 99 ? '99+' : waiting}
-        </span>
-      )}
+      {badge(pending[item.to] ?? 0, 'waiting for review')}
     </NavLink>
   );
 
   return (
-    <div className="flex h-full flex-col border-r border-slate-200 bg-sidebar text-slate-800">
-      <div
-        className={cn(
-          'flex h-16 shrink-0 items-center border-b border-slate-200',
-          collapsed ? 'justify-center px-2' : 'px-4',
-        )}
-      >
+    <div className="flex h-full flex-col bg-nav text-white">
+      <div className={cn('flex h-16 shrink-0 items-center', collapsed ? 'justify-center px-2' : 'px-4')}>
         <Link to="/" onClick={onNavigate}>
-          <Logo compact={collapsed} />
+          <Logo compact={collapsed} light />
         </Link>
       </div>
-      <nav
-        ref={navRef}
-        className="nav-scroll min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 py-3"
-        aria-label="Main"
-      >
-        {NAV.map((section) => {
-          const items = section.items.filter((i) => !i.hidden && (!i.adminOnly || isAdmin));
+      <nav ref={navRef} className="nav-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3" aria-label="Main">
+        {NAV.map((section, i) => {
+          const items = section.items.filter((x) => !x.hidden && (!x.adminOnly || isAdmin));
           if (!items.length) return null;
-          if (!section.label) return <div key={section.id}>{items.map((i) => link(i, false))}</div>;
-          if (collapsed)
-            return (
-              <div key={section.id}>
-                <div className="mx-3 my-2 border-t border-slate-200" />
-                {items.map((i) => link(i, false))}
-              </div>
-            );
-          const isOpen = !!open[section.id];
-          const Icon = section.icon;
-          const active = current === section.id;
+          const isFolded = !!folded[section.id];
+          const waiting = items.reduce((n, x) => n + (pending[x.to] ?? 0), 0);
           return (
-            <div key={section.id}>
-              <button
-                type="button"
-                aria-expanded={isOpen}
-                onClick={() => setOpen((o) => ({ ...o, [section.id]: !o[section.id] }))}
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[14px] font-semibold transition-colors hover:bg-sidebar-hover',
-                  active ? 'text-sidebar-ink' : 'text-slate-600',
-                )}
-              >
-                {Icon && <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />}
-                <span className="flex-1 leading-tight">{section.label}</span>
-                {/* Shown while the section is folded, so waiting items are never missed */}
-                {section.id === 'services' && !isOpen && !!requests && (
-                  <span
-                    aria-label={`${requests} service requests waiting`}
-                    className="rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white"
-                  >
-                    {requests > 99 ? '99+' : requests}
-                  </span>
-                )}
-                {section.id === 'owners-app' && !isOpen && !!waiting && (
-                  <span
-                    aria-label={`${waiting} waiting for review`}
-                    className="rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white"
-                  >
-                    {waiting > 99 ? '99+' : waiting}
-                  </span>
-                )}
-                <ChevronDown
-                  className={cn('h-4 w-4 shrink-0 opacity-70 transition-transform', !isOpen && '-rotate-90')}
-                />
-              </button>
-              {isOpen && <div className="mt-0.5 space-y-0.5 pb-1">{items.map((i) => link(i, true))}</div>}
+            <div key={section.id} className={cn(i > 0 && 'mt-3')}>
+              {collapsed ? (
+                i > 0 && <div className="mx-2 mb-2 border-t border-white/25" />
+              ) : (
+                <button
+                  type="button"
+                  aria-expanded={!isFolded}
+                  onClick={() => setFolded((o) => ({ ...o, [section.id]: !o[section.id] }))}
+                  className="flex w-full items-center gap-2 border-t border-white/20 px-3 pb-1.5 pt-3 text-left text-[11.5px] font-semibold uppercase tracking-[0.08em] text-white/80 hover:text-white"
+                >
+                  <span className="flex-1">{section.label}</span>
+                  {isFolded && badge(waiting, 'waiting for review')}
+                  <ChevronDown
+                    className={cn('h-3.5 w-3.5 shrink-0 transition-transform', isFolded && '-rotate-90')}
+                  />
+                </button>
+              )}
+              {(!isFolded || collapsed) && <div className="space-y-0.5">{items.map((x) => link(x))}</div>}
             </div>
           );
         })}
       </nav>
-      <div className="border-t border-slate-200 p-2.5">
+      <div className="border-t border-white/20 p-3">
         <button
           type="button"
           onClick={async () => {
@@ -187,7 +147,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
             navigate('/login');
           }}
           className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-[15px] text-slate-700 hover:bg-red-50 hover:text-red-700',
+            'flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[15px] text-white hover:bg-white/15',
             collapsed && 'justify-center',
           )}
         >
@@ -204,7 +164,7 @@ const PHONE_TABS = ['registry', 'gis', 'surveillance'];
 
 /**
  * Phone navigation: one row of five tabs (Home, Registry, Map, Disease, More). Tapping a module
- * lists its pages; "More" lists the other modules (Owner App, Services, Reports, Administration).
+ * lists its pages; "More" lists the other modules (Services, Reports, Administration).
  */
 function BottomNav() {
   const location = useLocation();
@@ -212,8 +172,16 @@ function BottomNav() {
   const isHome = location.pathname === '/';
   const current = isHome ? 'home' : sectionFor(location.pathname)?.id;
   const [sheet, setSheet] = useState<NavSection | null>(null);
-  const waiting =
-    useApi<{ total: number }>('/api/review/summary', { refetchInterval: 60_000 }).data?.total ?? 0;
+  const counts = useApi<Partial<Record<string, number>>>('/api/review/summary', {
+    refetchInterval: 60_000,
+  }).data;
+  const pending: Record<string, number> = {
+    '/owners': counts?.owners ?? 0,
+    '/farms': counts?.farms ?? 0,
+    '/population': counts?.population ?? 0,
+    '/cases': counts?.reports ?? 0,
+    '/vaccination-schedule': counts?.services ?? 0,
+  };
   const modules = NAV.filter((s) => PHONE_TABS.includes(s.id));
   const rest = NAV.filter((s) => s.label && !PHONE_TABS.includes(s.id));
   // "More" is one sheet listing every page of the other modules, under their module names.
@@ -268,12 +236,12 @@ function BottomNav() {
           >
             <Menu className="h-[22px] w-[22px]" strokeWidth={1.9} />
             More
-            {!!waiting && (
+            {!!pending['/vaccination-schedule'] && (
               <span
-                aria-label={`${waiting} waiting for review`}
+                aria-label={`${pending['/vaccination-schedule']} requests waiting`}
                 className="absolute right-[22%] top-1.5 min-w-[18px] rounded-full bg-red-600 px-1 text-[11px] font-semibold leading-[18px] text-white"
               >
-                {waiting > 99 ? '99+' : waiting}
+                {pending['/vaccination-schedule']}
               </span>
             )}
           </button>
@@ -309,7 +277,7 @@ function BottomNav() {
                     <span className="block text-[16px] font-medium text-slate-900">{i.label}</span>
                     <span className="block text-[13px] text-slate-500">{i.hint}</span>
                   </span>
-                  {i.to === '/review' && !!waiting && <Badge tone="red">{waiting}</Badge>}
+                  {!!pending[i.to] && <Badge tone="red">{pending[i.to]}</Badge>}
                 </NavLink>
               </div>
             ))}
@@ -713,7 +681,7 @@ export function AppLayout() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-[900] flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 border-t-[3px] border-t-sidebar-ink bg-white px-3 sm:px-5">
+        <header className="sticky top-0 z-[900] flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 border-t-[3px] border-t-nav bg-white px-3 sm:px-5">
           <button
             type="button"
             onClick={toggle}

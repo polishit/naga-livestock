@@ -23,7 +23,8 @@ import { useApi, useLookups } from '@/lib/hooks';
 import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { BarangayBars } from '@/components/charts';
-import { ErrorBox, FilterSelect, Loading, PageHeader } from '@/components/page';
+import { ErrorBox, FilterSelect, Loading, MoreFilters, PageHeader } from '@/components/page';
+import { PendingPopulation } from './ReviewPages';
 import { Button, Card, CardHeader, Input, Tabs } from '@/components/ui';
 import { GroupDialog, PopulationUpdateDialog } from '@/dialogs/registry';
 
@@ -246,6 +247,7 @@ export default function PopulationPage() {
           )
         }
       />
+      {canEdit && <PendingPopulation />}
       <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
         <div className="relative w-full sm:w-72">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -266,53 +268,55 @@ export default function PopulationPage() {
           all="All barangays"
           className="w-[calc(50%-4px)] sm:w-48"
         />
-        <FilterSelect
-          label="Species"
-          value={species}
-          onChange={setSpecies}
-          options={SPECIES}
-          all="All species"
-          className="w-[calc(50%-4px)] sm:w-40"
-        />
-        {tab === 'farms' && (
-          <>
-            <FilterSelect
-              label="Farm Type"
-              value={farmType}
-              onChange={setFarmType}
-              options={FARM_TYPES.map((x) => ({ value: x, label: FARM_TYPE_LABELS[x] }))}
-              all="Any farm type"
-              className="w-[calc(50%-4px)] sm:w-44"
-            />
-            <FilterSelect
-              label="Purpose"
-              value={purpose}
-              onChange={setPurpose}
-              options={ANIMAL_PURPOSES.map((x) => ({ value: x, label: ANIMAL_PURPOSE_LABELS[x] }))}
-              all="Any purpose"
-              className="w-[calc(50%-4px)] sm:w-40"
-            />
-            <FilterSelect
-              label="Health"
-              value={health}
-              onChange={setHealth}
-              options={HEALTH_STATUSES}
-              all="Any health status"
-              className="w-[calc(50%-4px)] sm:w-44"
-            />
-            <FilterSelect
-              label="Last Counted"
-              value={counted}
-              onChange={setCounted}
-              options={[
-                { value: 'month', label: 'Counted This Month' },
-                { value: 'due', label: 'Not Counted This Month' },
-              ]}
-              all="Any count date"
-              className="w-[calc(50%-4px)] sm:w-52"
-            />
-          </>
-        )}
+        <MoreFilters
+          active={
+            [species, ...(tab === 'farms' ? [farmType, purpose, health, counted] : [])].filter(Boolean).length
+          }
+          onClear={() => setParam({ species: '', type: '', purpose: '', health: '', counted: '' })}
+        >
+          <FilterSelect
+            label="Species"
+            value={species}
+            onChange={setSpecies}
+            options={SPECIES}
+            all="All species"
+          />
+          {tab === 'farms' && (
+            <>
+              <FilterSelect
+                label="Farm Type"
+                value={farmType}
+                onChange={setFarmType}
+                options={FARM_TYPES.map((x) => ({ value: x, label: FARM_TYPE_LABELS[x] }))}
+                all="Any farm type"
+              />
+              <FilterSelect
+                label="Purpose"
+                value={purpose}
+                onChange={setPurpose}
+                options={ANIMAL_PURPOSES.map((x) => ({ value: x, label: ANIMAL_PURPOSE_LABELS[x] }))}
+                all="Any purpose"
+              />
+              <FilterSelect
+                label="Health"
+                value={health}
+                onChange={setHealth}
+                options={HEALTH_STATUSES}
+                all="Any health status"
+              />
+              <FilterSelect
+                label="Last Counted"
+                value={counted}
+                onChange={setCounted}
+                options={[
+                  { value: 'month', label: 'Counted This Month' },
+                  { value: 'due', label: 'Not Counted This Month' },
+                ]}
+                all="Any count date"
+              />
+            </>
+          )}
+        </MoreFilters>
         <Button
           variant="outline"
           className="sm:ml-auto"

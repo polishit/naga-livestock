@@ -73,11 +73,6 @@ export function LabResultBadge({ result }: { result: string }) {
   return <Badge tone={tone}>{titleCase(result)}</Badge>;
 }
 
-export function StrayStatusBadge({ status }: { status: string }) {
-  const tone: Tone = status === 'CLOSED' ? 'slate' : 'orange';
-  return <Badge tone={tone}>{titleCase(status)}</Badge>;
-}
-
 export function SpeciesChip({ species, count }: { species: string; count?: number }) {
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-700/70 px-1.5 py-[1px] text-[12px] text-slate-700">

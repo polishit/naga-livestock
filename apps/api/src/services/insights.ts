@@ -214,7 +214,6 @@ export async function comparePeriods(f: Filters & { months?: number }) {
       previous: b.newOwners,
       better: 'up',
     },
-    { key: 'strays', label: 'Stray incidents', current: a.strays, previous: b.strays, better: 'down' },
   ];
   const label = (p: Period) => `${fmtDate(p.from)} – ${fmtDate(p.to)}`;
   return {
@@ -499,9 +498,6 @@ export async function accomplishmentReport(
       `${t.given.toLocaleString()} of ${t.target.toLocaleString()} (${t.pct}%)`,
     );
 
-  add('Stray livestock', 'Stray incidents reported', c.strays);
-  add('Stray livestock', 'Incidents closed', c.closedStrays);
-
   const scope = [p.barangay, p.species].filter(Boolean).join(' · ');
   return {
     ...base,
@@ -516,7 +512,6 @@ export async function accomplishmentReport(
       { label: 'Cases reported', value: c.casesReported },
       { label: 'Head dewormed', value: c.dewormedHead.toLocaleString() },
       { label: 'Field investigations', value: c.visits },
-      { label: 'Stray incidents', value: c.strays },
     ],
     note: 'Without dates, the report covers the current month to date. Pick dates to report any month or quarter.',
   };
@@ -696,7 +691,7 @@ export async function taskList(): Promise<Task[]> {
           ? `${v.vaccine ?? 'Vaccination'} dose ${v.doseNumber + 1}`
           : `${SERVICE_TYPE_LABELS[v.serviceType as ServiceType] ?? 'Service'}${v.vaccine ? ` · ${v.vaccine}` : ''}`,
       sub: `${v.farm.name} · ${v.target === 'GROUP' ? `${v.group?.code} · ${v.count} head` : v.animal?.code}`,
-      href: '/services?tab=upcoming',
+      href: '/vaccination-schedule',
       action: 'Record it',
       due: d,
       overdue: d < t,

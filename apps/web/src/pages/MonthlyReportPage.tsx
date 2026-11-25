@@ -20,7 +20,7 @@ import { Button, Card, CardHeader, Input } from '@/components/ui';
 import type { CaseStatus } from '@livestock/shared';
 
 /** Monthly summary for the office, with graphs that refresh on their own and a printable report. */
-export default function MonthlyReportPage() {
+export default function MonthlyReportPage({ embedded }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const lh = useLetterhead();
@@ -47,7 +47,7 @@ export default function MonthlyReportPage() {
   return (
     <div>
       <PageHeader
-        title="Monthly Report"
+        title={embedded ? null : 'Monthly Report'}
         subtitle="Livestock population, disease reports, deworming, check-ups and field visits for one month."
         actions={
           <>

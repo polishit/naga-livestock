@@ -27,10 +27,10 @@ test('reports: population by barangay and CSV/XLSX/PDF exports', async ({ page }
   expect((await pdf).suggestedFilename()).toMatch(/\.pdf$/);
 });
 
-test('reports list all 35 report types and filter by barangay (old export link)', async ({ page }) => {
+test('reports list all 34 report types and filter by barangay (old export link)', async ({ page }) => {
   await page.goto('/export');
   await expect(page).toHaveURL(/\/reports$/);
-  await expect(page.getByText('35 ready-made reports')).toBeVisible();
+  await expect(page.getByText('34 ready-made reports')).toBeVisible();
   await page.getByRole('tab', { name: 'Disease Surveillance' }).click();
   await page
     .getByLabel('Report Type', { exact: true })

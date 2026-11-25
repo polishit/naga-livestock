@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils';
+
 /**
  * The system's own mark: a map pin (GIS monitoring) holding a cow's head (livestock) with a health
  * cross (the City Veterinary Office). Forest green and gold; the same drawing is the favicon and the
@@ -29,14 +31,20 @@ export function LogoGlyph({ className = 'h-6 w-6', tile = false }: { className?:
   );
 }
 
-export function Logo({ compact = false }: { compact?: boolean }) {
+export function Logo({ compact = false, light = false }: { compact?: boolean; light?: boolean }) {
   return (
     <div className="flex items-center gap-3">
       <LogoGlyph tile className="h-10 w-10 shrink-0" />
       {!compact && (
         <div className="leading-tight">
-          <div className="text-[15px] font-bold tracking-tight text-sidebar-ink">Naga City Vet</div>
-          <div className="text-[12px] font-medium text-sidebar-muted">Livestock Monitoring System</div>
+          <div
+            className={cn('text-[15px] font-bold tracking-tight', light ? 'text-white' : 'text-sidebar-ink')}
+          >
+            Naga City Vet
+          </div>
+          <div className={cn('text-[12px] font-medium', light ? 'text-white/80' : 'text-sidebar-muted')}>
+            Livestock Monitoring
+          </div>
         </div>
       )}
     </div>

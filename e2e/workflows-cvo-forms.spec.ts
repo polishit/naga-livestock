@@ -16,7 +16,8 @@ test('send a batch of samples, print the DA forms, enter results and open a case
   context,
 }) => {
   await page.goto('/lab-submissions');
-  await page.getByRole('button', { name: 'New submission' }).click();
+  await expect(page).toHaveURL(/\/laboratory\?tab=batches/);
+  await page.getByRole('button', { name: 'New Batch Submission' }).click();
   await expect(page).toHaveURL(/\/lab-submissions\/new/);
   // The office's usual test and laboratory are filled in.
   await expect(page.getByLabel('Examination requested *')).toHaveValue(/African Swine Fever/);
@@ -118,6 +119,7 @@ test('pregnancy diagnosis is offered for cattle and counted with its result', as
 
 test('population by farm is filtered by farm type and printed', async ({ page, context }) => {
   await page.goto('/population?tab=farms');
+  await page.getByRole('button', { name: 'Filters' }).click();
   await page.getByLabel('Farm type').selectOption('commercial');
   await expect(page.getByRole('cell', { name: 'CM' }).first()).toBeVisible();
   await expect(page.getByRole('cell', { name: 'BY', exact: true })).toHaveCount(0);

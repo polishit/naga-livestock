@@ -16,7 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   CLINICAL_SIGN_LABELS,
@@ -25,20 +26,16 @@ import {
   MONITORED_DISEASES,
   OWNER_CHECKS,
   OWNER_CHECK_LABELS,
-  OWNER_VACC_STATUS_LABELS,
   POP_REQUEST_STATUS_LABELS,
   REGISTRATION_STATUS_LABELS,
   REPORT_CHECKS,
   REPORT_CHECK_LABELS,
   SERVICE_REQUEST_STATUS_LABELS,
-  VACC_CHECKS,
-  VACC_CHECK_LABELS,
   fmtDate,
   fmtDateTime,
   formatDistance,
   isoDate,
   type ClinicalSign,
-  type OwnerVaccStatus,
   type PopRequestStatus,
   type RegistrationStatus,
   type ServiceRequestStatus,
@@ -48,20 +45,8 @@ import { useAuth } from '@/lib/auth';
 import { useApi, useLookups } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
 import { BackButton } from '@/components/BackButton';
-import { ErrorBox, Loading, PageHeader } from '@/components/page';
-import {
-  Badge,
-  Button,
-  Card,
-  Dialog,
-  EmptyState,
-  Field,
-  Input,
-  Select,
-  Tabs,
-  Textarea,
-  type Tone,
-} from '@/components/ui';
+import { ErrorBox, Loading } from '@/components/page';
+import { Badge, Button, Card, Dialog, Field, Input, Select, Textarea, type Tone } from '@/components/ui';
 
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
@@ -84,8 +69,6 @@ export interface ReviewCounts {
 }
 export const useReviewCounts = () => useApi<ReviewCounts>('/api/review/summary', { refetchInterval: 60_000 });
 
-type Tab = 'registrations' | 'population' | 'reports' | 'vaccinations' | 'services' | 'accounts';
-
 /* =====================================================================================
  * Shared pieces: list + detail layout, sections, the step-by-step decision dialog
  * ===================================================================================== */
@@ -101,62 +84,6 @@ function useSelected(param = 'item') {
     setParams(p, { replace: true });
   };
   return [selected, select] as const;
-}
-
-/** List on the left, detail on the right; on a phone or small tablet only one of them shows. */
-function MasterDetail({
-  list,
-  detail,
-  hasSelection,
-}: {
-  list: ReactNode;
-  detail: ReactNode;
-  hasSelection: boolean;
-}) {
-  return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:items-start">
-      <div className={cn(hasSelection && 'hidden lg:block')}>{list}</div>
-      <div className={cn(!hasSelection && 'hidden lg:block')}>
-        {hasSelection ? (
-          detail
-        ) : (
-          <Card>
-            <EmptyState>Select an item on the left to open it.</EmptyState>
-          </Card>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ListCard({
-  title,
-  action,
-  children,
-}: {
-  title: ReactNode;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-        <h2 className="text-[16px] font-semibold text-slate-900">{title}</h2>
-        {action}
-      </div>
-      <div className="max-h-[calc(100dvh-260px)] overflow-y-auto lg:max-h-[calc(100dvh-230px)]">
-        {children}
-      </div>
-    </Card>
-  );
-}
-
-function ListGroup({ children }: { children: ReactNode }) {
-  return (
-    <div className="bg-slate-50 px-4 py-2 text-[12px] font-semibold uppercase tracking-wide text-slate-500">
-      {children}
-    </div>
-  );
 }
 
 /** One row of a queue: opens the item on the right. */
@@ -514,63 +441,6 @@ function DecisionDialog({ ask, onClose }: { ask: Decision | null; onClose: () =>
 }
 
 /* =====================================================================================
- * The page
- * ===================================================================================== */
-
-export function ReviewPage() {
-  const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') ?? 'registrations') as Tab;
-  const counts = useReviewCounts();
-  // Service requests moved to Veterinary Field Services → Service Requests.
-  if (tab === 'services') return <Navigate to="/service-requests" replace />;
-  const c = counts.data;
-  const n = (x?: number) => (x ? ` (${x})` : '');
-  return (
-    <div>
-      <PageHeader
-        title="Review Queue"
-        subtitle="Applications and records sent by livestock owners from the owner app. Open an item to review it. Normal head count updates are accepted automatically and do not appear here."
-      />
-      <Tabs
-        className="mb-4"
-        value={tab}
-        onChange={(t) => setParams({ tab: t }, { replace: true })}
-        tabs={[
-          { id: 'registrations', label: `Registrations${n((c?.owners ?? 0) + (c?.farms ?? 0))}` },
-          { id: 'population', label: `Head Count Updates${n(c?.population)}` },
-          { id: 'reports', label: `Disease Reports${n(c?.reports)}` },
-          { id: 'vaccinations', label: `Vaccination Records${n(c?.vaccinations)}` },
-          { id: 'accounts', label: 'Owner Logins' },
-        ]}
-      />
-      {tab === 'registrations' && <Registrations />}
-      {tab === 'population' && <PopulationQueue />}
-      {tab === 'reports' && <ReportsQueue />}
-      {tab === 'vaccinations' && <VaccinationQueue />}
-      {tab === 'accounts' && <OwnerAccounts />}
-    </div>
-  );
-}
-
-/**
- * Service Requests (Veterinary Field Services): deworming, check-ups, vaccination and other services
- * livestock owners ask for in the owner app. Schedule it, mark it done, or decline with a reason; the
- * owner sees the answer in the owner app.
- */
-export function ServiceRequestsPage() {
-  const c = useReviewCounts().data;
-  return (
-    <div>
-      <PageHeader
-        title="Service Requests"
-        subtitle={`Services asked for by livestock owners in the owner app${c?.services ? ` · ${c.services} waiting for an answer` : ''}. Open a request to schedule it, mark it done or decline it; the owner sees your reply.`}
-      />
-      <ServiceQueue />
-    </div>
-  );
-}
-
-/* =====================================================================================
  * Registrations: new owners and new farms
  * ===================================================================================== */
 
@@ -623,74 +493,6 @@ interface RegData {
   reviewDays: number;
   owners: OwnerApp[];
   farms: FarmApp[];
-}
-
-function Registrations() {
-  const { data, isLoading, error } = useApi<RegData>('/api/review/registrations');
-  const [sel, select] = useSelected();
-  if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
-  const [kind, idText] = (sel ?? '').split('-');
-  const id = Number(idText);
-  const owner = kind === 'owner' ? data.owners.find((o) => o.id === id) : undefined;
-  const farm = kind === 'farm' ? data.farms.find((f) => f.id === id) : undefined;
-  const waitingOwners = data.owners.filter((o) => !o.returnReason).length;
-  const waitingFarms = data.farms.filter((f) => f.status === 'PENDING').length;
-  return (
-    <MasterDetail
-      hasSelection={!!(owner || farm)}
-      list={
-        <ListCard title={`Applications (${waitingOwners + waitingFarms} waiting)`}>
-          {data.owners.length + data.farms.length === 0 && (
-            <EmptyState>No registration is waiting.</EmptyState>
-          )}
-          {data.owners.length > 0 && <ListGroup>New Owners</ListGroup>}
-          {data.owners.map((o) => (
-            <ListItem
-              key={`o${o.id}`}
-              active={owner?.id === o.id}
-              onClick={() => select(`owner-${o.id}`)}
-              title={o.fullName}
-              sub={`${o.barangay} · ${o.contact ?? 'No mobile number'}`}
-              meta={`${o.code} · sent ${fmtDate(o.submittedAt)}${o.idPhotos.length ? '' : ' · no ID'}`}
-              badge={
-                o.returnReason ? (
-                  <Badge tone="amber">With the Owner</Badge>
-                ) : (
-                  <Waiting days={o.waitingDays} overdue={o.overdue} />
-                )
-              }
-            />
-          ))}
-          {data.farms.length > 0 && <ListGroup>New Farms</ListGroup>}
-          {data.farms.map((f) => (
-            <ListItem
-              key={`f${f.id}`}
-              active={farm?.id === f.id}
-              onClick={() => select(`farm-${f.id}`)}
-              title={f.name}
-              sub={`${f.barangay} · ${f.owner.fullName}`}
-              meta={`${f.code} · ${f.livestock.map((l) => `${l.count} ${l.species}`).join(', ')}`}
-              badge={
-                f.status === 'RETURNED' ? (
-                  <Badge tone="amber">With the Owner</Badge>
-                ) : (
-                  <Waiting days={f.waitingDays} overdue={f.overdue} />
-                )
-              }
-            />
-          ))}
-        </ListCard>
-      }
-      detail={
-        owner ? (
-          <OwnerDetail o={owner} onBack={() => select(null)} onOpenFarm={(fid) => select(`farm-${fid}`)} />
-        ) : farm ? (
-          <FarmDetail f={farm} onBack={() => select(null)} onOpenOwner={(oid) => select(`owner-${oid}`)} />
-        ) : null
-      }
-    />
-  );
 }
 
 function OwnerDetail({
@@ -1090,68 +892,6 @@ interface PopRow {
   owner?: { id: number; fullName: string; contact: string | null };
 }
 
-function PopulationQueue() {
-  const [all, setAll] = useState(false);
-  const { data, isLoading, error } = useApi<PopRow[]>(`/api/review/population${all ? '?all=1' : ''}`);
-  const [sel, select] = useSelected();
-  if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
-  const r = data.find((x) => String(x.id) === sel);
-  const delta = (x: PopRow) => (
-    <span className={x.quantity < 0 ? 'text-red-700' : 'text-emerald-700'}>
-      ({x.quantity > 0 ? '+' : ''}
-      {x.quantity})
-    </span>
-  );
-  return (
-    <MasterDetail
-      hasSelection={!!r}
-      list={
-        <ListCard
-          title={all ? 'All Owner Updates' : 'Flagged Updates'}
-          action={
-            <Button size="sm" variant="outline" onClick={() => setAll(!all)}>
-              {all ? 'Only Waiting' : 'Show All'}
-            </Button>
-          }
-        >
-          {data.length === 0 && (
-            <EmptyState>
-              {all
-                ? 'No owner has sent an update yet.'
-                : 'Nothing is waiting. Normal updates are accepted automatically.'}
-            </EmptyState>
-          )}
-          {data.map((x) => (
-            <ListItem
-              key={x.id}
-              active={r?.id === x.id}
-              onClick={() => select(String(x.id))}
-              title={
-                <>
-                  {x.farm?.name}: {x.species} {x.before} → {x.after} {delta(x)}
-                </>
-              }
-              sub={`${x.reasonLabel} · ${x.owner?.fullName ?? ''}`}
-              meta={`Sent ${fmtDateTime(x.createdAt)}`}
-              badge={
-                x.status === 'PENDING' ? (
-                  <Waiting days={x.waitingDays} />
-                ) : (
-                  <Badge tone={x.status === 'ACCEPTED' ? 'green' : 'slate'}>
-                    {POP_REQUEST_STATUS_LABELS[x.status]}
-                  </Badge>
-                )
-              }
-            />
-          ))}
-        </ListCard>
-      }
-      detail={r && <PopulationDetail r={r} onBack={() => select(null)} />}
-    />
-  );
-}
-
 function PopulationDetail({ r, onBack }: { r: PopRow; onBack: () => void }) {
   const { isReviewer } = useAuth();
   const [ask, setAsk] = useState<Decision | null>(null);
@@ -1331,50 +1071,6 @@ const REPORT_TONE: Record<string, Tone> = {
   VALIDATED: 'green',
   REJECTED: 'slate',
 };
-
-function ReportsQueue() {
-  const [all, setAll] = useState(false);
-  const { data, isLoading, error } = useApi<ReportRow[]>(`/api/review/reports${all ? '?all=1' : ''}`);
-  const [sel, select] = useSelected('report');
-  if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
-  const open = Number(sel) || null;
-  return (
-    <MasterDetail
-      hasSelection={!!open}
-      list={
-        <ListCard
-          title={all ? 'All Owner Reports' : 'Reports to Review'}
-          action={
-            <Button size="sm" variant="outline" onClick={() => setAll(!all)}>
-              {all ? 'Only Open' : 'Show All'}
-            </Button>
-          }
-        >
-          {data.length === 0 && <EmptyState>No owner report is waiting.</EmptyState>}
-          {data.map((r) => (
-            <ListItem
-              key={r.id}
-              active={open === r.id}
-              onClick={() => select(String(r.id))}
-              title={`${r.code} · ${r.affected} ${r.species}${r.deaths ? `, ${r.deaths} dead` : ''}`}
-              sub={`${r.farm?.name} · ${r.farm?.barangay} · ${r.owner.fullName}`}
-              meta={`Sent ${fmtDateTime(r.createdAt)}`}
-              badge={
-                r.status === 'REPORTED' ? (
-                  <Waiting days={r.waitingDays} overdue={r.overdue} />
-                ) : (
-                  <Badge tone={REPORT_TONE[r.status]}>{REPORT_LABEL[r.status]}</Badge>
-                )
-              }
-            />
-          ))}
-        </ListCard>
-      }
-      detail={open && <ReportPanel id={open} onBack={() => select(null)} />}
-    />
-  );
-}
 
 function ReportPanel({ id, onBack }: { id: number; onBack: () => void }) {
   const { isReviewer } = useAuth();
@@ -1829,180 +1525,6 @@ function ValidateReportDialog({ r, onClose }: { r: ReportDetail; onClose: () => 
 }
 
 /* =====================================================================================
- * Owner-submitted vaccinations
- * ===================================================================================== */
-
-interface VaccRow {
-  id: number;
-  species: string;
-  vaccine: string;
-  date: string;
-  heads: number;
-  givenBy: string;
-  status: OwnerVaccStatus;
-  reason: string | null;
-  decidedBy: string | null;
-  decidedAt: string | null;
-  proof: { key: string; url: string }[];
-  createdAt: string;
-  farm?: { id: number; code: string; name: string; barangay: string };
-  owner?: { id: number; fullName: string; contact: string | null };
-}
-const VACC_TONE: Record<OwnerVaccStatus, Tone> = {
-  SUBMITTED: 'amber',
-  VERIFIED: 'green',
-  REJECTED: 'slate',
-} as Record<OwnerVaccStatus, Tone>;
-
-function VaccinationQueue() {
-  const [all, setAll] = useState(false);
-  const { data, isLoading, error } = useApi<VaccRow[]>(`/api/review/vaccinations${all ? '?all=1' : ''}`);
-  const [sel, select] = useSelected();
-  if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
-  const v = data.find((x) => String(x.id) === sel);
-  return (
-    <MasterDetail
-      hasSelection={!!v}
-      list={
-        <ListCard
-          title="Vaccinations Given Outside a CVO Activity"
-          action={
-            <Button size="sm" variant="outline" onClick={() => setAll(!all)}>
-              {all ? 'Only Waiting' : 'Show All'}
-            </Button>
-          }
-        >
-          {data.length === 0 && <EmptyState>No vaccination record is waiting for verification.</EmptyState>}
-          {data.map((x) => (
-            <ListItem
-              key={x.id}
-              active={v?.id === x.id}
-              onClick={() => select(String(x.id))}
-              title={`${x.vaccine} · ${x.heads} ${x.species}`}
-              sub={`${x.farm?.name} · ${x.owner?.fullName}`}
-              meta={`Given ${fmtDate(x.date)}${x.proof.length ? '' : ' · no proof'}`}
-              badge={
-                <Badge tone={VACC_TONE[x.status] ?? 'slate'}>{OWNER_VACC_STATUS_LABELS[x.status]}</Badge>
-              }
-            />
-          ))}
-        </ListCard>
-      }
-      detail={v && <VaccinationDetail v={v} onBack={() => select(null)} />}
-    />
-  );
-}
-
-function VaccinationDetail({ v, onBack }: { v: VaccRow; onBack: () => void }) {
-  const { isReviewer } = useAuth();
-  const [ask, setAsk] = useState<Decision | null>(null);
-  const farm = v.farm?.name ?? 'the farm';
-  const verify: Decision = {
-    title: 'Verify This Vaccination',
-    checks: VACC_CHECKS.map((c) => ({ code: c, label: VACC_CHECK_LABELS[c] })),
-    reasonLabel: 'Note',
-    reasonHint: 'Optional. Kept on the record.',
-    effects: [
-      `It becomes an official vaccination record of ${farm} and counts in the reports.`,
-      'The number of head is capped at the recorded head count.',
-    ],
-    preview: () => ({
-      title: 'Vaccination record verified',
-      body: `Your ${v.vaccine} record for ${farm} (${fmtDate(v.date)}) is now on your farm's official record.`,
-    }),
-    confirm: 'Confirm and Verify',
-    done: 'Vaccination verified.',
-    run: (reason, checklist) =>
-      api.post(`/api/review/vaccinations/${v.id}`, { decision: 'VERIFY', reason, checklist }),
-  };
-  const reject: Decision = {
-    title: 'Do Not Accept This Record',
-    reasonLabel: 'Reason',
-    reasonRequired: true,
-    effects: ['The record is kept as not accepted. It does not count in the reports.'],
-    preview: (r) => ({
-      title: 'Vaccination record not accepted',
-      body: `Your ${v.vaccine} record for ${farm} was not accepted: ${r}`,
-    }),
-    confirm: 'Confirm: Do Not Accept',
-    danger: true,
-    done: 'Record not accepted.',
-    run: (reason) => api.post(`/api/review/vaccinations/${v.id}`, { decision: 'REJECT', reason }),
-  };
-  return (
-    <DetailCard
-      onBack={onBack}
-      title={`${v.vaccine} · ${v.heads} ${v.species}`}
-      sub={`${farm} · ${v.owner?.fullName ?? ''}`}
-      badge={<Badge tone={VACC_TONE[v.status] ?? 'slate'}>{OWNER_VACC_STATUS_LABELS[v.status]}</Badge>}
-      actions={
-        v.status !== 'SUBMITTED' ? undefined : isReviewer ? (
-          <>
-            <Button onClick={() => setAsk(verify)}>
-              <ClipboardCheck /> Verify
-            </Button>
-            <Button variant="outline" className="text-red-700" onClick={() => setAsk(reject)}>
-              <X /> Do Not Accept
-            </Button>
-          </>
-        ) : (
-          <ReviewerOnly />
-        )
-      }
-    >
-      <Section title="Proof">
-        {v.proof.length ? (
-          <Photos photos={v.proof} alt="Proof" big />
-        ) : (
-          <p className="text-amber-800">No proof attached.</p>
-        )}
-      </Section>
-      <Section title="Record">
-        <Facts
-          rows={[
-            ['Vaccine', v.vaccine],
-            ['Livestock', `${v.heads} ${v.species}`],
-            ['Date Given', fmtDate(v.date)],
-            ['Given By', v.givenBy],
-            ['Sent', fmtDateTime(v.createdAt)],
-          ]}
-        />
-      </Section>
-      <Section title="Farm and Owner">
-        <Facts
-          rows={[
-            [
-              'Farm',
-              v.farm ? (
-                <Link
-                  to={`/farms/${v.farm.id}`}
-                  className="underline"
-                >{`${v.farm.code} ${v.farm.name}`}</Link>
-              ) : null,
-            ],
-            ['Barangay', v.farm?.barangay],
-            ['Owner', v.owner?.fullName],
-            ['Mobile Number', v.owner?.contact],
-          ]}
-        />
-      </Section>
-      {v.status !== 'SUBMITTED' && (
-        <Section title="Decision">
-          <p>
-            {OWNER_VACC_STATUS_LABELS[v.status]}
-            {v.decidedBy ? ` by ${v.decidedBy}` : ''}
-            {v.decidedAt ? `, ${fmtDateTime(v.decidedAt)}` : ''}
-            {v.reason ? `: ${v.reason}` : ''}
-          </p>
-        </Section>
-      )}
-      <DecisionDialog ask={ask} onClose={() => setAsk(null)} />
-    </DetailCard>
-  );
-}
-
-/* =====================================================================================
  * Service requests
  * ===================================================================================== */
 
@@ -2028,51 +1550,6 @@ const SERVICE_TONE: Record<ServiceRequestStatus, Tone> = {
   DONE: 'green',
   DECLINED: 'slate',
 } as Record<ServiceRequestStatus, Tone>;
-
-function ServiceQueue() {
-  const [all, setAll] = useState(false);
-  const { data, isLoading, error } = useApi<ServiceRow[]>(
-    `/api/review/service-requests${all ? '?all=1' : ''}`,
-  );
-  const [sel, select] = useSelected();
-  if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
-  const r = data.find((x) => String(x.id) === sel);
-  return (
-    <MasterDetail
-      hasSelection={!!r}
-      list={
-        <ListCard
-          title="Services Requested by Owners"
-          action={
-            <Button size="sm" variant="outline" onClick={() => setAll(!all)}>
-              {all ? 'Only Open' : 'Show All'}
-            </Button>
-          }
-        >
-          {data.length === 0 && <EmptyState>No service request is open.</EmptyState>}
-          {data.map((x) => (
-            <ListItem
-              key={x.id}
-              active={r?.id === x.id}
-              onClick={() => select(String(x.id))}
-              title={`${x.code} · ${x.serviceLabel}${x.species ? ` (${x.species})` : ''}`}
-              sub={`${x.farm?.name} · ${x.owner?.fullName}`}
-              meta={`Asked ${fmtDate(x.createdAt)}${x.preferredDate ? ` · prefers ${fmtDate(x.preferredDate)}` : ''}`}
-              badge={
-                <Badge tone={SERVICE_TONE[x.status] ?? 'slate'}>
-                  {SERVICE_REQUEST_STATUS_LABELS[x.status]}
-                  {x.scheduledDate && x.status === 'SCHEDULED' ? `: ${fmtDate(x.scheduledDate)}` : ''}
-                </Badge>
-              }
-            />
-          ))}
-        </ListCard>
-      }
-      detail={r && <ServiceDetail r={r} onBack={() => select(null)} />}
-    />
-  );
-}
 
 function ServiceDetail({ r, onBack }: { r: ServiceRow; onBack: () => void }) {
   const { canEdit } = useAuth();
@@ -2233,7 +1710,311 @@ function ServiceDetail({ r, onBack }: { r: ServiceRow; onBack: () => void }) {
 }
 
 /* =====================================================================================
- * Owner logins
+ * Pending sections: what owners sent from the owner app, shown at the top of each page
+ * (Livestock Owners, Farms, Population Monitoring, Disease Reports, Vaccination Schedule).
+ * Opening an item slides the full review in from the right with the same step-by-step decision.
+ * ===================================================================================== */
+
+/** Right-side panel that holds one pending item. Closes with Esc, the back arrow, or outside. */
+function SidePanel({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[900] bg-slate-900/30 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          className="app-scroll fixed inset-y-0 right-0 z-[901] w-full overflow-y-auto bg-slate-50 p-2 shadow-2xl outline-none data-[state=open]:animate-in data-[state=open]:slide-in-from-right sm:max-w-[760px] sm:p-3"
+        >
+          <DialogPrimitive.Title className="sr-only">Pending item</DialogPrimitive.Title>
+          {children}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+/**
+ * The "Pending" card at the top of a page. Hidden when nothing is waiting. Shows the first few
+ * items; "Show all" lists the rest.
+ */
+function PendingCard({
+  title,
+  hint,
+  count,
+  children,
+  action,
+}: {
+  title: string;
+  hint: string;
+  count: number;
+  children: ReactNode[];
+  action?: ReactNode;
+}) {
+  const [all, setAll] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  if (children.length === 0) return null;
+  const shown = all ? children : children.slice(0, 4);
+  return (
+    <Card className="mb-4 overflow-hidden border-amber-200">
+      <div className="flex flex-wrap items-center gap-2 border-b border-amber-100 bg-amber-50/70 px-4 py-2.5">
+        <Bell className="h-4 w-4 text-amber-700" aria-hidden />
+        <h2 className="text-[15px] font-semibold text-slate-900">
+          {title}
+          {count > 0 && (
+            <span className="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-[12px] font-semibold text-white">
+              {count}
+            </span>
+          )}
+        </h2>
+        <p className="hidden min-w-0 flex-1 truncate text-[13px] text-slate-600 md:block">{hint}</p>
+        <div className="ml-auto flex items-center gap-2">
+          {action}
+          <Button size="xs" variant="ghost" onClick={() => setHidden(!hidden)}>
+            {hidden ? 'Show' : 'Hide'}
+          </Button>
+        </div>
+      </div>
+      {!hidden && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2">{shown}</div>
+          {children.length > 4 && (
+            <button
+              type="button"
+              onClick={() => setAll(!all)}
+              className="w-full border-t border-slate-100 py-2 text-[14px] font-medium text-brand-strong hover:bg-slate-50"
+            >
+              {all ? 'Show fewer' : `Show all ${children.length}`}
+            </button>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** Owner registrations sent from the owner app (top of Livestock Owners). */
+export function PendingOwners() {
+  const { data } = useApi<RegData>('/api/review/registrations');
+  const [sel, select] = useSelected('pending');
+  const navigate = useNavigate();
+  const owners = data?.owners ?? [];
+  const o = owners.find((x) => String(x.id) === sel);
+  return (
+    <>
+      <PendingCard
+        title="Pending Owner Registrations"
+        hint="Sent by owners from the owner app. Open one to check the ID and approve it."
+        count={owners.filter((x) => !x.returnReason).length}
+      >
+        {owners.map((x) => (
+          <ListItem
+            key={x.id}
+            active={o?.id === x.id}
+            onClick={() => select(String(x.id))}
+            title={x.fullName}
+            sub={`${x.barangay} · ${x.contact ?? 'No mobile number'}`}
+            meta={`${x.code} · sent ${fmtDate(x.submittedAt)}${x.idPhotos.length ? '' : ' · no ID'}`}
+            badge={
+              x.returnReason ? (
+                <Badge tone="amber">With the Owner</Badge>
+              ) : (
+                <Waiting days={x.waitingDays} overdue={x.overdue} />
+              )
+            }
+          />
+        ))}
+      </PendingCard>
+      <SidePanel open={!!o} onClose={() => select(null)}>
+        {o && (
+          <OwnerDetail
+            o={o}
+            onBack={() => select(null)}
+            onOpenFarm={(fid) => navigate(`/farms?pending=${fid}`)}
+          />
+        )}
+      </SidePanel>
+    </>
+  );
+}
+
+/** Farm registrations sent from the owner app (top of Farms). */
+export function PendingFarms() {
+  const { data } = useApi<RegData>('/api/review/registrations');
+  const [sel, select] = useSelected('pending');
+  const navigate = useNavigate();
+  const farms = data?.farms ?? [];
+  const f = farms.find((x) => String(x.id) === sel);
+  return (
+    <>
+      <PendingCard
+        title="Pending Farm Registrations"
+        hint="New farms added by owners. Open one to check the location and approve it."
+        count={farms.filter((x) => x.status === 'PENDING').length}
+      >
+        {farms.map((x) => (
+          <ListItem
+            key={x.id}
+            active={f?.id === x.id}
+            onClick={() => select(String(x.id))}
+            title={x.name}
+            sub={`${x.barangay} · ${x.owner.fullName}`}
+            meta={`${x.code} · ${x.livestock.map((l) => `${l.count} ${l.species}`).join(', ')}`}
+            badge={
+              x.status === 'RETURNED' ? (
+                <Badge tone="amber">With the Owner</Badge>
+              ) : (
+                <Waiting days={x.waitingDays} overdue={x.overdue} />
+              )
+            }
+          />
+        ))}
+      </PendingCard>
+      <SidePanel open={!!f} onClose={() => select(null)}>
+        {f && (
+          <FarmDetail
+            f={f}
+            onBack={() => select(null)}
+            onOpenOwner={(oid) => navigate(`/owners?pending=${oid}`)}
+          />
+        )}
+      </SidePanel>
+    </>
+  );
+}
+
+/** Head count updates from owners that need a look (top of Population Monitoring). */
+export function PendingPopulation() {
+  const [all, setAll] = useState(false);
+  const { data } = useApi<PopRow[]>(`/api/review/population${all ? '?all=1' : ''}`);
+  const [sel, select] = useSelected('pending');
+  const rows = data ?? [];
+  const r = rows.find((x) => String(x.id) === sel);
+  if (!all && rows.length === 0) return null;
+  return (
+    <>
+      <PendingCard
+        title={all ? 'Head Count Updates from Owners' : 'Pending Head Count Updates'}
+        hint="Normal updates are accepted automatically. Only big or unusual changes wait here."
+        count={rows.filter((x) => x.status === 'PENDING').length}
+        action={
+          <Button size="xs" variant="outline" onClick={() => setAll(!all)}>
+            {all ? 'Only Waiting' : 'Show History'}
+          </Button>
+        }
+      >
+        {rows.map((x) => (
+          <ListItem
+            key={x.id}
+            active={r?.id === x.id}
+            onClick={() => select(String(x.id))}
+            title={
+              <>
+                {x.farm?.name}: {x.species} {x.before} → {x.after}{' '}
+                <span className={x.quantity < 0 ? 'text-red-700' : 'text-emerald-700'}>
+                  ({x.quantity > 0 ? '+' : ''}
+                  {x.quantity})
+                </span>
+              </>
+            }
+            sub={`${x.reasonLabel} · ${x.owner?.fullName ?? ''}`}
+            meta={`Sent ${fmtDateTime(x.createdAt)}`}
+            badge={
+              x.status === 'PENDING' ? (
+                <Waiting days={x.waitingDays} />
+              ) : (
+                <Badge tone={x.status === 'ACCEPTED' ? 'green' : 'slate'}>
+                  {POP_REQUEST_STATUS_LABELS[x.status]}
+                </Badge>
+              )
+            }
+          />
+        ))}
+      </PendingCard>
+      <SidePanel open={!!r} onClose={() => select(null)}>
+        {r && <PopulationDetail r={r} onBack={() => select(null)} />}
+      </SidePanel>
+    </>
+  );
+}
+
+/** Disease reports sent by owners, waiting for the office (top of Disease Reports). */
+export function PendingReports() {
+  const { data } = useApi<ReportRow[]>('/api/review/reports');
+  const [sel, select] = useSelected('pending');
+  const rows = data ?? [];
+  const open = Number(sel) || null;
+  return (
+    <>
+      <PendingCard
+        title="Pending Reports from Owners"
+        hint="Sick or dead animals reported in the owner app. Open one to validate it and open a case."
+        count={rows.filter((x) => x.status === 'REPORTED').length}
+      >
+        {rows.map((r) => (
+          <ListItem
+            key={r.id}
+            active={open === r.id}
+            onClick={() => select(String(r.id))}
+            title={`${r.code} · ${r.affected} ${r.species}${r.deaths ? `, ${r.deaths} dead` : ''}`}
+            sub={`${r.farm?.name} · ${r.farm?.barangay} · ${r.owner.fullName}`}
+            meta={`Sent ${fmtDateTime(r.createdAt)}`}
+            badge={
+              r.status === 'REPORTED' ? (
+                <Waiting days={r.waitingDays} overdue={r.overdue} />
+              ) : (
+                <Badge tone={REPORT_TONE[r.status]}>{REPORT_LABEL[r.status]}</Badge>
+              )
+            }
+          />
+        ))}
+      </PendingCard>
+      {/* Opened by link too (a case's "owner report" link), so the panel does not need the list. */}
+      <SidePanel open={!!open} onClose={() => select(null)}>
+        {open && <ReportPanel id={open} onBack={() => select(null)} />}
+      </SidePanel>
+    </>
+  );
+}
+
+/** Services owners asked for in the owner app (top of Vaccination Schedule). */
+export function PendingServices() {
+  const { data } = useApi<ServiceRow[]>('/api/review/service-requests');
+  const [sel, select] = useSelected('pending');
+  const rows = data ?? [];
+  const r = rows.find((x) => String(x.id) === sel);
+  return (
+    <>
+      <PendingCard
+        title="Pending Requests from Owners"
+        hint="Vaccination, deworming and other services owners asked for. Open one to schedule or answer it."
+        count={rows.filter((x) => x.status === 'REQUESTED').length}
+      >
+        {rows.map((x) => (
+          <ListItem
+            key={x.id}
+            active={r?.id === x.id}
+            onClick={() => select(String(x.id))}
+            title={`${x.serviceLabel}${x.species ? ` (${x.species})` : ''}`}
+            sub={`${x.farm?.name} · ${x.owner?.fullName}`}
+            meta={`${x.code} · asked ${fmtDate(x.createdAt)}${x.preferredDate ? ` · prefers ${fmtDate(x.preferredDate)}` : ''}`}
+            badge={
+              <Badge tone={SERVICE_TONE[x.status] ?? 'slate'}>
+                {SERVICE_REQUEST_STATUS_LABELS[x.status]}
+                {x.scheduledDate && x.status === 'SCHEDULED' ? `: ${fmtDate(x.scheduledDate)}` : ''}
+              </Badge>
+            }
+          />
+        ))}
+      </PendingCard>
+      <SidePanel open={!!r} onClose={() => select(null)}>
+        {r && <ServiceDetail r={r} onBack={() => select(null)} />}
+      </SidePanel>
+    </>
+  );
+}
+
+/* =====================================================================================
+ * Owner app login, shown on the owner's record (replaces the old "Owner Logins" tab)
  * ===================================================================================== */
 
 interface AccountRow {
@@ -2248,147 +2029,101 @@ interface AccountRow {
   owner: { id: number; code: string; fullName: string; barangay: string; status: string } | null;
 }
 
-function OwnerAccounts() {
+/** The owner's login for the owner app: give one, or reset a forgotten password. */
+export function OwnerLoginCard({
+  ownerId,
+  ownerName,
+  ownerStatus,
+  contact,
+}: {
+  ownerId: number;
+  ownerName: string;
+  ownerStatus: string;
+  contact?: string | null;
+}) {
   const { isReviewer } = useAuth();
   const qc = useQueryClient();
-  const { data, isLoading, error } = useApi<AccountRow[]>('/api/review/accounts');
-  const lookups = useLookups();
-  const [sel, select] = useSelected();
+  const { data, isLoading } = useApi<AccountRow[]>('/api/review/accounts');
   const [adding, setAdding] = useState(false);
-  const [ownerId, setOwnerId] = useState('');
+  const [resetting, setResetting] = useState(false);
   const [phone, setPhone] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [resetFor, setResetFor] = useState<AccountRow | null>(null);
-  const [temp, setTemp] = useState<null | { who: string; phone: string; password: string }>(null);
-  if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
-  const have = new Set(data.map((a) => a.owner?.id));
-  const owners = (lookups.data?.owners ?? []).filter((o) => !have.has(o.id));
-  const a = data.find((x) => String(x.id) === sel);
+  const [temp, setTemp] = useState<null | { phone: string; password: string }>(null);
+  const a = data?.find((x) => x.owner?.id === ownerId);
+  const status = !a
+    ? 'No login yet'
+    : a.locked
+      ? 'Locked after failed sign-ins'
+      : a.mustChangePassword
+        ? 'Temporary password (not changed yet)'
+        : 'Active';
   return (
-    <>
-      <MasterDetail
-        hasSelection={!!a}
-        list={
-          <ListCard
-            title={`Owner App Logins (${data.length})`}
-            action={
-              isReviewer && (
-                <Button
-                  size="sm"
-                  onClick={() => (setAdding(true), setOwnerId(''), setPhone(''), setErr(null))}
-                >
-                  <Plus /> Give a Login
-                </Button>
-              )
-            }
-          >
-            {data.length === 0 && <EmptyState>No owner uses the app yet.</EmptyState>}
-            {data.map((x) => (
-              <ListItem
-                key={x.id}
-                active={a?.id === x.id}
-                onClick={() => select(String(x.id))}
-                title={x.owner?.fullName ?? 'Owner'}
-                sub={`${x.owner?.code ?? ''} · ${x.owner?.barangay ?? ''} · ${x.phone ?? x.email}`}
-                meta={`Last sign-in ${x.lastLoginAt ? fmtDateTime(x.lastLoginAt) : 'never'}`}
-                badge={
-                  x.locked ? (
-                    <Badge tone="red">Locked</Badge>
-                  ) : x.owner?.status === 'PENDING' ? (
-                    <Badge tone="amber">Not Verified</Badge>
-                  ) : x.mustChangePassword ? (
-                    <Badge tone="amber">Temporary Password</Badge>
-                  ) : undefined
-                }
-              />
-            ))}
-          </ListCard>
-        }
-        detail={
-          a && (
-            <DetailCard
-              onBack={() => select(null)}
-              title={a.owner?.fullName ?? 'Owner'}
-              sub={`Owner app login · ${a.phone ?? a.email}`}
-              actions={
-                isReviewer ? (
-                  <Button variant="outline" onClick={() => setResetFor(a)}>
-                    <KeyRound /> Reset Password
-                  </Button>
-                ) : undefined
-              }
+    <Card className="p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-[16px] font-semibold text-slate-900">
+          <KeyRound className="h-4 w-4 text-slate-500" aria-hidden /> Owner App Login
+        </h3>
+        {a?.locked && <Badge tone="red">Locked</Badge>}
+      </div>
+      {isLoading ? (
+        <p className="mt-2 text-[14px] text-slate-500">Loading…</p>
+      ) : (
+        <div className="mt-2 space-y-1 text-[14px] text-slate-700">
+          {a ? (
+            <>
+              <p>
+                Signs in with <b>{a.phone ?? a.email}</b>
+              </p>
+              <p>{status}</p>
+              <p className="text-slate-500">
+                Last sign-in: {a.lastLoginAt ? fmtDateTime(a.lastLoginAt) : 'never'}
+              </p>
+            </>
+          ) : (
+            <p className="text-slate-500">This owner does not use the owner app yet.</p>
+          )}
+        </div>
+      )}
+      {isReviewer && !isLoading && (
+        <div className="mt-3">
+          {a ? (
+            <Button size="sm" variant="outline" onClick={() => setResetting(true)}>
+              <KeyRound /> Reset Password
+            </Button>
+          ) : ownerStatus === 'ACTIVE' ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => (setAdding(true), setPhone(contact ?? ''), setErr(null))}
             >
-              <Section title="Login">
-                <Facts
-                  rows={[
-                    ['Signs In With', a.phone ?? a.email],
-                    [
-                      'Status',
-                      a.locked ? 'Locked after failed sign-ins' : a.status === 'ACTIVE' ? 'Active' : a.status,
-                    ],
-                    ['Password', a.mustChangePassword ? 'Temporary (must be changed)' : 'Set by the owner'],
-                    ['Created', fmtDateTime(a.createdAt)],
-                    ['Last Sign-In', a.lastLoginAt ? fmtDateTime(a.lastLoginAt) : 'Never'],
-                  ]}
-                />
-              </Section>
-              {a.owner && (
-                <Section title="Owner Record">
-                  <Facts
-                    rows={[
-                      [
-                        'Owner',
-                        <Link
-                          key="o"
-                          to={`/owners/${a.owner.id}`}
-                          className="underline"
-                        >{`${a.owner.code} ${a.owner.fullName}`}</Link>,
-                      ],
-                      ['Barangay', a.owner.barangay],
-                      [
-                        'Registration',
-                        a.owner.status === 'PENDING'
-                          ? 'Not verified yet'
-                          : a.owner.status === 'ACTIVE'
-                            ? 'Verified'
-                            : a.owner.status,
-                      ],
-                    ]}
-                  />
-                </Section>
-              )}
-            </DetailCard>
-          )
-        }
-      />
+              <Plus /> Give a Login
+            </Button>
+          ) : null}
+        </div>
+      )}
       <Dialog
-        open={!!resetFor}
-        onOpenChange={(o) => !o && setResetFor(null)}
+        open={resetting}
+        onOpenChange={setResetting}
         title="Reset Password"
         size="sm"
         guardChanges={false}
         footer={
           <>
-            <Button variant="outline" onClick={() => setResetFor(null)}>
+            <Button variant="outline" onClick={() => setResetting(false)}>
               Cancel
             </Button>
             <Button
               loading={busy}
               onClick={async () => {
-                if (!resetFor) return;
+                if (!a) return;
                 setBusy(true);
                 try {
                   const r = await api.post<{ temporaryPassword: string }>(
-                    `/api/review/accounts/${resetFor.id}/reset-password`,
+                    `/api/review/accounts/${a.id}/reset-password`,
                   );
-                  setTemp({
-                    who: resetFor.owner?.fullName ?? 'the owner',
-                    phone: resetFor.phone ?? resetFor.email ?? '',
-                    password: r.temporaryPassword,
-                  });
-                  setResetFor(null);
+                  setTemp({ phone: a.phone ?? a.email ?? '', password: r.temporaryPassword });
+                  setResetting(false);
                   await qc.invalidateQueries();
                 } catch (x) {
                   toast.error(x instanceof Error ? x.message : 'Could not reset.');
@@ -2404,8 +2139,8 @@ function OwnerAccounts() {
       >
         <div className="space-y-2 text-[15px] text-slate-700">
           <p>
-            A temporary password is made for <b>{resetFor?.owner?.fullName}</b>. Their current password stops
-            working and they are signed out on every phone.
+            A temporary password is made for <b>{ownerName}</b>. Their current password stops working and they
+            are signed out on every phone.
           </p>
           <p>
             Only do this after confirming who is asking (for example, in person with an ID, or by calling the
@@ -2416,7 +2151,7 @@ function OwnerAccounts() {
       <Dialog
         open={adding}
         onOpenChange={setAdding}
-        title="Give a Login to an Owner"
+        title="Give a Login"
         size="sm"
         guardChanges={false}
         footer={
@@ -2427,7 +2162,6 @@ function OwnerAccounts() {
             <Button
               loading={busy}
               onClick={async () => {
-                if (!ownerId) return setErr('Select the owner');
                 setBusy(true);
                 setErr(null);
                 try {
@@ -2435,9 +2169,8 @@ function OwnerAccounts() {
                     `/api/review/accounts/${ownerId}`,
                     { phone },
                   );
-                  const o = owners.find((x) => String(x.id) === ownerId);
                   setAdding(false);
-                  setTemp({ who: o?.fullName ?? 'the owner', phone: r.phone, password: r.temporaryPassword });
+                  setTemp({ phone: r.phone, password: r.temporaryPassword });
                   await qc.invalidateQueries();
                 } catch (x) {
                   const fe = x instanceof ApiError ? x.fieldErrors : undefined;
@@ -2454,18 +2187,8 @@ function OwnerAccounts() {
       >
         <div className="space-y-3">
           <p className="text-[14px] text-slate-600">
-            For an owner already in the masterlist. Owners can also register themselves in the app.
+            {ownerName} will sign in to the owner app with this mobile number and a temporary password.
           </p>
-          <Field label="Owner *">
-            <Select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-              <option value="">Select…</option>
-              {owners.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.fullName} ({o.code}, {o.barangay})
-                </option>
-              ))}
-            </Select>
-          </Field>
           <Field label="Mobile Number *" error={err ?? undefined} hint="The owner signs in with this number">
             <Input
               inputMode="tel"
@@ -2487,7 +2210,7 @@ function OwnerAccounts() {
         {temp && (
           <div className="space-y-3 text-[15px] text-slate-700">
             <p>
-              Give this to <b>{temp.who}</b>. They sign in with <b>{temp.phone}</b> and this password, then
+              Give this to <b>{ownerName}</b>. They sign in with <b>{temp.phone}</b> and this password, then
               choose their own.
             </p>
             <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
@@ -2506,6 +2229,6 @@ function OwnerAccounts() {
           </div>
         )}
       </Dialog>
-    </>
+    </Card>
   );
 }

@@ -94,7 +94,7 @@ describe('dashboard metrics match the prototype seed', () => {
 
   it('generates every report type', async () => {
     const { body: types } = await admin.get('/api/reports');
-    expect(types).toHaveLength(35);
+    expect(types).toHaveLength(34);
     for (const t of types.filter((x: { id: string }) => x.id !== 'outbreak-area')) {
       const res = await admin.get(`/api/reports/${t.id}`);
       expect(res.status, t.id).toBe(200);
@@ -349,6 +349,36 @@ describe('logic fixes: disease cases', () => {
     expect(notConfirmed.body.fieldErrors.outcome).toBeDefined();
     const ok = await admin.post(`/api/cases/${id}/close`).send({ outcome: 'CONTAINED', note: 'Done' });
     expect(ok.status).toBe(200);
+  });
+
+  it('the Laboratory page lists every sample and its result updates the case', async () => {
+    const t = isoDate();
+    const c = await admin
+      .post('/api/cases')
+      .send({ ownerId: 1, farmId: 1, species: 'Pig', disease: 'ASF', affected: 1, deaths: 0 });
+    const id = c.body.id;
+    const s = await admin
+      .post(`/api/cases/${id}/labs`)
+      .send({ sampleId: 'LABPAGE-1', collectedAt: t, sentAt: t });
+    const list = (await viewer.get('/api/labs')).body;
+    const row = list.find((x: { id: number }) => x.id === s.body.id);
+    expect(row).toMatchObject({ caseId: id, result: 'PENDING', disease: 'ASF', waitingDays: 0 });
+    expect(row.farmName).toBeTruthy();
+    // A future result date and a missing result are refused.
+    const future = await admin
+      .post(`/api/labs/${s.body.id}/result`)
+      .send({ result: 'POSITIVE', resultDate: '2099-01-01' });
+    expect(future.status).toBe(400);
+    expect((await admin.post(`/api/labs/${s.body.id}/result`).send({})).status).toBe(400);
+    const r = await admin
+      .post(`/api/labs/${s.body.id}/result`)
+      .send({ result: 'POSITIVE', receivedVia: 'EMAIL', remarks: 'PCR positive' });
+    expect(r.status).toBe(200);
+    expect(r.body.caseStatus).toBe('POSITIVE');
+    const detail = (await admin.get(`/api/cases/${id}`)).body;
+    expect(detail.case.status).toBe('POSITIVE');
+    expect(detail.labs[0]).toMatchObject({ result: 'POSITIVE', resultDate: t, receivedVia: 'EMAIL' });
+    expect(detail.history.some((h: { note: string }) => /LABPAGE-1/.test(h.note ?? ''))).toBe(true);
   });
 
   it('a case never tested can be closed as not confirmed', async () => {
@@ -1023,11 +1053,8 @@ describe('survey follow-up: strays, ASF steps, pasture, records and insurance', 
     expect(summary.unpaidFines).toBeUndefined();
     const done = await admin.patch(url).send({ status: 'CLOSED' });
     expect(done.status).toBe(200);
-    const report = (await admin.get('/api/reports/stray-incidents')).body;
-    const row = report.rows.find((r: { code: string }) => r.code === s.body.code);
-    expect(row.fine).toBeUndefined();
-    expect(row.status).toBe('Closed');
-    expect(report.columns.some((c: { key: string }) => c.key === 'fine' || c.key === 'impound')).toBe(false);
+    // Stray livestock is no longer in the reports (the records stay in the database).
+    expect((await admin.get('/api/reports/stray-incidents')).status).toBe(404);
   });
 
   it("keeps a tagged stray's owner consistent with the registered tag", async () => {
@@ -1312,7 +1339,6 @@ describe('reports & analytics insights and the task list', () => {
       'Disease response',
       'Deworming & veterinary services',
       'Vaccination',
-      'Stray livestock',
     ]);
     expect(r.body.rows.some((x: { indicator: string }) => /fine/i.test(x.indicator))).toBe(false);
   });

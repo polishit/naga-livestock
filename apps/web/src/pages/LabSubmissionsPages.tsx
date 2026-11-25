@@ -1,15 +1,4 @@
-import {
-  Check,
-  ClipboardList,
-  FilePlus2,
-  FlaskConical,
-  Hourglass,
-  Pencil,
-  Plus,
-  Printer,
-  Siren,
-  Trash2,
-} from 'lucide-react';
+import { Check, ClipboardList, Pencil, Plus, Printer, Siren, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEffect, useMemo, useState } from 'react';
 import { useFieldArray } from 'react-hook-form';
@@ -36,7 +25,7 @@ import {
 import { DataTable, type Column } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { err, useZodForm } from '@/components/forms';
-import { ErrorBox, Loading, PageHeader, StatCard } from '@/components/page';
+import { ErrorBox, Loading, PageHeader } from '@/components/page';
 import { LabResultBadge } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Field, Input, Select, Textarea } from '@/components/ui';
 import { VoidDialog } from '@/dialogs/surveillance';
@@ -220,9 +209,9 @@ const dateRange = (a: string | null, b: string | null) =>
 
 /* ---------------- List ---------------- */
 
-export function LabSubmissionsPage() {
+/** The batches sent to the laboratory: the second tab of the Laboratory page. */
+export function SubmissionsTab() {
   const navigate = useNavigate();
-  const { canEdit } = useAuth();
   const { data, isLoading, error } = useApi<LabSubmission[]>('/api/lab-submissions');
   if (error) return <ErrorBox error={error} />;
   const rows = data ?? [];
@@ -269,34 +258,7 @@ export function LabSubmissionsPage() {
   ];
   return (
     <div>
-      <PageHeader
-        title="Lab Submissions"
-        subtitle="A batch of samples sent to the laboratory (RADDL). Every batch goes through the same four steps below; the Step column shows where each one is."
-        actions={
-          canEdit && (
-            <Button onClick={() => navigate('/lab-submissions/new')}>
-              <FilePlus2 /> New Submission
-            </Button>
-          )
-        }
-      />
       <LabWorkflow />
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Batches" value={rows.length} icon={ClipboardList} tone="blue" />
-        <StatCard label="Samples Sent" value={rows.reduce((a, r) => a + r.total, 0)} icon={FlaskConical} />
-        <StatCard
-          label="Waiting for Results"
-          value={rows.reduce((a, r) => a + r.pending, 0)}
-          icon={Hourglass}
-          tone="orange"
-        />
-        <StatCard
-          label="Positive, No Case Yet"
-          value={rows.reduce((a, r) => a + r.positiveNoCase, 0)}
-          icon={Siren}
-          tone="red"
-        />
-      </div>
       <Card>
         <DataTable
           columns={columns}
@@ -309,7 +271,7 @@ export function LabSubmissionsPage() {
           }
           searchPlaceholder="Search batch, test, barangay or accession no..."
           defaultSort={{ key: 'code', dir: 'desc' }}
-          empty="No lab submissions yet. Select “New submission” to send a batch of samples."
+          empty="No batches yet. Select “New Submission” to send a batch of surveillance samples."
         />
       </Card>
     </div>
@@ -426,7 +388,7 @@ export function LabSubmissionFormPage() {
       <PageHeader
         title={editing ? `Edit ${existing?.code}` : 'New Lab Submission'}
         subtitle="Step 1 of 4 · Prepare the batch: one row per sample; the owner, barangay and GPS come from the farm's record. After saving you print the forms (step 2), enter the results when they arrive (step 3) and open a case for each positive (step 4)."
-        back="/lab-submissions"
+        back="/laboratory?tab=batches"
       />
       <form
         noValidate
@@ -841,7 +803,7 @@ export function LabSubmissionDetailPage() {
             {s.total} sample(s) · {s.barangays.join(', ') || '—'} <ResultCounts s={s} />
           </span>
         }
-        back="/lab-submissions"
+        back="/laboratory?tab=batches"
         actions={
           <>
             <Button variant="outline" onClick={() => printAnalysisRequest(formData, lh, user?.name)}>

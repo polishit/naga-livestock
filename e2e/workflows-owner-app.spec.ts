@@ -105,14 +105,19 @@ test('the office verifies the owner and the farm from the review queue', async (
   await login(page);
   // The menu shows how many items are waiting.
   await expect(page.getByLabel(/waiting for review/).first()).toBeVisible();
+  // Pending farms are at the top of Farms (old review links still work).
   await page.goto('/review');
-  await expect(page.getByRole('heading', { name: 'Review Queue' })).toBeVisible();
+  await expect(page).toHaveURL(/\/owners$/);
+  await page.goto('/farms');
+  await expect(page.getByText('Pending Farm Registrations')).toBeVisible();
   // The farm opens with its pin and livestock; it cannot be verified before its owner.
   await page.getByRole('button', { name: /Belen Piggery/i }).click();
   await expect(page.getByText('phone GPS, about 9 m')).toBeVisible();
   await expect(page.getByRole('cell', { name: '24 head' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Verify', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: "Open the Owner's Application" }).click();
+  // The owner's application opens at the top of Livestock Owners.
+  await expect(page).toHaveURL(/\/owners\?pending=\d+/);
 
   // The owner: details, the ID photo, then a checklist and a confirmation.
   await expect(page.getByText('PhilSys National ID')).toBeVisible();
@@ -129,6 +134,7 @@ test('the office verifies the owner and the farm from the review queue', async (
   await d.getByRole('button', { name: 'Confirm and Verify' }).click();
   await expectToast(page, 'Lorna Belen verified.');
 
+  await page.goto('/farms');
   await page.getByRole('button', { name: /Belen Piggery/i }).click();
   await page.getByRole('button', { name: 'Verify', exact: true }).click();
   for (const box of await d.getByRole('checkbox').all()) await box.check();
@@ -176,7 +182,7 @@ test('the owner updates the head count: a normal change is accepted at once, a l
   await ctx.close();
 
   await login(page);
-  await page.goto('/review?tab=population');
+  await page.goto('/population');
   await page.getByRole('button', { name: /Belen Piggery: Pig 29 → 4/i }).click();
   await expect(page.getByText('Change of 25 head is 86% of the recorded 29')).toBeVisible();
   await shot(page, 'review-population');
@@ -211,7 +217,7 @@ test('the owner reports sick pigs; the office validates, confirms and alerts; th
   await shot(p, 'owner-report-sent');
 
   await login(page);
-  await page.goto('/review?tab=reports');
+  await page.goto('/cases');
   await page.getByRole('button', { name: /4 Pig, 1 dead/i }).click();
   await expect(page.getByText('Four pigs stopped eating and have red skin.')).toBeVisible();
   await shot(page, 'review-report');

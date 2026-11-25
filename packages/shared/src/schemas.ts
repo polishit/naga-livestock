@@ -591,6 +591,15 @@ export const labSubmissionSchema = z
   );
 export type LabSubmissionInput = z.infer<typeof labSubmissionSchema>;
 /** Results for a batch as they come back (often by email). */
+/** The result of one sample, entered on the Laboratory page (it updates the case, if any). */
+export const labResultSchema = z.object({
+  result: z.enum(LAB_RESULTS),
+  resultDate: optDate,
+  receivedVia: optEnum(RESULT_RECEIVED_VIA),
+  remarks: optText(500),
+});
+export type LabResultInput = z.infer<typeof labResultSchema>;
+
 export const labResultsSchema = z.object({
   resultDate: reqPastDate(),
   receivedVia: optEnum(RESULT_RECEIVED_VIA),

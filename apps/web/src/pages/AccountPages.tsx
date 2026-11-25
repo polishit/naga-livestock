@@ -37,7 +37,7 @@ import { qs } from '@/lib/utils';
 import { DataTable } from '@/components/DataTable';
 import { MoreMenu } from '@/components/MoreMenu';
 import { err, useZodForm } from '@/components/forms';
-import { ErrorBox, PageHeader } from '@/components/page';
+import { ErrorBox, FilterField, MoreFilters, PageHeader } from '@/components/page';
 import { Badge, Button, Card, Dialog, Field, Input, Select, type Tone } from '@/components/ui';
 
 interface DialogProps {
@@ -830,57 +830,58 @@ export function AuditLogPage() {
         </div>
       </div>
       <Card>
-        <div className="grid grid-cols-1 gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.6fr]">
-          <Field label="Search">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Name, note or record number"
-            />
-          </Field>
-          <Field label="Record Type">
-            <Select aria-label="Record type" value={table} onChange={(e) => setTable(e.target.value)}>
-              <option value="">All</option>
-              {(data?.tables ?? []).map((t) => (
-                <option key={t} value={t}>
-                  {words(t)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Action">
-            <Select aria-label="Action" value={action} onChange={(e) => setAction(e.target.value)}>
-              <option value="">All</option>
-              {Object.entries(ACTION_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="By">
-            <Select aria-label="By" value={userId} onChange={(e) => setUserId(e.target.value)}>
-              <option value="">Anyone</option>
-              {(data?.users ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name ?? `User ${u.id}`}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="From">
-              <Input
-                type="date"
-                value={from}
-                max={to || undefined}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </Field>
-            <Field label="To">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/70 p-3">
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, note or record number"
+            aria-label="Search"
+            className="w-full sm:w-80"
+          />
+          <Select
+            aria-label="Record type"
+            value={table}
+            onChange={(e) => setTable(e.target.value)}
+            className="w-[calc(50%-4px)] sm:w-52"
+          >
+            <option value="">All record types</option>
+            {(data?.tables ?? []).map((t) => (
+              <option key={t} value={t}>
+                {words(t)}
+              </option>
+            ))}
+          </Select>
+          <MoreFilters
+            active={[action, userId, from || to].filter(Boolean).length}
+            onClear={() => (setAction(''), setUserId(''), setFrom(''), setTo(''))}
+          >
+            <FilterField label="Action">
+              <Select value={action} onChange={(e) => setAction(e.target.value)}>
+                <option value="">All</option>
+                {Object.entries(ACTION_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+            <FilterField label="By">
+              <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
+                <option value="">Anyone</option>
+                {(data?.users ?? []).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name ?? `User ${u.id}`}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+            <FilterField label="From">
+              <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+            </FilterField>
+            <FilterField label="To">
               <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
-            </Field>
-          </div>
+            </FilterField>
+          </MoreFilters>
         </div>
         {error ? (
           <div className="p-4">

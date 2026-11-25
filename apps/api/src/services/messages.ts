@@ -100,7 +100,7 @@ export async function ownerThread(
       r.submittedAt,
       `Farm registration sent: ${r.name} (${r.code})`,
       r.farmId ? `/app/farms/${r.farmId}` : `/app/farms`,
-      `/review?tab=registrations&item=farm-${r.id}`,
+      `/farms?pending=${r.id}`,
     );
   for (const p of pops)
     sent(
@@ -108,7 +108,7 @@ export async function ownerThread(
       p.createdAt,
       `Head count update: ${p.species} ${p.before} → ${p.after}`,
       `/app/farms/${p.farmId}`,
-      `/review?tab=population&item=${p.id}`,
+      `/population?pending=${p.id}`,
       `${POP_REASON_LABELS[p.reason as PopReason] ?? p.reason} · ${farms.get(p.farmId) ?? ''}`,
     );
   for (const r of reports)
@@ -117,7 +117,7 @@ export async function ownerThread(
       r.createdAt,
       `Disease report sent: ${r.code}`,
       `/app/reports/${r.id}`,
-      `/review?tab=reports&report=${r.id}`,
+      `/cases?pending=${r.id}`,
       `${r.affected} ${r.species} sick${r.deaths ? `, ${r.deaths} dead` : ''} · ${farms.get(r.farmId) ?? ''}`,
     );
   for (const s of services)
@@ -126,7 +126,7 @@ export async function ownerThread(
       s.createdAt,
       `Service requested: ${SERVICE_TYPE_LABELS[s.serviceType as keyof typeof SERVICE_TYPE_LABELS] ?? s.serviceType} (${s.code})`,
       '/app/vaccination',
-      `/review?tab=services&item=${s.id}`,
+      `/vaccination-schedule?pending=${s.id}`,
       farms.get(s.farmId) ?? undefined,
     );
   for (const v of vaccs)
@@ -135,7 +135,7 @@ export async function ownerThread(
       v.createdAt,
       `Vaccination record sent: ${v.vaccine}`,
       '/app/vaccination',
-      `/review?tab=vaccinations&item=${v.id}`,
+      `/farms/${v.farmId}`,
       `${v.heads} ${v.species} · ${farms.get(v.farmId) ?? ''}`,
     );
   for (const s of signups)
@@ -144,7 +144,7 @@ export async function ownerThread(
       s.createdAt,
       `Signed up for ${s.activity.title}`,
       '/app/vaccination',
-      `/vaccination-activities?activity=${s.activityId}`,
+      `/vaccination-schedule?activity=${s.activityId}`,
       `${s.heads} ${s.species}`,
     );
   return out.sort((a, b) => a.at.getTime() - b.at.getTime()).slice(-limit);

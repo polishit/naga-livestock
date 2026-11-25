@@ -18,6 +18,7 @@ import {
   measureOpen,
   investigationCreateSchema,
   labCreateSchema,
+  labResultSchema,
   responseCreateSchema,
   titleCase,
   voidSchema,
@@ -894,14 +895,83 @@ casesRouter.post(
   }),
 );
 
+/** Every sample, for the Laboratory page: from disease cases and from batches sent to the laboratory. */
 labsRouter.get(
   '/',
   ah(async (_req, res) => {
     const rows = await prisma.labRecord.findMany({
-      include: { case: true },
+      include: { case: { include: { farm: true } }, submission: true, farm: true },
       orderBy: [{ sentAt: 'asc' }, { id: 'asc' }],
     });
-    res.json(rows.map(serializeLab));
+    res.json(
+      rows.map((l) => {
+        const farm = l.farm ?? l.case?.farm ?? null;
+        return {
+          ...serializeLab(l),
+          disease: l.case?.disease ?? null,
+          farmName: farm?.name ?? null,
+          barangay: farm?.barangay ?? l.case?.barangay ?? null,
+          examination: l.submission?.examination ?? null,
+          waitingDays: l.result === 'PENDING' && l.sentAt ? daysSince(l.sentAt) : null,
+        };
+      }),
+    );
+  }),
+);
+
+/**
+ * Enter the result of one sample from the Laboratory page. A sample of a disease case updates the
+ * case (status, history, the owner's stage) the same way as editing it on the case.
+ */
+labsRouter.post(
+  '/:id/result',
+  ah(async (req, res) => {
+    const id = idParam(req);
+    const d = parse(labResultSchema, req.body);
+    const resultDate = d.result === 'PENDING' ? null : (d.resultDate ?? today());
+    if (resultDate) assertNotFuture({ resultDate });
+    const l = await prisma.labRecord.findUnique({ where: { id }, include: { case: true } });
+    if (!l || l.voidedAt) throw notFound('Sample');
+    if (l.case?.closedAt) throw closedError();
+    const errors: string[] = [];
+    if (resultDate && l.collectedAt && ymd(l.collectedAt)! > resultDate)
+      errors.push('The result date is before the collection date');
+    if (resultDate && l.sentAt && ymd(l.sentAt)! > resultDate)
+      errors.push('The result date is before the date sent');
+    if (errors.length) throw badRequest('Validation failed', { fieldErrors: { resultDate: errors } });
+    const u = await prisma.$transaction(async (tx) => {
+      const updated = await tx.labRecord.update({
+        where: { id },
+        data: {
+          result: d.result,
+          resultDate: resultDate ? dateOnly(resultDate) : null,
+          receivedVia: d.result === 'PENDING' ? null : (d.receivedVia ?? null),
+          ...(d.remarks !== undefined ? { remarks: d.remarks ?? null } : {}),
+          updatedAt: new Date(),
+          updatedBy: req.user?.name ?? null,
+        },
+      });
+      let caseStatus: CaseStatus | null | undefined;
+      if (l.case && l.result !== d.result) {
+        await historyNote(
+          tx,
+          l.case,
+          `Lab result for ${l.sampleId}: ${titleCase(l.result)} → ${titleCase(d.result)}`,
+          req.user?.name,
+        );
+        await logActivity(
+          'case',
+          l.case.id,
+          'lab',
+          `Lab result ${l.sampleId} entered (${d.result.toLowerCase()})`,
+          req.user?.name,
+          tx,
+        );
+      }
+      if (l.case) caseStatus = await syncCaseStatus(tx, l.case.id, req.user?.name);
+      return { ...updated, caseStatus };
+    });
+    res.json(u);
   }),
 );
 

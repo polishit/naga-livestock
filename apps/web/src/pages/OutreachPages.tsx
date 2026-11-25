@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { CalendarPlus, Megaphone, Pencil, Plus, Radar, Smartphone, PhoneCall } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   ACTIVITY_STATUS_LABELS,
@@ -38,9 +38,13 @@ import {
   Field,
   Input,
   Select,
+  Tabs,
   Textarea,
   type Tone,
 } from '@/components/ui';
+import { ScheduleCalendar, type CalendarItem } from '@/components/ScheduleCalendar';
+import { PendingServices } from './ReviewPages';
+import type { VaccinationRow } from './types';
 
 /** Save through a form: field errors under their fields, anything else as a toast. */
 function useFormSave(form: ReturnType<typeof useZodForm>) {
@@ -187,7 +191,7 @@ interface CaseOption {
 const DEFAULT_GUIDANCE =
   'Check your animals every day. Do not move, sell or slaughter animals from your farm without asking the City Veterinary Office. Do not let visitors near your pens.';
 
-export function ZonesPage() {
+export function ZonesPage({ embedded }: { embedded?: boolean } = {}) {
   const { isReviewer } = useAuth();
   const [params, setParams] = useSearchParams();
   const { data, isLoading, error } = useApi<Zone[]>('/api/zones');
@@ -222,12 +226,22 @@ export function ZonesPage() {
   const allCases = (cases.data ?? []).filter((c) => !c.closed && !c.voided);
   const waitingLab = allCases.filter((c) => c.status !== 'POSITIVE' && c.status !== 'NEGATIVE').length;
   const noPin = confirmed.filter((c) => c.lat == null).length;
-  const setOpen = (id: number | null) => setParams(id ? { zone: String(id) } : {}, { replace: true });
+  // Keep the Disease Monitoring tab (?view=zones) when a zone is opened or closed.
+  const setOpen = (id: number | null) =>
+    setParams(
+      (p) => {
+        const n = new URLSearchParams();
+        if (p.get('view')) n.set('view', p.get('view')!);
+        if (id) n.set('zone', String(id));
+        return n;
+      },
+      { replace: true },
+    );
   const z = detail.data;
   return (
     <div>
       <PageHeader
-        title="Monitoring Zones"
+        title={embedded ? null : 'Monitoring Zones'}
         subtitle="A radius around a confirmed (positive) case, set automatically when the laboratory result is positive. Owners of the farms inside are alerted in the owner app, with the distance to their own farm. Change the radius or lift a zone here."
         actions={
           isReviewer && (
@@ -324,7 +338,9 @@ export function ZonesPage() {
                   </Button>
                   {z.caseId && (
                     <Button size="sm" variant="ghost" asChild>
-                      <Link to={`/radius?case=${z.caseId}&radius=${z.radiusM}`}>Farms to Monitor</Link>
+                      <Link to={`/disease-monitoring?view=radius&case=${z.caseId}&radius=${z.radiusM}`}>
+                        Farms in Radius
+                      </Link>
                     </Button>
                   )}
                 </div>
@@ -533,6 +549,10 @@ export function ActivitiesPage() {
   const { data, isLoading, error } = useApi<Activity[]>('/api/activities');
   const openId = Number(params.get('activity')) || null;
   const detail = useApi<Activity>(openId ? `/api/activities/${openId}` : null);
+  // Calendar first; the list of vaccination activities is the second tab (an open activity shows there).
+  const view = openId || params.get('view') === 'activities' ? 'activities' : 'calendar';
+  const setView = (v: 'calendar' | 'activities') =>
+    setParams(v === 'calendar' ? {} : { view: v }, { replace: true });
   const [dlg, setDlg] = useState<null | 'new' | Activity>(null);
   const [cancel, setCancel] = useState<Activity | null>(null);
   const [completing, setCompleting] = useState<Activity | null>(null);
@@ -584,7 +604,7 @@ export function ActivitiesPage() {
     <div>
       <PageHeader
         title="Vaccination Schedule"
-        subtitle="Vaccination activities by barangay. Owners in the barangay are told in the owner app and can sign up their animals."
+        subtitle="Owner requests, vaccination activities and the doses due, in one calendar. Owners are told in the owner app and can sign up their animals."
         actions={
           canEdit && (
             <Button onClick={() => setDlg('new')}>
@@ -593,129 +613,150 @@ export function ActivitiesPage() {
           )
         }
       />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(300px,400px)_minmax(0,1fr)] lg:items-start">
-        <Card className={cn(openId && 'hidden lg:block')}>
-          {data.length === 0 && <EmptyState>No vaccination activity has been scheduled.</EmptyState>}
-          {data.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              onClick={() => setParams({ activity: String(x.id) }, { replace: true })}
-              className={`block w-full border-b border-slate-100 p-4 text-left last:border-0 hover:bg-slate-50 ${openId === x.id ? 'bg-brand-light' : ''}`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <b className="text-[15px]">{x.title}</b>
-                <Badge tone={ACT_TONE[x.status]}>{ACTIVITY_STATUS_LABELS[x.status]}</Badge>
-              </div>
-              <p className="text-[14px] text-slate-600">
-                {fmtDate(x.date)}
-                {x.time ? ` · ${x.time}` : ''} · {x.barangay === 'ALL' ? 'All barangays' : x.barangay} ·{' '}
-                {x.species === 'All' ? 'all livestock' : x.species}
-              </p>
-              <p className="text-[13px] text-slate-500">
-                {x.code} · {x.signedUp} sign-up{x.signedUp === 1 ? '' : 's'} ({x.heads} head) · {x.attended}{' '}
-                attended
-              </p>
-            </button>
-          ))}
-        </Card>
-        {!openId ? (
-          <Card className="hidden lg:block">
-            <EmptyState>Select an activity to see who signed up.</EmptyState>
-          </Card>
-        ) : !a ? (
-          <Card>
-            <Loading />
-          </Card>
-        ) : (
-          <Card>
-            <div className="border-b border-slate-100 p-4">
-              <div className="flex items-start gap-2">
-                <BackButton
-                  onClick={() => setParams({}, { replace: true })}
-                  label="Back to the Activities"
-                  className="-ml-2 -mt-1"
-                />
-                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-[18px] font-semibold">
-                    {a.code}: {a.title}
-                  </h2>
-                  <Badge tone={ACT_TONE[a.status]}>{ACTIVITY_STATUS_LABELS[a.status]}</Badge>
-                </div>
-              </div>
-              <p className="mt-1 text-[14px] text-slate-600">
-                {fmtDate(a.date)}
-                {a.time ? ` · ${a.time}` : ''}
-                {a.venue ? ` · ${a.venue}` : ''} · {a.barangay === 'ALL' ? 'All barangays' : a.barangay} ·{' '}
-                {a.species === 'All' ? 'all livestock' : a.species}
-                {a.vaccine ? ` · ${a.vaccine}` : ''}
-              </p>
-              {a.notes && <p className="mt-1 whitespace-pre-line text-[14px]">{a.notes}</p>}
-              {a.status === 'CANCELLED' && (
-                <p className="mt-1 text-[14px] text-slate-600">Cancelled: {a.cancelReason}</p>
-              )}
-              {canEdit && !['COMPLETED', 'CANCELLED'].includes(a.status) && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setDlg(a)}>
-                    <Pencil /> Edit or Reschedule
-                  </Button>
-                  {a.status === 'SCHEDULED' && (
-                    <Button size="sm" variant="outline" onClick={() => setStatus(a, 'ONGOING')}>
-                      Start (Ongoing)
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => setCompleting(a)}>
-                    Mark Completed
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setCancel(a)}>
-                    Cancel Activity
-                  </Button>
-                </div>
-              )}
-            </div>
-            {(a.signups ?? []).length === 0 && <EmptyState>No owner has signed up yet.</EmptyState>}
-            {(a.signups ?? []).map((s) => (
-              <div
-                key={s.id}
-                className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 last:border-0"
+      {canEdit && <PendingServices />}
+      <Tabs
+        className="mb-4"
+        value={view}
+        onChange={setView}
+        tabs={[
+          { id: 'calendar', label: 'Calendar' },
+          { id: 'activities', label: `Vaccination Activities (${data.length})` },
+        ]}
+      />
+      {view === 'calendar' && (
+        <ScheduleCard
+          activities={data}
+          onOpenActivity={(id) => setParams({ activity: String(id) }, { replace: true })}
+        />
+      )}
+      {view === 'activities' && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(300px,400px)_minmax(0,1fr)] lg:items-start">
+          <Card className={cn(openId && 'hidden lg:block')}>
+            {data.length === 0 && <EmptyState>No vaccination activity has been scheduled.</EmptyState>}
+            {data.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                onClick={() => setParams({ activity: String(x.id) }, { replace: true })}
+                className={`block w-full border-b border-slate-100 p-4 text-left last:border-0 hover:bg-slate-50 ${openId === x.id ? 'bg-brand-light' : ''}`}
               >
-                <div>
-                  <b>
-                    {s.heads} {s.species}
-                  </b>{' '}
-                  ·{' '}
-                  {s.farm && (
-                    <Link className="underline" to={`/farms/${s.farm.id}`}>
-                      {s.farm.name}
-                    </Link>
-                  )}
-                  <div className="text-[14px] text-slate-600">
-                    {s.owner?.fullName}
-                    {s.owner?.contact ? ` (${s.owner.contact})` : ''} · {s.farm?.barangay}
-                  </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <b className="text-[15px]">{x.title}</b>
+                  <Badge tone={ACT_TONE[x.status]}>{ACTIVITY_STATUS_LABELS[x.status]}</Badge>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge
-                    tone={s.status === 'ATTENDED' ? 'green' : s.status === 'SIGNED_UP' ? 'blue' : 'slate'}
-                  >
-                    {SIGNUP_STATUS_LABELS[s.status]}
-                  </Badge>
-                  {canEdit && s.status === 'SIGNED_UP' && a.status !== 'CANCELLED' && a.date <= isoDate() && (
-                    <>
-                      <Button size="xs" onClick={() => mark(s.id, 'ATTENDED')}>
-                        Attended
-                      </Button>
-                      <Button size="xs" variant="outline" onClick={() => mark(s.id, 'NO_SHOW')}>
-                        Did Not Attend
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
+                <p className="text-[14px] text-slate-600">
+                  {fmtDate(x.date)}
+                  {x.time ? ` · ${x.time}` : ''} · {x.barangay === 'ALL' ? 'All barangays' : x.barangay} ·{' '}
+                  {x.species === 'All' ? 'all livestock' : x.species}
+                </p>
+                <p className="text-[13px] text-slate-500">
+                  {x.code} · {x.signedUp} sign-up{x.signedUp === 1 ? '' : 's'} ({x.heads} head) · {x.attended}{' '}
+                  attended
+                </p>
+              </button>
             ))}
           </Card>
-        )}
-      </div>
+          {!openId ? (
+            <Card className="hidden lg:block">
+              <EmptyState>Select an activity to see who signed up.</EmptyState>
+            </Card>
+          ) : !a ? (
+            <Card>
+              <Loading />
+            </Card>
+          ) : (
+            <Card>
+              <div className="border-b border-slate-100 p-4">
+                <div className="flex items-start gap-2">
+                  <BackButton
+                    onClick={() => setParams({}, { replace: true })}
+                    label="Back to the Activities"
+                    className="-ml-2 -mt-1"
+                  />
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-[18px] font-semibold">
+                      {a.code}: {a.title}
+                    </h2>
+                    <Badge tone={ACT_TONE[a.status]}>{ACTIVITY_STATUS_LABELS[a.status]}</Badge>
+                  </div>
+                </div>
+                <p className="mt-1 text-[14px] text-slate-600">
+                  {fmtDate(a.date)}
+                  {a.time ? ` · ${a.time}` : ''}
+                  {a.venue ? ` · ${a.venue}` : ''} · {a.barangay === 'ALL' ? 'All barangays' : a.barangay} ·{' '}
+                  {a.species === 'All' ? 'all livestock' : a.species}
+                  {a.vaccine ? ` · ${a.vaccine}` : ''}
+                </p>
+                {a.notes && <p className="mt-1 whitespace-pre-line text-[14px]">{a.notes}</p>}
+                {a.status === 'CANCELLED' && (
+                  <p className="mt-1 text-[14px] text-slate-600">Cancelled: {a.cancelReason}</p>
+                )}
+                {canEdit && !['COMPLETED', 'CANCELLED'].includes(a.status) && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setDlg(a)}>
+                      <Pencil /> Edit or Reschedule
+                    </Button>
+                    {a.status === 'SCHEDULED' && (
+                      <Button size="sm" variant="outline" onClick={() => setStatus(a, 'ONGOING')}>
+                        Start (Ongoing)
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => setCompleting(a)}>
+                      Mark Completed
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setCancel(a)}>
+                      Cancel Activity
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {(a.signups ?? []).length === 0 && <EmptyState>No owner has signed up yet.</EmptyState>}
+              {(a.signups ?? []).map((s) => (
+                <div
+                  key={s.id}
+                  className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 last:border-0"
+                >
+                  <div>
+                    <b>
+                      {s.heads} {s.species}
+                    </b>{' '}
+                    ·{' '}
+                    {s.farm && (
+                      <Link className="underline" to={`/farms/${s.farm.id}`}>
+                        {s.farm.name}
+                      </Link>
+                    )}
+                    <div className="text-[14px] text-slate-600">
+                      {s.owner?.fullName}
+                      {s.owner?.contact ? ` (${s.owner.contact})` : ''} · {s.farm?.barangay}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      tone={s.status === 'ATTENDED' ? 'green' : s.status === 'SIGNED_UP' ? 'blue' : 'slate'}
+                    >
+                      {SIGNUP_STATUS_LABELS[s.status]}
+                    </Badge>
+                    {canEdit &&
+                      s.status === 'SIGNED_UP' &&
+                      a.status !== 'CANCELLED' &&
+                      a.date <= isoDate() && (
+                        <>
+                          <Button size="xs" onClick={() => mark(s.id, 'ATTENDED')}>
+                            Attended
+                          </Button>
+                          <Button size="xs" variant="outline" onClick={() => mark(s.id, 'NO_SHOW')}>
+                            Did Not Attend
+                          </Button>
+                        </>
+                      )}
+                  </div>
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>
+      )}
 
       <Dialog
         open={!!dlg}
@@ -1108,5 +1149,136 @@ export function AnnouncementsPage() {
         onClose={() => setWithdraw(null)}
       />
     </div>
+  );
+}
+
+/* ---------------- Vaccination Schedule: one calendar ---------------- */
+
+const DUE_TONE: Record<string, CalendarItem['tone']> = {
+  DEWORMING: 'blue',
+  VACCINATION: 'amber',
+  CHECKUP: 'green',
+};
+
+/**
+ * Everything planned, on one month calendar: vaccination activities (green), services scheduled for
+ * owners who asked in the owner app (violet), and the next doses due from the Activity Log (blue,
+ * amber; red when overdue). Select a day to see the list with a button to open each one.
+ */
+function ScheduleCard({
+  activities,
+  onOpenActivity,
+}: {
+  activities: Activity[];
+  onOpenActivity: (id: number) => void;
+}) {
+  const navigate = useNavigate();
+  const due = useApi<{ rows: (VaccinationRow & { overdue?: boolean })[] }>(
+    '/api/vaccinations/upcoming?days=183',
+  );
+  const requests = useApi<
+    {
+      id: number;
+      code: string;
+      serviceLabel: string;
+      species: string | null;
+      status: string;
+      scheduledDate: string | null;
+      farm?: { id: number; name: string; barangay: string } | null;
+      owner?: { fullName: string } | null;
+    }[]
+  >('/api/review/service-requests?all=1');
+  const items: CalendarItem[] = [
+    ...activities
+      .filter((a) => a.status !== 'CANCELLED')
+      .map((a) => ({
+        id: `a${a.id}`,
+        date: a.date.slice(0, 10),
+        label: `${a.title}`,
+        tone: 'green' as const,
+        detail: (
+          <>
+            <b className="font-medium text-slate-800">Vaccination activity {a.code}</b> ·{' '}
+            {a.barangay === 'ALL' ? 'All barangays' : a.barangay}
+            {a.time ? ` · ${a.time}` : ''}
+            {a.venue ? ` · ${a.venue}` : ''} · {a.signedUp} sign-up{a.signedUp === 1 ? '' : 's'} ({a.heads}{' '}
+            head)
+          </>
+        ),
+        action: (
+          <Button size="xs" variant="outline" onClick={() => onOpenActivity(a.id)}>
+            Open
+          </Button>
+        ),
+      })),
+    ...(requests.data ?? [])
+      .filter((r) => r.status === 'SCHEDULED' && r.scheduledDate)
+      .map((r) => ({
+        id: `r${r.id}`,
+        date: r.scheduledDate!.slice(0, 10),
+        label: `${r.serviceLabel}${r.species ? ` · ${r.species}` : ''}`,
+        tone: 'violet' as const,
+        detail: (
+          <>
+            <b className="font-medium text-slate-800">{r.farm?.name}</b> · {r.farm?.barangay} · requested by{' '}
+            {r.owner?.fullName} ({r.code})
+          </>
+        ),
+        action: (
+          <Button size="xs" variant="outline" onClick={() => navigate(`?pending=${r.id}`)}>
+            Open
+          </Button>
+        ),
+      })),
+    ...(due.data?.rows ?? [])
+      .filter((r) => r.nextDate)
+      .map((r) => ({
+        id: `d${r.id}`,
+        date: r.nextDate!,
+        label: `${r.serviceLabel} · ${r.species}`,
+        tone: r.overdue ? ('red' as const) : (DUE_TONE[r.serviceType] ?? 'slate'),
+        detail: (
+          <>
+            <b className="font-medium text-slate-800">{r.farmName}</b> · {r.barangay} · {r.targetLabel}
+            {r.vaccine ? ` · ${r.vaccine}` : ''} · last given {fmtDate(r.date)}
+            {r.overdue && (
+              <span className="ml-1.5">
+                <Badge tone="red">Overdue</Badge>
+              </span>
+            )}
+          </>
+        ),
+        action: (
+          <Button size="xs" variant="outline" onClick={() => navigate(`/farms/${r.farmId}`)}>
+            Open Farm
+          </Button>
+        ),
+      })),
+  ];
+  const legend: [string, string][] = [
+    ['bg-emerald-200', 'Vaccination activity'],
+    ['bg-violet-200', 'Owner request (scheduled)'],
+    ['bg-amber-200', 'Vaccination due'],
+    ['bg-sky-200', 'Deworming due'],
+    ['bg-red-200', 'Overdue'],
+  ];
+  return (
+    <Card>
+      {!due.data ? (
+        <Loading />
+      ) : (
+        <ScheduleCalendar
+          items={items}
+          empty="Nothing scheduled. Schedule an activity, or enter a next date when recording a service."
+        />
+      )}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 px-4 py-2.5 text-[13px] text-slate-600">
+        {legend.map(([c, l]) => (
+          <span key={l} className="inline-flex items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 rounded-sm ${c}`} /> {l}
+          </span>
+        ))}
+      </div>
+    </Card>
   );
 }
