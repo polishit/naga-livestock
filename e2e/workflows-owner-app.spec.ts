@@ -262,8 +262,9 @@ test('the owner reports sick pigs; the office validates, confirms and alerts; th
   await expect(page.getByText('Owner sees: Confirmed')).toBeVisible();
   // One step: the positive result set the monitoring zone and alerted the owners nearby.
   await page.getByRole('link', { name: /Monitoring zone ZONE-\d+ \(active\)/i }).click();
-  await expect(page.getByRole('heading', { name: /ZONE-\d+: African Swine Fever/i })).toBeVisible();
-  await expect(page.getByText(/alert\(s\) sent · /).first()).toBeVisible();
+  // Farms & Zones shows the zone with the farms inside it and their alerts.
+  await expect(page.getByText(/Monitoring zone ZONE-\d+ · /)).toBeVisible();
+  await expect(page.getByText(/farm\(s\) inside · /).first()).toBeVisible();
   await shot(page, 'zones');
 
   // Back on the phone: the stage, the result and the message from the office.

@@ -5,9 +5,12 @@ import {
   FileText,
   Info,
   Pause,
+  Pencil,
+  PhoneCall,
   Play,
   Plus,
   Radar,
+  Smartphone,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -36,7 +39,7 @@ import { ExportButtons } from '@/components/ExportButtons';
 import { MapView } from '@/components/MapView';
 import { RadiusSelect } from '@/components/RadiusSelect';
 import { ErrorBox, FilterField, FilterSelect, MoreFilters, PageHeader, StatCard } from '@/components/page';
-import { ZonesPage } from './OutreachPages';
+import { LiftZoneDialog, ZoneDialog, type Zone } from './OutreachPages';
 import { CaseLegend, CaseStatusBadge, MapLegend, SpeciesChip } from '@/components/status';
 import { Badge, Button, Card, CardHeader, Checkbox, Input, Tabs } from '@/components/ui';
 import {} from '@/dialogs/surveillance';
@@ -405,7 +408,7 @@ export function GisMapPage() {
 
 /* ---------------- Disease Monitoring ---------------- */
 
-type MonitorView = 'map' | 'timeline' | 'radius' | 'zones';
+type MonitorView = 'map' | 'timeline' | 'zones';
 
 /**
  * Disease Monitoring: one page for following an outbreak. The map shows the disease reports, the
@@ -414,8 +417,9 @@ type MonitorView = 'map' | 'timeline' | 'radius' | 'zones';
  */
 export function DiseaseMonitoringPage() {
   const [params, setParams] = useSearchParams();
-  const raw = params.get('view') as MonitorView | null;
-  const view: MonitorView = raw && ['map', 'timeline', 'radius', 'zones'].includes(raw) ? raw : 'map';
+  // "radius" (Farms in Radius) and "zones" (Monitoring Zones) are one view now.
+  const raw = params.get('view') === 'radius' ? 'zones' : (params.get('view') as MonitorView | null);
+  const view: MonitorView = raw && ['map', 'timeline', 'zones'].includes(raw) ? raw : 'map';
   // Each view keeps its own address parameters; switching starts it fresh.
   const setView = (v: MonitorView) => setParams(v === 'map' ? {} : { view: v }, { replace: true });
   const [disease, setDisease] = useState(params.get('disease') ?? '');
@@ -439,8 +443,7 @@ export function DiseaseMonitoringPage() {
         tabs={[
           { id: 'map', label: 'Map' },
           { id: 'timeline', label: 'Outbreak Timeline' },
-          { id: 'radius', label: 'Farms in Radius' },
-          { id: 'zones', label: 'Monitoring Zones' },
+          { id: 'zones', label: 'Farms & Zones' },
         ]}
       />
       {filters && (
@@ -498,12 +501,11 @@ export function DiseaseMonitoringPage() {
           species={species}
           caseState={caseState}
           radius={radius}
-          onFarmsInRadius={(id) => setParams({ view: 'radius', case: String(id), radius: String(radius) })}
+          onFarmsInRadius={(id) => setParams({ view: 'zones', case: String(id), radius: String(radius) })}
         />
       )}
       {view === 'timeline' && <OutbreakTimeline disease={disease} barangay={barangay} />}
-      {view === 'radius' && <RadiusPage embedded />}
-      {view === 'zones' && <ZonesPage embedded />}
+      {view === 'zones' && <FarmsAndZones />}
     </div>
   );
 }
@@ -921,34 +923,60 @@ function classBreaks(max: number) {
 
 /* ---------------- Farms to monitor (radius analysis) ---------------- */
 
-export function RadiusPage({ embedded }: { embedded?: boolean } = {}) {
+/**
+ * Farms & Zones (Disease Monitoring): choose a case and a radius to list the farms around it and
+ * whether each was visited. The same view sets the case's monitoring zone (owners inside are
+ * alerted), changes its radius, or lifts it; once a zone is set, each farm shows its alert.
+ */
+export function FarmsAndZones() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const { canEdit } = useAuth();
-  const { data: cases } = useApi<CaseRow[]>('/api/cases');
-  const geocoded = (cases ?? []).filter((c) => c.mapped).sort((a, b) => a.id - b.id);
+  const { canEdit, isReviewer } = useAuth();
+  const { data: cases } = useApi<CaseRow[]>('/api/cases?state=all');
+  const { data: zones } = useApi<Zone[]>('/api/zones');
+  const geocoded = (cases ?? []).filter((c) => c.mapped && !c.voided).sort((a, b) => b.id - a.id);
+  const activeZones = (zones ?? []).filter((z) => z.status === 'ACTIVE');
+  const zoneParam = Number(params.get('zone')) || null;
   const caseId =
     params.get('case') ??
-    (geocoded.find((c) => c.status === 'POSITIVE' && !c.closed) ?? geocoded[0])?.id?.toString() ??
+    (zoneParam ? String((zones ?? []).find((z) => z.id === zoneParam)?.caseId ?? '') : '') ??
     '';
-  const [radius, setRadius] = useState(Number(params.get('radius')) || 1000);
+  const pickedCase =
+    caseId ||
+    String(
+      activeZones[0]?.caseId ??
+        (geocoded.find((c) => c.status === 'POSITIVE' && !c.closed) ?? geocoded[0])?.id ??
+        '',
+    );
+  const zone = activeZones.find((z) => String(z.caseId) === pickedCase) ?? null;
+  const [radiusPick, setRadiusPick] = useState<number | null>(Number(params.get('radius')) || null);
+  const radius = radiusPick ?? zone?.radiusM ?? 1000;
   const [bq, setBq] = useState('');
   const [bBarangay, setBBarangay] = useState('');
   const [bSpecies, setBSpecies] = useState('');
   const [monitor, setMonitor] = useState('');
   const [visitFarm, setVisitFarm] = useState<number | null>(null);
+  const [zoneDlg, setZoneDlg] = useState<null | 'new' | 'edit'>(null);
+  const [lifting, setLifting] = useState(false);
   const { data, error, isLoading } = useApi<RadiusResult>(
-    caseId ? `/api/radius?caseId=${caseId}&radius=${radius}` : null,
+    pickedCase ? `/api/radius?caseId=${pickedCase}&radius=${radius}` : null,
   );
   const { data: report } = useApi<ReportResult>(
-    caseId ? `/api/reports/outbreak-area?caseId=${caseId}&radius=${radius}` : null,
+    pickedCase ? `/api/reports/outbreak-area?caseId=${pickedCase}&radius=${radius}` : null,
   );
+  const zoneDetail = useApi<Zone>(zone ? `/api/zones/${zone.id}` : null);
+  const alerts = new Map((zoneDetail.data?.rows ?? []).map((r) => [r.farmId, r]));
 
   const setCase = (v: string) => {
     const p = new URLSearchParams(params);
     p.set('case', v);
+    p.delete('zone');
+    p.delete('radius');
     setParams(p, { replace: true });
+    setRadiusPick(null);
   };
+  const theCase = geocoded.find((c) => String(c.id) === pickedCase);
+  const canZone = !!theCase && theCase.status === 'POSITIVE' && !theCase.closed;
   // The list is of farms to monitor: the ground-zero farm (where the case is) is left out.
   const groundZeroFarm = data?.farms.find((f) => f.role === 'Ground-zero farm');
   const rows = (data?.farms ?? []).filter(
@@ -962,45 +990,99 @@ export function RadiusPage({ embedded }: { embedded?: boolean } = {}) {
 
   return (
     <div>
-      <PageHeader
-        title={embedded ? null : 'Farms to Monitor'}
-        subtitle="Farms within the radius of a disease report, and whether each one has been visited since the report."
-        actions={
-          <>
-            <ExportButtons report={report} size="default" print={false} />
-            <Button
-              disabled={!caseId}
-              onClick={() => navigate(`/reports?tab=outbreak&case=${caseId}&radius=${radius}`)}
+      {activeZones.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
+          <span className="font-medium text-slate-500">Active zones:</span>
+          {activeZones.map((z) => (
+            <button
+              key={z.id}
+              type="button"
+              onClick={() => z.caseId && setCase(String(z.caseId))}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-medium transition-colors',
+                zone?.id === z.id
+                  ? 'border-red-200 bg-red-50 text-red-800'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+              )}
             >
-              <FileText /> Outbreak-Area Report
-            </Button>
-          </>
-        }
-      />
+              <span className="h-2 w-2 rounded-full bg-red-500" />
+              {z.code} · {z.disease} · {z.barangay} · {formatRadius(z.radiusM)}
+            </button>
+          ))}
+        </div>
+      )}
       <Card className="p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-          <div className="w-full lg:w-96">
-            <div className="mb-1.5 text-[14px] font-medium text-slate-700">Disease report (ground zero)</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block w-full lg:w-[440px]">
+            <span className="mb-1.5 block text-[13px] font-semibold text-slate-600">
+              Disease report (ground zero)
+            </span>
             <FilterSelect
               label="Ground-Zero Case"
-              value={caseId}
+              value={pickedCase}
               onChange={setCase}
               options={geocoded.map((c) => ({
                 value: String(c.id),
                 label: `${c.code} · ${c.disease} · ${c.barangay} (${c.closed ? 'closed' : CASE_STATUS_LABELS[c.status]})`,
               }))}
             />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-semibold text-slate-600">Radius</span>
+            <RadiusSelect value={radius} onChange={setRadiusPick} className="h-10 w-36" />
+          </label>
+          <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+            {theCase && (
+              <Button variant="ghost" asChild>
+                <Link to={`/cases/${theCase.id}`}>Open {theCase.code}</Link>
+              </Button>
+            )}
+            {zone ? (
+              isReviewer && (
+                <>
+                  <Button variant="outline" onClick={() => setZoneDlg('edit')}>
+                    <Pencil /> Change Zone
+                  </Button>
+                  <Button variant="outline" onClick={() => setLifting(true)}>
+                    Lift Zone
+                  </Button>
+                </>
+              )
+            ) : canZone && isReviewer ? (
+              <Button onClick={() => setZoneDlg('new')}>
+                <Radar /> Set as Monitoring Zone
+              </Button>
+            ) : null}
           </div>
-          <div>
-            <div className="mb-1.5 text-[14px] font-medium text-slate-700">Radius</div>
-            <RadiusSelect value={radius} onChange={setRadius} className="h-10" />
-          </div>
-          {data?.case && (
-            <Link to={`/cases/${data.case.id}`} className="link text-[14px] lg:ml-auto lg:pb-2">
-              Open {data.case.code}
-            </Link>
-          )}
         </div>
+        {zone ? (
+          <div className="mt-4 flex flex-wrap items-start gap-x-6 gap-y-2 rounded-lg border border-red-100 bg-red-50/60 px-4 py-3 text-[14px] text-slate-700">
+            <span className="inline-flex items-center gap-2 font-semibold text-red-800">
+              <Radar className="h-4 w-4" /> Monitoring zone {zone.code} · {formatRadius(zone.radiusM)}
+            </span>
+            <span>
+              <b>{zone.farms}</b> farm(s) inside · <b>{zone.notified}</b> alerted · <b>{zone.read}</b> read
+            </span>
+            <span className="text-slate-500">
+              Set {fmtDate(zone.createdAt)}
+              {zone.createdBy ? ` by ${zone.createdBy}` : ''}
+            </span>
+            {radius !== zone.radiusM && (
+              <span className="basis-full text-amber-800">
+                The list shows {formatRadius(radius)}; the zone is {formatRadius(zone.radiusM)}. Select
+                “Change Zone” to alert the owners in a new radius.
+              </span>
+            )}
+          </div>
+        ) : (
+          theCase && (
+            <p className="mt-3 text-[13px] text-slate-500">
+              {canZone
+                ? 'No monitoring zone yet. Set one to alert the owners of the farms inside the radius.'
+                : 'A monitoring zone can be set once the case is confirmed positive by the laboratory.'}
+            </p>
+          )
+        )}
       </Card>
       {error && <ErrorBox error={error} />}
       {data && data.totals && (
@@ -1055,7 +1137,7 @@ export function RadiusPage({ embedded }: { embedded?: boolean } = {}) {
               </Link>
             </div>
           )}
-          <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.1fr]">
+          <div className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <div>
               <MapLegend>
                 {(Object.keys(MONITOR_RING) as (keyof typeof MONITOR_RING)[]).map((k) => (
@@ -1072,7 +1154,7 @@ export function RadiusPage({ embedded }: { embedded?: boolean } = {}) {
                 </span>
               </MapLegend>
               <MapView
-                className="h-[380px] xl:h-[560px]"
+                className="h-[380px] 2xl:h-[600px]"
                 farms={data.farms
                   .filter((f) => f.role !== 'Ground-zero farm')
                   .map((f) => ({ ...f, inRadius: true, ring: MONITOR_RING[f.monitoring] }))}
@@ -1083,7 +1165,21 @@ export function RadiusPage({ embedded }: { embedded?: boolean } = {}) {
               />
             </div>
             <Card>
-              <CardHeader title={`Farms to monitor within ${formatRadius(data.radius)}`} />
+              <CardHeader
+                title={`Farms within ${formatRadius(data.radius)}`}
+                actions={
+                  <>
+                    <ExportButtons report={report} print={false} />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate(`/reports?tab=outbreak&case=${pickedCase}&radius=${radius}`)}
+                    >
+                      <FileText /> Outbreak-Area Report
+                    </Button>
+                  </>
+                }
+              />
               {groundZeroFarm && (
                 <p className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">
                   <Badge tone="violet">Ground Zero</Badge> {groundZeroFarm.name} · {groundZeroFarm.ownerName}{' '}
@@ -1163,6 +1259,30 @@ export function RadiusPage({ embedded }: { embedded?: boolean } = {}) {
                         `${r.distance} m`
                       ),
                   },
+                  ...(zone
+                    ? [
+                        {
+                          key: 'alert',
+                          header: 'Zone Alert',
+                          sort: false as const,
+                          cell: (r: (typeof rows)[number]) => {
+                            const a = alerts.get(r.id);
+                            if (!a) return <span className="text-slate-400">—</span>;
+                            return a.hasApp ? (
+                              <Badge tone={a.readAt ? 'green' : a.notifiedAt ? 'blue' : 'slate'}>
+                                <Smartphone className="h-3.5 w-3.5" />
+                                {a.readAt ? 'Read' : a.notifiedAt ? 'Sent' : 'Not alerted'}
+                              </Badge>
+                            ) : (
+                              <Badge tone="amber">
+                                <PhoneCall className="h-3.5 w-3.5" />
+                                Call or visit
+                              </Badge>
+                            );
+                          },
+                        },
+                      ]
+                    : []),
                   {
                     key: 'monitoring',
                     header: 'Monitoring',
@@ -1213,7 +1333,7 @@ export function RadiusPage({ embedded }: { embedded?: boolean } = {}) {
                                     size="xs"
                                     onClick={(ev) => {
                                       ev.stopPropagation();
-                                      navigate(`/cases/new?farm=${r.id}&from=${caseId}`);
+                                      navigate(`/cases/new?farm=${r.id}&from=${pickedCase}`);
                                     }}
                                   >
                                     <Plus /> Report
@@ -1239,9 +1359,19 @@ export function RadiusPage({ embedded }: { embedded?: boolean } = {}) {
           onOpenChange={(o) => !o && setVisitFarm(null)}
           farmId={visitFarm}
           defaultPurpose="MONITORING"
-          defaultCaseId={Number(caseId)}
+          defaultCaseId={Number(pickedCase)}
         />
       )}
+      {zoneDlg && (
+        <ZoneDialog
+          zone={zoneDlg === 'edit' ? zone : null}
+          caseId={theCase?.id}
+          caseLabel={theCase ? `${theCase.code} (${theCase.disease}, ${theCase.barangay})` : ''}
+          radius={radius}
+          onClose={() => (setZoneDlg(null), setRadiusPick(null))}
+        />
+      )}
+      <LiftZoneDialog zone={lifting ? zone : null} onClose={() => setLifting(false)} />
     </div>
   );
 }

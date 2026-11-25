@@ -1,10 +1,10 @@
 import { Download, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import type { ReportResult, SettingsInput } from '@livestock/shared';
 import { useApi } from '@/lib/hooks';
 import { exportCsv, exportPdf, exportXlsx, printReport, type Letterhead } from '@/lib/export';
-import { Button } from './ui';
 
 export function useLetterhead(): Letterhead {
   const { data } = useApi<SettingsInput>('/api/settings', { staleTime: 300_000 });
@@ -42,43 +42,46 @@ export function ExportButtons({
       setBusy(null);
     }
   };
+  // One joined group of buttons, so the downloads read as one control.
+  const item = cn(
+    'inline-flex items-center gap-1.5 bg-white px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-50 [&_svg]:h-4 [&_svg]:w-4',
+    size === 'sm' ? 'h-8 text-[13.5px]' : 'h-10 text-[14.5px]',
+  );
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button
-        variant="outline"
-        size={size}
+    <div className="inline-flex divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+      <button
+        type="button"
+        className={item}
         disabled={!report}
         onClick={() => run('csv', () => exportCsv(report!))}
       >
         <Download /> CSV
-      </Button>
-      <Button
-        variant="outline"
-        size={size}
-        disabled={!report}
-        loading={busy === 'xlsx'}
+      </button>
+      <button
+        type="button"
+        className={item}
+        disabled={!report || busy === 'xlsx'}
         onClick={() => run('xlsx', () => exportXlsx(report!, lh))}
       >
         XLSX
-      </Button>
-      <Button
-        variant="outline"
-        size={size}
-        disabled={!report}
-        loading={busy === 'pdf'}
+      </button>
+      <button
+        type="button"
+        className={item}
+        disabled={!report || busy === 'pdf'}
         onClick={() => run('pdf', () => exportPdf(report!, lh))}
       >
         PDF
-      </Button>
+      </button>
       {print && (
-        <Button
-          variant="outline"
-          size={size}
+        <button
+          type="button"
+          className={item}
           disabled={!report}
           onClick={() => run('print', () => printReport(report!, lh))}
         >
           <Printer /> Print
-        </Button>
+        </button>
       )}
     </div>
   );

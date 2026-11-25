@@ -31,13 +31,23 @@ export default {
           activeBg: '#e3f1de',
           accent: '#f4c430',
         },
-        // The staff menu: sage green with white text; the page you are on is a white pill.
-        nav: { DEFAULT: '#76a865', deep: '#689a58', text: '#ffffff', soft: '#e8f3e3', active: '#1f5f2a' },
+        // One green, used everywhere: the menu is the deepest shade, buttons and links the middle ones.
+        nav: { DEFAULT: '#1f4a35', deep: '#173a29', text: '#ffffff', soft: '#e9f3ec', active: '#1f4a35' },
         // strong = buttons and active states (white text passes WCAG AA contrast)
-        brand: { DEFAULT: '#7aad69', strong: '#3a7d2f', dark: '#166534', mid: '#16a34a', light: '#eef7ea' },
+        brand: {
+          DEFAULT: '#3f8a5c',
+          strong: '#2e6b47',
+          dark: '#1f5236',
+          mid: '#3f8a5c',
+          light: '#ecf5ef',
+          soft: '#d4e8da',
+        },
       },
       borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
-      boxShadow: { card: '0 1px 2px rgba(15,23,42,.04), 0 2px 6px rgba(15,23,42,.05)' },
+      boxShadow: {
+        card: '0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.05)',
+        pop: '0 12px 32px -8px rgba(16,24,40,.18), 0 4px 8px -4px rgba(16,24,40,.08)',
+      },
     },
   },
   plugins: [animate],

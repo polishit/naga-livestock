@@ -248,6 +248,7 @@ function ActivityLog() {
     {
       key: 'farmName',
       header: 'Farm',
+      className: 'min-w-[170px]',
       cell: (r) => (
         <Link to={`/farms/${r.farmId}?tab=visits`} className="link" onClick={(e) => e.stopPropagation()}>
           {r.farmName}
@@ -258,8 +259,13 @@ function ActivityLog() {
     { key: 'species', header: 'Species', cell: (r) => r.species ?? '—' },
     { key: 'count', header: 'No. of Heads', className: 'font-semibold', cell: (r) => r.count ?? '—' },
     { key: 'product', header: 'Product / Purpose / Result' },
-    { key: 'by', header: 'Done By', cell: (r) => r.by ?? '—' },
-    { key: 'remarks', header: 'Remarks', cell: (r) => r.remarks ?? '—' },
+    { key: 'by', header: 'Done By', className: 'whitespace-nowrap', cell: (r) => r.by ?? '—' },
+    {
+      key: 'remarks',
+      header: 'Remarks',
+      className: 'max-w-[240px]',
+      cell: (r) => <span className="line-clamp-2">{r.remarks ?? '—'}</span>,
+    },
     ...(canEdit
       ? [
           {

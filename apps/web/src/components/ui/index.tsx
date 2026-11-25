@@ -27,10 +27,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-brand-strong text-white shadow-sm hover:bg-brand-dark',
-        outline: 'border border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50',
-        ghost: 'text-slate-700 hover:bg-slate-100',
-        destructive: 'bg-red-500 text-white hover:bg-red-600',
+        default: 'bg-brand-strong text-white shadow-sm hover:bg-brand-dark active:bg-brand-dark',
+        outline:
+          'border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900',
+        ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+        destructive: 'bg-red-600 text-white shadow-sm hover:bg-red-700',
         link: 'text-brand-dark underline-offset-4 hover:underline px-0',
       },
       size: {
@@ -78,7 +79,7 @@ Button.displayName = 'Button';
 /* ---------------- Inputs ---------------- */
 
 const fieldBase =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:cursor-not-allowed disabled:bg-slate-50 aria-[invalid=true]:border-red-400';
+  'w-full rounded-lg border border-slate-200 bg-white px-3 text-[15px] text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:cursor-not-allowed disabled:bg-slate-50 aria-[invalid=true]:border-red-400';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
@@ -339,14 +340,14 @@ export function CardHeader({
 
 export type Tone = 'green' | 'red' | 'orange' | 'amber' | 'slate' | 'blue' | 'violet' | 'redSoft';
 const toneClass: Record<Tone, string> = {
-  green: 'bg-brand-light text-brand-dark',
-  red: 'bg-red-50 text-red-600',
-  redSoft: 'bg-red-50 text-red-600',
-  orange: 'bg-orange-50 text-orange-600',
-  amber: 'bg-amber-50 text-amber-700',
-  slate: 'bg-slate-100 text-slate-700',
-  blue: 'bg-sky-50 text-sky-700',
-  violet: 'bg-violet-50 text-violet-700',
+  green: 'bg-brand-light text-brand-dark ring-brand/20',
+  red: 'bg-red-50 text-red-700 ring-red-600/15',
+  redSoft: 'bg-red-50 text-red-700 ring-red-600/15',
+  orange: 'bg-orange-50 text-orange-700 ring-orange-600/15',
+  amber: 'bg-amber-50 text-amber-800 ring-amber-600/20',
+  slate: 'bg-slate-50 text-slate-600 ring-slate-500/15',
+  blue: 'bg-sky-50 text-sky-700 ring-sky-600/15',
+  violet: 'bg-violet-50 text-violet-700 ring-violet-600/15',
 };
 
 export function Badge({
@@ -361,7 +362,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[12px] font-medium leading-5',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium leading-5 ring-1 ring-inset',
         toneClass[tone],
         className,
       )}
@@ -515,7 +516,7 @@ export function Tabs<T extends string>({
 }) {
   return (
     <div className={cn('-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0', className)}>
-      <div role="tablist" className="flex min-w-max gap-1 border-b border-slate-200">
+      <div role="tablist" className="flex min-w-max gap-5 border-b border-slate-200">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -524,10 +525,10 @@ export function Tabs<T extends string>({
             aria-selected={value === t.id}
             onClick={() => onChange(t.id)}
             className={cn(
-              '-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-[15px] transition-colors',
+              '-mb-px whitespace-nowrap border-b-2 px-0.5 pb-2.5 pt-2 text-[14.5px] font-medium transition-colors',
               value === t.id
-                ? 'border-brand-dark font-medium text-brand-dark'
-                : 'border-transparent text-slate-500 hover:text-slate-800',
+                ? 'border-brand-strong text-brand-dark'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
             )}
           >
             {typeof t.label === 'string' ? toTitle(t.label) : t.label}

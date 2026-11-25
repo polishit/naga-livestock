@@ -72,7 +72,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
       <span
         aria-label={`${n} ${label}`}
         className={cn(
-          'min-w-[20px] rounded-full bg-red-600 px-1.5 text-center text-[12px] font-semibold leading-5 text-white',
+          'min-w-[20px] rounded-full bg-red-500 px-1.5 text-center text-[11.5px] font-semibold leading-5 text-white',
           collapsed && 'absolute right-1 top-0.5',
         )}
       >
@@ -89,11 +89,11 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
       title={collapsed ? item.label : item.hint}
       className={({ isActive }) =>
         cn(
-          'relative flex h-10 items-center gap-3 rounded-xl text-[15px] transition-colors',
+          'relative flex h-10 items-center gap-3 rounded-lg text-[14.5px] transition-colors',
           collapsed ? 'justify-center px-0' : 'px-3',
           isActive
             ? 'bg-white font-semibold text-nav-active shadow-sm'
-            : 'text-white hover:bg-white/15 active:bg-white/25',
+            : 'text-white/80 hover:bg-white/10 hover:text-white active:bg-white/15',
         )
       }
     >
@@ -104,28 +104,33 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
   );
 
   return (
-    <div className="flex h-full flex-col bg-nav text-white">
-      <div className={cn('flex h-16 shrink-0 items-center', collapsed ? 'justify-center px-2' : 'px-4')}>
+    <div className="flex h-full flex-col bg-gradient-to-b from-nav to-nav-deep text-white">
+      <div
+        className={cn(
+          'flex h-16 shrink-0 items-center border-b border-white/10',
+          collapsed ? 'justify-center px-2' : 'px-4',
+        )}
+      >
         <Link to="/" onClick={onNavigate}>
           <Logo compact={collapsed} light />
         </Link>
       </div>
-      <nav ref={navRef} className="nav-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3" aria-label="Main">
+      <nav ref={navRef} className="nav-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
         {NAV.map((section, i) => {
           const items = section.items.filter((x) => !x.hidden && (!x.adminOnly || isAdmin));
           if (!items.length) return null;
           const isFolded = !!folded[section.id];
           const waiting = items.reduce((n, x) => n + (pending[x.to] ?? 0), 0);
           return (
-            <div key={section.id} className={cn(i > 0 && 'mt-3')}>
+            <div key={section.id} className={cn(i > 0 && 'mt-4')}>
               {collapsed ? (
-                i > 0 && <div className="mx-2 mb-2 border-t border-white/25" />
+                i > 0 && <div className="mx-2 mb-2 border-t border-white/15" />
               ) : (
                 <button
                   type="button"
                   aria-expanded={!isFolded}
                   onClick={() => setFolded((o) => ({ ...o, [section.id]: !o[section.id] }))}
-                  className="flex w-full items-center gap-2 border-t border-white/20 px-3 pb-1.5 pt-3 text-left text-[11.5px] font-semibold uppercase tracking-[0.08em] text-white/80 hover:text-white"
+                  className="flex w-full items-center gap-2 rounded-md px-3 pb-1.5 pt-1 text-left text-[11px] font-semibold uppercase tracking-[0.09em] text-white/50 hover:text-white/80"
                 >
                   <span className="flex-1">{section.label}</span>
                   {isFolded && badge(waiting, 'waiting for review')}
@@ -139,7 +144,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
           );
         })}
       </nav>
-      <div className="border-t border-white/20 p-3">
+      <div className="border-t border-white/10 p-3">
         <button
           type="button"
           onClick={async () => {
@@ -147,7 +152,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
             navigate('/login');
           }}
           className={cn(
-            'flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[15px] text-white hover:bg-white/15',
+            'flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[14.5px] text-white/80 hover:bg-white/10 hover:text-white',
             collapsed && 'justify-center',
           )}
         >
@@ -681,7 +686,7 @@ export function AppLayout() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-[900] flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 border-t-[3px] border-t-nav bg-white px-3 sm:px-5">
+        <header className="sticky top-0 z-[900] flex h-16 shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white/95 px-3 backdrop-blur sm:px-6">
           <button
             type="button"
             onClick={toggle}

@@ -33,8 +33,8 @@ export function PageHeader({
     else navigate(fallback ?? '/');
   };
   return (
-    <div className={cn('mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between', className)}>
-      <div className="flex min-w-0 items-start gap-2">
+    <div className={cn('mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between', className)}>
+      <div className="flex min-w-0 flex-1 items-start gap-2">
         {showBack && (
           <button
             type="button"
@@ -52,7 +52,7 @@ export function PageHeader({
         </div>
       </div>
       {actions && (
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end [&>button]:grow sm:[&>button]:grow-0">
+        <div className="flex flex-wrap items-center gap-2 md:shrink-0 md:flex-nowrap md:justify-end [&>button]:grow md:[&>button]:grow-0">
           {actions}
         </div>
       )}
@@ -295,10 +295,10 @@ export function MoreFilters({
         aria-haspopup="dialog"
         onClick={() => setOpen(!open)}
         className={cn(
-          'inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-[15px] font-medium',
+          'inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-[15px] font-medium shadow-sm',
           active
-            ? 'border-brand-strong bg-brand-light text-brand-dark'
-            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+            ? 'border-brand/50 bg-brand-light text-brand-dark'
+            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
         )}
       >
         <SlidersHorizontal className="h-4 w-4" />
@@ -314,7 +314,7 @@ export function MoreFilters({
           role="dialog"
           aria-label="Filters"
           className={cn(
-            'absolute z-[960] mt-2 w-[min(92vw,320px)] space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xl [&_select]:w-full [&>*]:w-full',
+            'absolute z-[960] mt-2 w-[min(92vw,320px)] space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-pop [&_select]:w-full [&>*]:w-full',
             align === 'right' ? 'right-0' : 'left-0',
           )}
         >
@@ -392,10 +392,10 @@ export function FilterSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          'h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-9 text-[15px] text-slate-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30',
+          'h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-9 text-[15px] text-slate-900 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30',
           tone && cn('pl-7 font-medium', FILTER_TONE[tone]),
           // A filter that is set stands out from the ones left at "All".
-          !tone && value && 'border-brand bg-brand-light/40',
+          !tone && value && all && 'border-brand/50 bg-brand-light/50',
         )}
       >
         {all && <option value="">{all}</option>}

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { CalendarPlus, Megaphone, Pencil, Plus, Radar, Smartphone, PhoneCall } from 'lucide-react';
+import { CalendarPlus, Megaphone, Pencil } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -144,7 +144,7 @@ function ReasonDialog({
  * Monitoring zones
  * ===================================================================================== */
 
-interface Zone {
+export interface Zone {
   id: number;
   code: string;
   caseId: number | null;
@@ -175,333 +175,129 @@ interface Zone {
     readAt: string | null;
   }[];
 }
-interface CaseOption {
-  id: number;
-  code: string;
-  disease: string;
-  farmName: string;
-  barangay: string;
-  status: string;
-  closed: boolean;
-  voided?: boolean;
-  geotagged?: boolean;
-  lat?: number | null;
-}
 
 const DEFAULT_GUIDANCE =
   'Check your animals every day. Do not move, sell or slaughter animals from your farm without asking the City Veterinary Office. Do not let visitors near your pens.';
 
-export function ZonesPage({ embedded }: { embedded?: boolean } = {}) {
-  const { isReviewer } = useAuth();
-  const [params, setParams] = useSearchParams();
-  const { data, isLoading, error } = useApi<Zone[]>('/api/zones');
-  const cases = useApi<CaseOption[]>('/api/cases');
+/**
+ * Set a monitoring zone around a confirmed case, or change the radius / guidance of one. Used on
+ * Disease Monitoring → Farms & Zones, where the farms inside the radius are listed.
+ */
+export function ZoneDialog({
+  zone,
+  caseId,
+  caseLabel,
+  radius,
+  onClose,
+}: {
+  /** The zone to change; leave out to set a new one. */
+  zone?: Zone | null;
+  caseId?: number | null;
+  caseLabel?: string;
+  radius?: number;
+  onClose: () => void;
+}) {
   const settings = useApi<{ defaultRadiusMeters: number }>('/api/settings');
-  const openId = Number(params.get('zone')) || null;
-  const detail = useApi<Zone>(openId ? `/api/zones/${openId}` : null);
-  const presetCase = params.get('case');
-  const [creating, setCreating] = useState(!!presetCase);
-  const [editing, setEditing] = useState<Zone | null>(null);
-  const [lift, setLift] = useState<Zone | null>(null);
   const form = useZodForm(zoneCreateSchema, {});
   const { busy, save } = useFormSave(form);
-  useResetOnOpen(creating || !!editing, form, {
-    caseId: editing?.caseId ?? presetCase ?? '',
-    radiusM: editing?.radiusM ?? settings.data?.defaultRadiusMeters ?? 1000,
-    guidance: editing?.guidance ?? DEFAULT_GUIDANCE,
+  useResetOnOpen(true, form, {
+    caseId: zone?.caseId ?? caseId ?? '',
+    radiusM: zone?.radiusM ?? radius ?? settings.data?.defaultRadiusMeters ?? 1000,
+    guidance: zone?.guidance ?? DEFAULT_GUIDANCE,
   });
   const e = form.formState.errors;
-  // Opened from a case page: choose that case once the case list has loaded.
-  const casesLoaded = !!cases.data;
-  useEffect(() => {
-    if (creating && presetCase && casesLoaded) form.setValue('caseId', presetCase);
-  }, [creating, presetCase, casesLoaded, form]);
-  if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
-  const zoned = new Set(data.filter((z) => z.status === 'ACTIVE').map((z) => z.caseId));
-  // Only confirmed (positive), open cases can get a zone.
-  const confirmed = (cases.data ?? []).filter(
-    (c) => c.status === 'POSITIVE' && !c.closed && !c.voided && !zoned.has(c.id),
-  );
-  const allCases = (cases.data ?? []).filter((c) => !c.closed && !c.voided);
-  const waitingLab = allCases.filter((c) => c.status !== 'POSITIVE' && c.status !== 'NEGATIVE').length;
-  const noPin = confirmed.filter((c) => c.lat == null).length;
-  // Keep the Disease Monitoring tab (?view=zones) when a zone is opened or closed.
-  const setOpen = (id: number | null) =>
-    setParams(
-      (p) => {
-        const n = new URLSearchParams();
-        if (p.get('view')) n.set('view', p.get('view')!);
-        if (id) n.set('zone', String(id));
-        return n;
-      },
-      { replace: true },
-    );
-  const z = detail.data;
   return (
-    <div>
-      <PageHeader
-        title={embedded ? null : 'Monitoring Zones'}
-        subtitle="A radius around a confirmed (positive) case, set automatically when the laboratory result is positive. Owners of the farms inside are alerted in the owner app, with the distance to their own farm. Change the radius or lift a zone here."
-        actions={
-          isReviewer && (
-            <Button onClick={() => (setEditing(null), setCreating(true))}>
-              <Plus /> Set a Monitoring Zone
-            </Button>
-          )
-        }
-      />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(300px,400px)_minmax(0,1fr)] lg:items-start">
-        <Card className={cn(openId && 'hidden lg:block')}>
-          {data.length === 0 && (
-            <EmptyState>No monitoring zone yet. Set one when a case is confirmed positive.</EmptyState>
-          )}
-          {data.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              onClick={() => setOpen(x.id)}
-              className={`block w-full border-b border-slate-100 p-4 text-left last:border-0 hover:bg-slate-50 ${openId === x.id ? 'bg-brand-light' : ''}`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <b className="text-[15px]">
-                  {x.code} · {x.disease}
-                </b>
-                <Badge tone={x.status === 'ACTIVE' ? 'red' : 'slate'}>
-                  {x.status === 'ACTIVE' ? 'Active' : 'Lifted'}
-                </Badge>
-              </div>
-              <p className="text-[14px] text-slate-600">
-                {x.barangay} · {formatDistance(x.radiusM)} · {x.farms} farm{x.farms === 1 ? '' : 's'} inside ·{' '}
-                {x.notified} alert{x.notified === 1 ? '' : 's'} sent
-              </p>
-              <p className="text-[13px] text-slate-500">
-                {x.caseCode} · set {fmtDate(x.createdAt)} by {x.createdBy}
-              </p>
-            </button>
-          ))}
-        </Card>
-        {!openId ? (
-          <Card className="hidden lg:block">
-            <EmptyState>Select a zone to see the farms inside it.</EmptyState>
-          </Card>
-        ) : !z ? (
-          <Card>
-            <Loading />
-          </Card>
-        ) : (
-          <Card>
-            <div className="border-b border-slate-100 p-4">
-              <div className="flex items-start gap-2">
-                <BackButton onClick={() => setOpen(null)} label="Back to the Zones" className="-ml-2 -mt-1" />
-                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
-                  <h2 className="flex items-center gap-2 text-[18px] font-semibold">
-                    <Radar className="h-5 w-5 text-red-700" /> {z.code}: {z.disease},{' '}
-                    {formatDistance(z.radiusM)}
-                  </h2>
-                  <Badge tone={z.status === 'ACTIVE' ? 'red' : 'slate'}>
-                    {z.status === 'ACTIVE' ? 'Active' : 'Lifted'}
-                  </Badge>
-                </div>
-              </div>
-              <p className="mt-1 text-[14px] text-slate-600">
-                Around{' '}
-                {z.caseId ? (
-                  <Link className="underline" to={`/cases/${z.caseId}`}>
-                    {z.caseCode}
-                  </Link>
-                ) : (
-                  'the epicenter'
-                )}{' '}
-                in {z.barangay} · set {fmtDateTime(z.createdAt)} by {z.createdBy}
-              </p>
-              {z.status === 'LIFTED' && (
-                <p className="mt-1 text-[14px] text-slate-600">
-                  Lifted {fmtDateTime(z.liftedAt!)} by {z.liftedBy}: {z.liftReason}
-                </p>
-              )}
-              {z.guidance && (
-                <p className="mt-2 whitespace-pre-line rounded-lg bg-slate-50 px-3 py-2 text-[14px]">
-                  {z.guidance}
-                </p>
-              )}
-              <p className="mt-2 text-[14px] text-slate-700">
-                <b>{z.farms}</b> farm(s) inside · <b>{z.notified}</b> alert(s) sent · <b>{z.read}</b> read
-              </p>
-              {isReviewer && z.status === 'ACTIVE' && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => (setCreating(false), setEditing(z))}>
-                    <Pencil /> Change Radius or Guidance
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setLift(z)}>
-                    Lift the Zone
-                  </Button>
-                  {z.caseId && (
-                    <Button size="sm" variant="ghost" asChild>
-                      <Link to={`/disease-monitoring?view=radius&case=${z.caseId}&radius=${z.radiusM}`}>
-                        Farms in Radius
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-            {(z.rows ?? []).length === 0 && <EmptyState>No other farm is inside this radius.</EmptyState>}
-            {(z.rows ?? []).map((r) => (
-              <div
-                key={r.farmId}
-                className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 last:border-0"
-              >
-                <div className="min-w-0">
-                  <Link to={`/farms/${r.farmId}`} className="font-medium underline">
-                    {r.code} {r.name}
-                  </Link>
-                  <div className="text-[14px] text-slate-600">
-                    {formatDistance(r.distance)} away · {r.barangay} · {r.owner}
-                    {r.contact ? ` (${r.contact})` : ''}
-                  </div>
-                </div>
-                {r.hasApp ? (
-                  <Badge tone={r.readAt ? 'green' : r.notifiedAt ? 'blue' : 'slate'}>
-                    <Smartphone className="mr-1 inline h-3.5 w-3.5" />
-                    {r.readAt ? 'Alert Read' : r.notifiedAt ? 'Alert Sent' : 'Not Alerted'}
-                  </Badge>
-                ) : (
-                  <Badge tone="amber">
-                    <PhoneCall className="mr-1 inline h-3.5 w-3.5" />
-                    No App: Tell by Phone or Visit
-                  </Badge>
-                )}
-              </div>
-            ))}
-          </Card>
-        )}
-      </div>
-
-      <Dialog
-        open={creating || !!editing}
-        onOpenChange={(o) => {
-          if (!o) {
-            setCreating(false);
-            setEditing(null);
-            if (presetCase) setParams({}, { replace: true });
-          }
-        }}
-        title={editing ? `Change ${editing.code}` : 'Set a Monitoring Zone'}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => (setCreating(false), setEditing(null))}>
-              Cancel
-            </Button>
-            <Button form="zone-form" type="submit" loading={busy}>
-              {editing ? 'Save' : 'Set Zone and Alert Owners'}
-            </Button>
-          </>
-        }
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={zone ? `Change ${zone.code}` : 'Set a Monitoring Zone'}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button form="zone-form" type="submit" loading={busy}>
+            {zone ? 'Save' : 'Set Zone and Alert Owners'}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="zone-form"
+        noValidate
+        className="space-y-4"
+        onSubmit={form.handleSubmit(async (v) => {
+          const ok = zone
+            ? await save(
+                () => api.patch(`/api/zones/${zone.id}`, { radiusM: v.radiusM, guidance: v.guidance }),
+                (r) => `Saved.${r.newlyNotified ? ` ${r.newlyNotified} more owner(s) alerted.` : ''}`,
+              )
+            : await save(
+                () => api.post<Zone & { sent: number }>('/api/zones', v),
+                (r) => `${r.code} set. ${r.farms} farm(s) inside, ${r.sent} owner(s) alerted.`,
+              );
+          if (ok) onClose();
+        })}
       >
-        <form
-          id="zone-form"
-          noValidate
-          className="space-y-4"
-          onSubmit={form.handleSubmit(async (v) => {
-            const ok = editing
-              ? await save(
-                  () => api.patch(`/api/zones/${editing.id}`, { radiusM: v.radiusM, guidance: v.guidance }),
-                  (r) => `Saved.${r.newlyNotified ? ` ${r.newlyNotified} more owner(s) alerted.` : ''}`,
-                )
-              : await save(
-                  () => api.post<Zone & { sent: number }>('/api/zones', v),
-                  (r) => `${r.code} set. ${r.farms} farm(s) inside, ${r.sent} owner(s) alerted.`,
-                );
-            if (ok) {
-              setCreating(false);
-              setEditing(null);
-            }
-          })}
+        <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-[14px] text-slate-700">
+          {zone ? (
+            <>
+              Around <b>{zone.caseCode}</b> ({zone.disease}, {zone.barangay}). A wider radius alerts the farms
+              newly inside it; farms already alerted are not alerted again.
+            </>
+          ) : (
+            <>
+              Around <b>{caseLabel}</b>. Owners of the farms inside are alerted in the owner app, with the
+              distance to their own farm. The reporting farm and owner are never named.
+            </>
+          )}
+        </p>
+        {err(e, 'caseId') && <p className="text-[14px] text-red-600">{err(e, 'caseId')}</p>}
+        <Field label="Radius *" error={err(e, 'radiusM')}>
+          <Select {...form.register('radiusM')}>
+            {[
+              ...new Set([
+                ...RADIUS_OPTIONS,
+                zone?.radiusM ?? radius ?? 1000,
+                settings.data?.defaultRadiusMeters ?? 1000,
+              ]),
+            ]
+              .sort((x, y) => x - y)
+              .map((r) => (
+                <option key={r} value={r}>
+                  {formatDistance(r)}
+                </option>
+              ))}
+          </Select>
+        </Field>
+        <Field
+          label="Guidance for the Owners"
+          error={err(e, 'guidance')}
+          hint="Shown in the alert to every owner inside the zone."
         >
-          {!editing && confirmed.length === 0 && (
-            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-[14px] text-sky-900">
-              <b>No confirmed case is waiting for a zone.</b> A zone is set automatically when a case is
-              confirmed positive by the laboratory, so most cases already have one.
-              {waitingLab > 0 && (
-                <>
-                  {' '}
-                  {waitingLab} open case(s) are still suspected (waiting for the laboratory result): they show
-                  on the staff map but get a zone only when the result is positive.
-                </>
-              )}
-            </div>
-          )}
-          {!editing && noPin > 0 && (
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-[14px] text-amber-900">
-              {noPin} confirmed case(s) have no map location yet. Add the location on the case and the zone is
-              set automatically.
-            </p>
-          )}
-          {!editing && (
-            <Field
-              label="Confirmed Case (Epicenter) *"
-              error={err(e, 'caseId')}
-              hint="Only cases with a positive laboratory result that are still open"
-            >
-              <Select {...form.register('caseId')}>
-                <option value="">Select…</option>
-                {confirmed.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.code} · {c.disease} · {c.farmName}, {c.barangay}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-          <Field
-            label="Radius *"
-            error={err(e, 'radiusM')}
-            hint={
-              editing
-                ? 'A wider radius alerts the farms newly inside it. Farms already alerted are not alerted again.'
-                : undefined
-            }
-          >
-            <Select {...form.register('radiusM')}>
-              {[
-                ...new Set([
-                  ...RADIUS_OPTIONS,
-                  editing?.radiusM ?? 1000,
-                  settings.data?.defaultRadiusMeters ?? 1000,
-                ]),
-              ]
-                .sort((a, b) => a - b)
-                .map((r) => (
-                  <option key={r} value={r}>
-                    {formatDistance(r)}
-                  </option>
-                ))}
-            </Select>
-          </Field>
-          <Field
-            label="Guidance for the Owners"
-            error={err(e, 'guidance')}
-            hint="Shown in the alert. The reporting farm and owner are never named."
-          >
-            <Textarea rows={4} {...form.register('guidance')} />
-          </Field>
-        </form>
-      </Dialog>
-      <ReasonDialog
-        ask={
-          lift && {
-            title: `Lift ${lift.code}?`,
-            body: <>The owners inside are told the monitoring area is lifted. The zone stays on record.</>,
-            label: 'Reason',
-            confirm: 'Lift the Zone',
-            done: 'Zone lifted.',
-            run: (reason) => api.post(`/api/zones/${lift.id}/lift`, { reason }),
-          }
+          <Textarea rows={4} {...form.register('guidance')} />
+        </Field>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Lift a zone: the owners inside are told; the zone stays on record. */
+export function LiftZoneDialog({ zone, onClose }: { zone: Zone | null; onClose: () => void }) {
+  return (
+    <ReasonDialog
+      ask={
+        zone && {
+          title: `Lift ${zone.code}?`,
+          body: <>The owners inside are told the monitoring area is lifted. The zone stays on record.</>,
+          label: 'Reason',
+          confirm: 'Lift the Zone',
+          done: 'Zone lifted.',
+          run: (reason) => api.post(`/api/zones/${zone.id}/lift`, { reason }),
         }
-        onClose={() => setLift(null)}
-      />
-    </div>
+      }
+      onClose={onClose}
+    />
   );
 }
 

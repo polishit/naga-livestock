@@ -112,8 +112,8 @@ export function DataTable<T>({
           role="search"
           aria-label="Filters"
           className={cn(
-            'flex flex-wrap items-center gap-2 bg-slate-50/70 px-3 py-3',
-            toolbarDivider ? 'border-b-2 border-slate-700/80' : 'border-b border-slate-200',
+            'flex flex-wrap items-center gap-2 bg-white px-4 py-3',
+            toolbarDivider ? 'border-b-2 border-slate-700/80' : 'border-b border-slate-100',
           )}
         >
           {searchText && (
@@ -188,12 +188,12 @@ export function DataTable<T>({
       <div className="hidden overflow-x-auto sm:block">
         <table className="w-full border-collapse text-left" style={{ minWidth }}>
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50/80">
+            <tr className="border-b border-slate-200 bg-slate-50">
               {columns.map((c) => (
                 <th
                   key={c.key}
                   className={cn(
-                    'whitespace-nowrap px-3 py-2.5 text-[12px] font-semibold text-slate-500 first:pl-4 last:pr-4',
+                    'whitespace-nowrap px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wide text-slate-500 first:pl-4 last:pr-4',
                     c.headerClassName,
                   )}
                 >
@@ -203,7 +203,7 @@ export function DataTable<T>({
                     <button
                       type="button"
                       onClick={() => toggleSort(c.key)}
-                      className="inline-flex items-center gap-1 hover:text-slate-800"
+                      className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-800"
                     >
                       {head(c.header)}
                       {sort?.key === c.key ? (

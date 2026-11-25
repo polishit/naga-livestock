@@ -154,8 +154,7 @@ const HELP: Record<string, Help> = {
     steps: [
       'Map: tap a case to see the farms inside the radius and record a monitoring visit. Choose the disease and barangay at the top; the radius is under "Filters".',
       'Outbreak Timeline: press play, or drag the slider to a month, to see how the cases spread.',
-      'Farms in Radius: the list of farms to visit around one case, with the Outbreak-Area Report.',
-      'Monitoring Zones: set a zone around a confirmed case (owners inside are alerted), widen it, or lift it with a reason.',
+      'Farms & Zones: choose a case and a radius to list the farms to visit around it. Select "Set as Monitoring Zone" to alert the owners inside (confirmed cases); change the radius or lift the zone there too.',
     ],
     terms: [
       ['Active zone', 'The monitoring area is in force.'],

@@ -1755,13 +1755,15 @@ function PendingCard({
   if (children.length === 0) return null;
   const shown = all ? children : children.slice(0, 4);
   return (
-    <Card className="mb-4 overflow-hidden border-amber-200">
-      <div className="flex flex-wrap items-center gap-2 border-b border-amber-100 bg-amber-50/70 px-4 py-2.5">
-        <Bell className="h-4 w-4 text-amber-700" aria-hidden />
+    <Card className="mb-5 overflow-hidden border-l-4 border-l-amber-400">
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-slate-100 px-4 py-3">
+        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-50 text-amber-600">
+          <Bell className="h-4 w-4" aria-hidden />
+        </span>
         <h2 className="text-[15px] font-semibold text-slate-900">
           {title}
           {count > 0 && (
-            <span className="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-[12px] font-semibold text-white">
+            <span className="ml-2 rounded-md bg-amber-100 px-1.5 py-0.5 text-[12px] font-semibold text-amber-800">
               {count}
             </span>
           )}
@@ -1776,7 +1778,9 @@ function PendingCard({
       </div>
       {!hidden && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2">{shown}</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 md:[&>*:nth-child(odd)]:border-r md:[&>*:nth-child(odd)]:border-r-slate-100">
+            {shown}
+          </div>
           {children.length > 4 && (
             <button
               type="button"

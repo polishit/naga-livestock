@@ -55,11 +55,13 @@ test('disease monitoring: one map of the cases leads to the farms in the radius'
   await expect(page.getByText(/farm\(s\) within 1\.00 km \(ground-zero farm not included\)/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Farms in Radius' }).click();
-  await expect(page).toHaveURL(/view=radius&case=1/);
-  await expect(page.getByRole('heading', { name: /Farms to Monitor Within/ })).toBeVisible();
+  // Farms in the radius and the monitoring zone are one view: Farms & Zones.
+  await expect(page).toHaveURL(/view=zones&case=1/);
+  await expect(page.getByRole('heading', { name: /Farms Within 1\.00 km/ })).toBeVisible();
   // Old links land on the same place.
   await page.goto('/radius?case=1');
   await expect(page).toHaveURL(/\/disease-monitoring\?case=1&view=radius/);
+  await expect(page.getByRole('tab', { name: 'Farms & Zones' })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the activity log lists services and farm visits together', async ({ page }) => {
