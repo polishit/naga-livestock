@@ -12,5 +12,5 @@ export default async function globalSetup() {
   };
   const api = path.join(root, 'apps/api');
   execSync('pnpm exec prisma migrate deploy', { cwd: api, env, stdio: 'inherit' });
-  execSync('pnpm exec tsx prisma/seed.ts', { cwd: api, env, stdio: 'inherit' });
+  execSync('pnpm exec tsx prisma/test-seed.ts', { cwd: api, env, stdio: 'inherit' });
 }

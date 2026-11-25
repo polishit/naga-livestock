@@ -11,7 +11,9 @@ services:
       MYSQL_DATABASE: livestock
       MYSQL_USER: livestock
       MYSQL_PASSWORD: livestock
-    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+    # log-bin-trust-function-creators lets the app add the lock that keeps the audit log unchangeable.
+    command:
+      ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci', '--log-bin-trust-function-creators=1']
     ports:
       - '3307:3306'
     volumes:

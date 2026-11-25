@@ -1312,7 +1312,7 @@ describe('reports & analytics insights and the task list', () => {
       'Disease response',
       'Deworming & veterinary services',
       'Vaccination',
-      'Stray livestock & violations',
+      'Stray livestock',
     ]);
     expect(r.body.rows.some((x: { indicator: string }) => /fine/i.test(x.indicator))).toBe(false);
   });
