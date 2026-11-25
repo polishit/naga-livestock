@@ -1,7 +1,9 @@
 import {
+  ClipboardCheck,
+  Footprints,
+  HandHelping,
   Inbox,
   Megaphone,
-  MessageSquare,
   Smartphone,
   ScrollText,
   Activity,
@@ -22,9 +24,7 @@ import {
   Microscope,
   Radar,
   Settings,
-  ShieldCheck,
   Stethoscope,
-  Syringe,
   Tag,
   UserCog,
   Users,
@@ -52,11 +52,31 @@ export interface NavSection {
 
 export const NAV: NavSection[] = [
   {
-    id: 'home',
-    label: null,
-    items: [{ to: '/', label: 'Dashboard', icon: LayoutGrid, hint: 'Summary of the whole city' }],
+    // Dashboard and every report in one module (panel revision: reports in one place).
+    id: 'reports',
+    label: 'Dashboard & Reports',
+    short: 'Reports',
+    icon: BarChart3,
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutGrid, hint: 'Summary of the whole city' },
+      {
+        to: '/monthly-report',
+        label: 'Monthly Report',
+        icon: CalendarDays,
+        hint: 'Printable monthly summary with graphs',
+      },
+      {
+        to: '/reports',
+        label: 'All Reports',
+        icon: FileText,
+        hint: 'Ready-made reports; download as Excel, CSV or PDF',
+      },
+      { to: '/analytics', label: 'Analytics', icon: BarChart3, hint: 'Charts and trends' },
+    ],
   },
   {
+    // Messages moved to the floating button (bottom-right of every page); Monitoring Zones moved to
+    // Map & Monitoring and Announcements to Veterinary Field Services.
     id: 'owners-app',
     label: 'Owner App',
     short: 'Owners',
@@ -68,14 +88,6 @@ export const NAV: NavSection[] = [
         icon: Inbox,
         hint: 'Registrations, updates and reports sent by owners',
       },
-      {
-        to: '/messages',
-        label: 'Messages',
-        icon: MessageSquare,
-        hint: 'Conversations with livestock owners and their transactions',
-      },
-      { to: '/zones', label: 'Monitoring Zones', icon: Radar, hint: 'Epicenters and the owners alerted' },
-      { to: '/announcements', label: 'Announcements', icon: Megaphone, hint: 'Advisories sent to owners' },
     ],
   },
   {
@@ -88,7 +100,7 @@ export const NAV: NavSection[] = [
         to: '/owners',
         label: 'Livestock Owners',
         icon: Users,
-        hint: 'Owners from the DA list and farm visits',
+        hint: 'Owners from the DA list and field visits',
       },
       { to: '/farms', label: 'Farms', icon: Home, hint: 'Farms, livestock raised and last visit' },
       {
@@ -106,9 +118,9 @@ export const NAV: NavSection[] = [
       },
       {
         to: '/strays',
-        label: 'Stray & Violations',
+        label: 'Stray Livestock',
         icon: CircleAlert,
-        hint: 'Wandering animals and violations',
+        hint: 'Animals found wandering',
       },
     ],
   },
@@ -124,7 +136,18 @@ export const NAV: NavSection[] = [
         icon: Map,
         hint: 'Farms, disease reports and population on one map',
       },
-      { to: '/radius', label: 'Farms to Monitor', icon: Radar, hint: 'Farms near a disease report to visit' },
+      {
+        to: '/zones',
+        label: 'Monitoring Zones',
+        icon: Radar,
+        hint: 'Areas around confirmed cases and the owners alerted',
+      },
+      {
+        to: '/radius',
+        label: 'Farms to Monitor',
+        icon: MapPinned,
+        hint: 'Farms near a disease report to visit',
+      },
       {
         to: '/outbreak-map',
         label: 'Outbreak Timeline',
@@ -150,7 +173,7 @@ export const NAV: NavSection[] = [
         to: '/cases',
         label: 'Disease Reports',
         icon: FileWarning,
-        hint: 'Incident reports, trends and their progress',
+        hint: 'Incident reports and their progress',
       },
       {
         to: '/investigation',
@@ -162,27 +185,35 @@ export const NAV: NavSection[] = [
         to: '/lab-submissions',
         label: 'Lab Submissions',
         icon: FlaskConical,
-        hint: 'Batches of samples sent to RADDL, with the forms to print',
-      },
-      {
-        to: '/response',
-        label: 'Response Activities',
-        icon: ShieldCheck,
-        hint: 'Quarantines and checkpoints in force',
+        hint: 'Send samples to RADDL in 4 steps, with the forms to print',
       },
     ],
   },
   {
+    // Renamed from "Deworming & Vet Services": the module now covers all field work, owner
+    // requests and advisories, not only deworming.
     id: 'services',
-    label: 'Deworming & Vet Services',
+    label: 'Veterinary Field Services',
     short: 'Services',
     icon: Stethoscope,
     items: [
       {
         to: '/services',
-        label: 'Deworming & Services',
-        icon: Syringe,
-        hint: 'Deworming, check-ups, vaccinations and farm visits',
+        label: 'Activity Log',
+        icon: ClipboardCheck,
+        hint: 'Deworming, check-ups and vaccinations given; works offline',
+      },
+      {
+        to: '/field-visits',
+        label: 'Field Visits',
+        icon: Footprints,
+        hint: 'Visits to farms and what was found',
+      },
+      {
+        to: '/service-requests',
+        label: 'Service Requests',
+        icon: HandHelping,
+        hint: 'Services asked for by livestock owners',
       },
       {
         to: '/vaccination-activities',
@@ -190,26 +221,7 @@ export const NAV: NavSection[] = [
         icon: CalendarDays,
         hint: 'Vaccination activities by barangay and owner sign-ups',
       },
-    ],
-  },
-  {
-    id: 'reports',
-    label: 'Reports',
-    icon: BarChart3,
-    items: [
-      {
-        to: '/monthly-report',
-        label: 'Monthly Report',
-        icon: CalendarDays,
-        hint: 'Printable monthly summary with graphs',
-      },
-      {
-        to: '/reports',
-        label: 'All Reports',
-        icon: FileText,
-        hint: 'Ready-made reports; download as Excel, CSV or PDF',
-      },
-      { to: '/analytics', label: 'Analytics', icon: BarChart3, hint: 'Charts and trends' },
+      { to: '/announcements', label: 'Announcements', icon: Megaphone, hint: 'Advisories sent to owners' },
     ],
   },
   {
@@ -238,7 +250,7 @@ export const NAV: NavSection[] = [
 
 /** Breadcrumb info for a pathname. */
 export function crumbsFor(pathname: string): { trail: { label: string; to?: string }[]; title: string } {
-  if (pathname === '/') return { trail: [{ label: 'Home' }], title: 'Dashboard' };
+  if (pathname === '/') return { trail: [{ label: 'Dashboard & Reports' }], title: 'Dashboard' };
   const parts = pathname.split('/').filter(Boolean);
   const base = `/${parts[0]}`;
   for (const s of NAV) {
@@ -259,5 +271,7 @@ export function crumbsFor(pathname: string): { trail: { label: string; to?: stri
 /** The module (menu section) a pathname belongs to. */
 export function sectionFor(pathname: string): NavSection | undefined {
   const base = `/${pathname.split('/').filter(Boolean)[0] ?? ''}`;
+  // Old addresses of moved pages still open their module in the menu.
+  if (base === '/messages') return NAV.find((s) => s.id === 'owners-app');
   return NAV.find((s) => s.items.some((i) => i.to === base));
 }

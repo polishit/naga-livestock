@@ -9,7 +9,7 @@ export interface VisitDue {
 
 /**
  * The site visit each open case still needs. A site visit is an investigation recorded on the case,
- * or a Farm Visit to the case's own farm that is linked to the case (so the same visit is never
+ * or a Field Visit to the case's own farm that is linked to the case (so the same visit is never
  * entered twice). Not visited yet → the first visit is due from the report date; otherwise the
  * follow-up date set at the last investigation, unless the farm was visited again after it.
  */

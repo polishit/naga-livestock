@@ -396,12 +396,12 @@ export function LargestFarmsBars<T extends { name: string; total: number }>({
   );
 }
 
-/** Monthly totals of field work: heads dewormed, heads checked, heads vaccinated and farm visits. */
+/** Monthly totals of field work: heads dewormed, heads checked, heads vaccinated and field visits. */
 const FIELD_BARS = {
   dewormed: { name: 'Heads dewormed', fill: '#0ea5e9' },
   checkups: { name: 'Heads checked', fill: '#16a34a' },
   vaccinated: { name: 'Heads vaccinated', fill: '#a855f7' },
-  visits: { name: 'Farm visits', fill: '#f59e0b' },
+  visits: { name: 'Field visits', fill: '#f59e0b' },
 } as const;
 export function ServiceTrendBars<
   T extends { label: string } & Partial<Record<keyof typeof FIELD_BARS, number>>,

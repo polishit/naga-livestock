@@ -20,6 +20,7 @@
     "db:migrate": "pnpm --filter @livestock/api db:migrate",
         "db:seed": "pnpm --filter @livestock/api db:seed",
     "db:seed:empty": "pnpm --filter @livestock/api db:seed:empty",
+    "db:seed:basic": "pnpm --filter @livestock/api db:seed:basic",
     "db:reset": "pnpm --filter @livestock/api db:reset"
   },
   "devDependencies": {

@@ -361,7 +361,7 @@ describe('logic fixes: disease cases', () => {
     expect(r.status).toBe(200);
   });
 
-  it('a site visit updates the deaths; a linked farm visit counts as the site visit', async () => {
+  it('a site visit updates the deaths; a linked field visit counts as the site visit', async () => {
     const t = isoDate();
     const c = await admin
       .post('/api/cases')
@@ -649,7 +649,7 @@ describe('richer records, date rules and record keeping', () => {
     expect(back.body.caseStatus).toBe('POSITIVE');
   });
 
-  it('planned responses may be future-dated, get completed, and must be done before closing', async () => {
+  it('planned responses may be future-dated and get completed; closing needs an outcome', async () => {
     const future = new Date();
     future.setDate(future.getDate() + 5);
     const fd = isoDate(future);
@@ -659,10 +659,7 @@ describe('richer records, date rules and record keeping', () => {
       .post('/api/cases/1/responses')
       .send({ type: 'QUARANTINE', status: 'PLANNED', date: fd, endDate: fd, location: 'Farm 1' });
     expect(planned.status).toBe(201);
-    const close = await admin
-      .post('/api/cases/1/close')
-      .send({ outcome: 'CONTAINED', note: 'Quarantine done' });
-    expect(close.body.error).toMatch(/still planned, ongoing or in force/);
+    // Response measures no longer block closing a case (Response Activities was removed from the UI).
     const noLift = await admin
       .patch(`/api/responses/${planned.body.id}`)
       .send({ type: 'QUARANTINE', status: 'COMPLETED', date: '2026-10-01', location: 'Farm 1' });
@@ -1537,7 +1534,7 @@ describe('removing and correcting records', () => {
   });
 });
 
-describe('CVO revisions: masterlist, deworming, farm visits, monthly report', () => {
+describe('CVO revisions: masterlist, deworming, field visits, monthly report', () => {
   it('keeps head counts only: no life stage or age/sex/stage classification', async () => {
     const ok = await admin.post('/api/population/groups').send({
       farmId: 13,
@@ -1583,7 +1580,7 @@ describe('CVO revisions: masterlist, deworming, farm visits, monthly report', ()
     expect(list.body.every((v: { serviceType: string }) => v.serviceType === 'DEWORMING')).toBe(true);
   });
 
-  it('logs farm visits, shows them on the farm and marks monitored farms near a case', async () => {
+  it('logs field visits, shows them on the farm and marks monitored farms near a case', async () => {
     const v = await admin.post('/api/farm-visits').send({
       farmId: 13,
       date: isoDate(),

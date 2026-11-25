@@ -34,7 +34,8 @@ export default function StraysPage() {
   return (
     <div>
       <PageHeader
-        title="Stray Livestock & Violations"
+        title="Stray Livestock"
+        subtitle="Animals found wandering: where, whose, and what was done."
         actions={
           canEdit && (
             <Button onClick={() => setOpen(true)}>
@@ -101,7 +102,6 @@ export default function StraysPage() {
                 cell: (r) =>
                   r.voided ? <Badge tone="red">Voided</Badge> : <StrayStatusBadge status={r.status} />,
               },
-              { key: 'violations', header: 'Violations' },
             ]}
           />
         </Card>

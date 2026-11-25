@@ -23,7 +23,7 @@ export interface FarmSummary {
   species: { species: string; count: number }[];
   recordStatus: 'verified' | 'overdue' | 'outdated' | 'no_groups';
   recordStatusLabel: string;
-  /** Where the office got the record (DA masterlist, farm visit…). */
+  /** Where the office got the record (DA masterlist, field visit…). */
   source: string | null;
   /** Piggery, Cattle Only, Goat Only, Mixed… (from the species counted on the farm). */
   livestockRaised: string;

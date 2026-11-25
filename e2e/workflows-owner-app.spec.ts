@@ -88,10 +88,10 @@ test('an owner creates an account and registers a farm with the phone GPS', asyn
   await expect(page.getByText('Set the farm location first.')).toBeVisible();
   await page.getByRole('button', { name: 'Use my current location' }).click();
   await expect(page.getByText(/GPS accurate to about 9 m/)).toBeVisible();
-  await page.getByLabel('Livestock 1').selectOption('Pig');
+  await page.getByLabel('Species 1').selectOption('Pig');
   await page.getByLabel('Head count 1').fill('24');
-  await page.getByRole('button', { name: 'Add another kind' }).click();
-  await page.getByLabel('Livestock 2').selectOption('Chicken');
+  await page.getByRole('button', { name: 'Add another species' }).click();
+  await page.getByLabel('Species 2').selectOption('Chicken');
   await page.getByLabel('Head count 2').fill('40');
   await shot(page, 'owner-farm-form');
   await page.getByRole('button', { name: 'Send for review' }).click();
@@ -332,8 +332,9 @@ test('vaccination schedule and announcements reach the owner; the public page sh
   await shot(p, 'owner-summary');
   await ctx.close();
 
-  // The office reads the owner's message and replies from Messages.
-  await page.goto('/messages');
+  // The office reads the owner's message and replies from the floating Messages button.
+  await page.goto('/');
+  await page.getByRole('button', { name: /^Messages/ }).click();
   await page.getByRole('button', { name: /Lorna Belen/ }).click();
   await expect(page.getByText('Can someone check the other pigs tomorrow?')).toBeVisible();
   await expect(page.getByText(/Disease report sent: RPT-/).first()).toBeVisible();

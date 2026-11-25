@@ -699,7 +699,7 @@ export const vaccinationUpdateSchema = z
     message: 'Next schedule must be after the service date',
   });
 
-/* ---------- farm visits ---------- */
+/* ---------- field visits ---------- */
 
 export const farmVisitCreateSchema = z.object({
   farmId: idField('Select a farm'),

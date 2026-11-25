@@ -1,4 +1,5 @@
 import {
+  Check,
   ClipboardList,
   FilePlus2,
   FlaskConical,
@@ -108,10 +109,109 @@ function ResultCounts({
   return (
     <span className="inline-flex flex-wrap gap-1">
       {s.pending > 0 && <Badge tone="amber">{s.pending} pending</Badge>}
-      {s.negative > 0 && <Badge tone="slate">{s.negative} negative</Badge>}
+      {s.negative > 0 && <Badge tone="green">{s.negative} negative</Badge>}
       {s.positive > 0 && <Badge tone="red">{s.positive} positive</Badge>}
       {s.inconclusive > 0 && <Badge tone="violet">{s.inconclusive} inconclusive</Badge>}
     </span>
+  );
+}
+
+/* ---------------- The 4-step workflow (panel revision: make the process clear) ---------------- */
+
+type LabStage = 'draft' | 'sent' | 'case' | 'done';
+/**
+ * Where a batch is: 1 Prepare (draft, not sent) → 2 Print & send → 3 Enter results → 4 Open a case
+ * for each positive. Results can be entered even if the sent date was skipped.
+ */
+export function labStage(
+  s: Pick<LabSubmission, 'submittedAt' | 'pending' | 'positiveNoCase' | 'total'>,
+): LabStage {
+  if (s.total > 0 && s.pending === 0) return s.positiveNoCase > 0 ? 'case' : 'done';
+  return s.submittedAt ? 'sent' : 'draft';
+}
+const STAGE_BADGE: Record<LabStage, { label: string; tone: 'slate' | 'blue' | 'red' | 'green' }> = {
+  draft: { label: 'Draft · Not Sent', tone: 'slate' },
+  sent: { label: 'At the Laboratory', tone: 'blue' },
+  case: { label: 'Positive · Open a Case', tone: 'red' },
+  done: { label: 'Complete', tone: 'green' },
+};
+export function LabStageBadge({ s }: { s: Parameters<typeof labStage>[0] }) {
+  const b = STAGE_BADGE[labStage(s)];
+  return <Badge tone={b.tone}>{b.label}</Badge>;
+}
+
+const LAB_STEPS = [
+  {
+    title: 'Prepare the Batch',
+    text: 'New Submission: purpose, test, and one row per sample (farm, species, specimen).',
+  },
+  {
+    title: 'Print Forms & Send',
+    text: 'Print the Analysis Request and Sample Collection forms, send them with the samples, enter the date sent.',
+  },
+  {
+    title: 'Enter the Results',
+    text: 'When the laboratory answers (negatives usually by email), select “Enter Results”.',
+  },
+  {
+    title: 'Act on Positives',
+    text: 'Each positive sample needs a disease case: select “Open Case”. Only negatives? The batch is complete.',
+  },
+];
+
+/** The four steps, with the batch's current step highlighted (or a plain guide on the list page). */
+function LabWorkflow({ stage, action }: { stage?: LabStage; action?: React.ReactNode }) {
+  const current = stage ? { draft: 0, sent: 2, case: 3, done: 4 }[stage] : -1;
+  // A draft is at step 1 while it has no sent date; step 2 is "print and send".
+  const at = stage === 'draft' ? 1 : current;
+  return (
+    <Card className="mb-4">
+      <ol className="grid grid-cols-1 gap-0 divide-y divide-slate-100 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4">
+        {LAB_STEPS.map((st, i) => {
+          const done = stage ? i < at : false;
+          const now = stage ? i === at : false;
+          return (
+            <li
+              key={st.title}
+              aria-current={now ? 'step' : undefined}
+              className={cn(
+                'flex gap-3 px-4 py-3',
+                now && 'bg-brand-light/70',
+                i > 0 && 'lg:border-l lg:border-slate-100',
+              )}
+            >
+              <span
+                className={cn(
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[14px] font-bold',
+                  done
+                    ? 'bg-brand-strong text-white'
+                    : now
+                      ? 'bg-sidebar-accent text-sidebar-ink ring-4 ring-sidebar-accent/30'
+                      : 'bg-slate-100 text-slate-600',
+                )}
+              >
+                {done ? <Check className="h-4 w-4" /> : i + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-center gap-1.5 text-[15px] font-semibold text-slate-900">
+                  {st.title}
+                  {now && <Badge tone="amber">Do This Now</Badge>}
+                </span>
+                <span className="block text-[13px] leading-snug text-slate-600">{st.text}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      {stage === 'done' && (
+        <div className="border-t border-slate-100 px-4 py-2.5 text-[14px] font-medium text-emerald-800">
+          All four steps are done: every sample has a result and every positive has a disease case.
+        </div>
+      )}
+      {action && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3">{action}</div>
+      )}
+    </Card>
   );
 }
 
@@ -150,6 +250,12 @@ export function LabSubmissionsPage() {
           : r.barangays.join(', '),
     },
     {
+      key: 'stage',
+      header: 'Step',
+      sort: (r) => ['draft', 'sent', 'case', 'done'].indexOf(labStage(r)),
+      cell: (r) => <LabStageBadge s={r} />,
+    },
+    {
       key: 'results',
       header: 'Results',
       sort: (r) => r.pending,
@@ -165,7 +271,7 @@ export function LabSubmissionsPage() {
     <div>
       <PageHeader
         title="Lab Submissions"
-        subtitle="Samples sent to the laboratory in one batch, with the Analysis Request and Sample Collection forms ready to print."
+        subtitle="A batch of samples sent to the laboratory (RADDL). Every batch goes through the same four steps below; the Step column shows where each one is."
         actions={
           canEdit && (
             <Button onClick={() => navigate('/lab-submissions/new')}>
@@ -174,6 +280,7 @@ export function LabSubmissionsPage() {
           )
         }
       />
+      <LabWorkflow />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Batches" value={rows.length} icon={ClipboardList} tone="blue" />
         <StatCard label="Samples Sent" value={rows.reduce((a, r) => a + r.total, 0)} icon={FlaskConical} />
@@ -318,7 +425,7 @@ export function LabSubmissionFormPage() {
     <div>
       <PageHeader
         title={editing ? `Edit ${existing?.code}` : 'New Lab Submission'}
-        subtitle="One batch of samples for the laboratory. Each row is one sample; the owner, barangay and GPS come from the farm's record."
+        subtitle="Step 1 of 4 · Prepare the batch: one row per sample; the owner, barangay and GPS come from the farm's record. After saving you print the forms (step 2), enter the results when they arrive (step 3) and open a case for each positive (step 4)."
         back="/lab-submissions"
       />
       <form
@@ -751,6 +858,49 @@ export function LabSubmissionDetailPage() {
           </>
         }
       />
+      <LabWorkflow
+        stage={labStage(s)}
+        action={
+          canEdit &&
+          (labStage(s) === 'draft' ? (
+            <>
+              <span className="text-[14px] text-slate-700">Next:</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => printAnalysisRequest(formData, lh, user?.name)}
+              >
+                <Printer /> Print Analysis Request
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => printSampleCollection(formData, lh, user?.name)}
+              >
+                <ClipboardList /> Print Sample Collection
+              </Button>
+              <Button size="sm" onClick={() => navigate(`/lab-submissions/${s.id}/edit`)}>
+                <Pencil /> Enter the Date Sent
+              </Button>
+            </>
+          ) : labStage(s) === 'sent' ? (
+            <>
+              <span className="text-[14px] text-slate-700">
+                Next: when the laboratory answers, enter the result of each sample.
+              </span>
+              {!entering && live.length > 0 && (
+                <Button size="sm" onClick={startResults}>
+                  Enter Results
+                </Button>
+              )}
+            </>
+          ) : labStage(s) === 'case' ? (
+            <span className="text-[14px] font-medium text-red-800">
+              Next: select “Open Case” on each positive sample in the list below.
+            </span>
+          ) : null)
+        }
+      />
       {s.positiveNoCase > 0 && (
         <div
           role="alert"
@@ -758,7 +908,7 @@ export function LabSubmissionDetailPage() {
         >
           <Siren className="h-4 w-4" />
           <b className="font-semibold">{s.positiveNoCase} positive sample(s)</b> with no disease case yet.
-          Select “Open case” on the sample to start the response (the case opens as Active).
+          Select “Open Case” on the sample (the case opens as Active, with the sample attached).
         </div>
       )}
       <Card className="mb-4">

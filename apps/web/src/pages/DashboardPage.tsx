@@ -64,7 +64,7 @@ export default function DashboardPage() {
     <div>
       <PageHeader
         title={`${greet}, ${firstName}`}
-        subtitle="Livestock registry, disease surveillance, deworming and farm visits across Naga City."
+        subtitle="Livestock registry, disease surveillance, deworming and field visits across Naga City."
         actions={
           <>
             <FilterSelect
@@ -151,11 +151,11 @@ export default function DashboardPage() {
               sub={`${dewormed?.farms ?? 0} farm(s)`}
               icon={Syringe}
               tone="blue"
-              to="/services?tab=records&type=DEWORMING"
+              to="/services?type=DEWORMING"
             />
             <StatCard
-              label="Farm Visits This Month"
-              to="/services?tab=visits"
+              label="Field Visits This Month"
+              to="/field-visits"
               value={month?.visits.total ?? 0}
               sub={
                 data.stats.awaitingGeotag
@@ -244,7 +244,7 @@ export default function DashboardPage() {
                 onSelect={(r) => navigate(populationLink({ barangay: r.barangay, species }))}
               />
             </ChartCard>
-            <ChartCard title="Deworming, Check-Ups and Farm Visits" clickable>
+            <ChartCard title="Deworming, Check-Ups and Field Visits" clickable>
               {month ? (
                 <ServiceTrendBars
                   data={month.trend}

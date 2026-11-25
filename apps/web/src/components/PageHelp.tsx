@@ -30,7 +30,7 @@ const HELP: Record<string, Help> = {
     steps: [
       'Start with "My tasks": each row is one thing to do. Select its button to open the right page and form.',
       'Use the search box at the top to find any owner, farm, ear tag or disease report.',
-      'Use "+ New" for the everyday jobs: record a farm visit, record deworming, report a disease incident.',
+      'Use "+ New" for the everyday jobs: record a field visit, record deworming, report a disease incident.',
     ],
     terms: [
       ['Overdue', 'The due date has passed.'],
@@ -39,7 +39,7 @@ const HELP: Record<string, Help> = {
   },
   '/owners': {
     title: 'Livestock Owners',
-    purpose: 'The owner masterlist, built from the DA list and farm visits.',
+    purpose: 'The owner masterlist, built from the DA list and field visits.',
     steps: [
       'Search by name, contact or RSBSA Control Number, or filter by barangay or source.',
       'New entry from the DA list or a visit? Select "Add Owner, Farm and Livestock" and follow the steps.',
@@ -50,7 +50,7 @@ const HELP: Record<string, Help> = {
         'RSBSA Control Number',
         'The raiser’s control number in the Registry System for Basic Sectors in Agriculture.',
       ],
-      ['Source', 'Where the office got the record: DA masterlist, farm visit or barangay referral.'],
+      ['Source', 'Where the office got the record: DA masterlist, field visit or barangay referral.'],
       ['Archived', 'No longer raising livestock; kept for history, hidden from lists.'],
     ],
   },
@@ -70,7 +70,7 @@ const HELP: Record<string, Help> = {
     purpose: 'The farm masterlist: where each farm is, what it raises and when it was last visited.',
     steps: [
       'Use the cards at the top (Piggery, Goat Only, Mixed…) or the filters to narrow the list.',
-      'Filter "Not visited in 90 days" to plan the next farm visits.',
+      'Filter "Not visited in 90 days" to plan the next field visits.',
       'Select "Add Farm", choose the owner, then click the map where the farm is.',
       'Select a farm to record a visit, update the head count or record deworming.',
     ],
@@ -90,7 +90,7 @@ const HELP: Record<string, Help> = {
     title: 'Farm Profile',
     purpose: 'One farm: information, livestock head counts, visits and services, and cases.',
     steps: [
-      'After each visit select "Record Farm Visit": note the findings, update the head count and the deworming given, all in one form.',
+      'After each visit select "Record Field Visit": note the findings, update the head count and the deworming given, all in one form.',
       'Livestock tab: one card per species. Select "Update count" on a card, or "Update Head Count" for all species, to change the numbers.',
       'Visits & Services tab: every visit and service on one timeline.',
       'Select "Print" for a paper copy with the letterhead.',
@@ -106,7 +106,7 @@ const HELP: Record<string, Help> = {
       'By Farm: each farm’s count per species. Select a row to open the farm.',
       'To update a farm, choose it in the box at the top and select "Update Head Count".',
     ],
-    terms: [['Last counted', 'Month of the latest count (farm visit or DA list).']],
+    terms: [['Last counted', 'Month of the latest count (field visit or DA list).']],
   },
   '/animals': {
     title: 'Animal ID / Ear Tags',
@@ -136,11 +136,11 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/strays': {
-    title: 'Stray & Violations',
-    purpose: 'Animals found wandering and the violations recorded.',
+    title: 'Stray Livestock',
+    purpose: 'Animals found wandering, whose they are, and what was done.',
     steps: [
       'Select "Report incident", describe the animal and click where it was found.',
-      'Select the incident to update it: owner, violation type and number of violations. Set the status to Closed when it is settled.',
+      'Select the incident to update it: the owner and the actions taken. Set the status to Closed when it is settled.',
     ],
   },
   '/gis-map': {
@@ -179,17 +179,18 @@ const HELP: Record<string, Help> = {
       'Download the Outbreak-Area Report for the response team.',
     ],
     terms: [
-      ['Not yet visited', 'No farm visit recorded since the disease report.'],
+      ['Not yet visited', 'No field visit recorded since the disease report.'],
       ['Left out', 'Farms without a map location cannot be measured. Set their locations first.'],
     ],
   },
   '/cases': {
-    title: 'Disease Surveillance',
-    purpose: 'Disease reports for ASF and the other monitored diseases, with trends.',
+    title: 'Disease Reports',
+    purpose: 'Disease reports for ASF and the other monitored diseases.',
     steps: [
       'Select "Report Incident" when a raiser reports sick or dead animals.',
-      'Filter by disease, barangay or state; the graphs follow the filters.',
+      'Use the Status filter (open cases, a lab stage, closed or all) and the search box to find a report.',
       'Select a report to open it. Its Steps tab shows what to do next.',
+      'Trends and graphs are in Dashboard & Reports → Analytics.',
     ],
     terms: [
       [
@@ -210,19 +211,18 @@ const HELP: Record<string, Help> = {
   },
   '/cases/:id': {
     title: 'Disease Report',
-    purpose: 'One incident from report to closing, as six steps.',
+    purpose: 'One incident from report to closing, as five steps.',
     steps: [
       'Steps tab: work from top to bottom. The step marked "Do this now" is the next thing to do.',
-      '1 Report → 2 Site visit → 3 Samples & result → 4 Response (if positive) → 5 Update the head count → 6 Close.',
+      '1 Report → 2 Site visit → 3 Samples & result → 4 Update the head count → 5 Close.',
       'The status changes by itself when you add a sample, enter the date sent, or enter the result.',
-      'No test needed (false alarm, animals recovered)? Close it at step 6 as "Disease not confirmed".',
+      'No test needed (false alarm, animals recovered)? Close it at step 5 as "Disease not confirmed".',
       'Details tab: owner, farm, photos and linked incidents. Timeline tab: every event in date order.',
     ],
     terms: [
-      ['In force', 'A quarantine, movement restriction or checkpoint that has started and not been lifted.'],
       [
         'Head count not updated',
-        'Dead or culled animals still counted on the farm. Select "Update head count" in step 5.',
+        'Dead or culled animals still counted on the farm. Select "Update head count" in step 4.',
       ],
     ],
   },
@@ -236,21 +236,18 @@ const HELP: Record<string, Help> = {
   },
   '/lab-submissions': {
     title: 'Lab Submissions',
-    purpose: 'Samples sent to the laboratory (RADDL) in one batch, as on the DA forms.',
+    purpose:
+      'A batch of samples sent to the laboratory (RADDL), in four steps shown at the top of each batch.',
     steps: [
-      'New submission: choose the purpose (e.g. Surveillance) and the test (e.g. PCR – ASF).',
-      'Add one row per sample: the farm, species, age, sex, live or dead, and the specimen (blood for a live pig, spleen / lymph node / liver for a dead one).',
-      'Print the Analysis Request Form and the Sample Collection Form and send them with the samples.',
-      'When the results arrive (negatives usually by email), open the batch and select "Enter results".',
-      'A positive sample shows "Open case": the disease case starts as Active with the sample attached.',
+      'Step 1 · Prepare: select "New Submission", choose the purpose and the test, and add one row per sample (farm, species, age, sex, live or dead, specimen).',
+      'Step 2 · Print and send: print the Analysis Request Form and the Sample Collection Form, send them with the samples, and enter the date sent.',
+      'Step 3 · Enter results: when the laboratory answers (negatives usually by email), open the batch and select "Enter Results".',
+      'Step 4 · Act on positives: a positive sample shows "Open Case"; the disease case starts as Active with the sample attached. A batch with only negatives is complete.',
     ],
-  },
-  '/response': {
-    title: 'Response Activities',
-    purpose: 'Quarantines and checkpoints in force, and measures ongoing or planned.',
-    steps: [
-      'Check the "Needs update" rows first: a planned measure whose date passed, or one that should have ended.',
-      'Select a row to open the case at step 4 (Response) and update or lift the measure.',
+    terms: [
+      ['Draft', 'Being prepared; not yet sent to the laboratory.'],
+      ['Sent', 'At the laboratory; waiting for results.'],
+      ['Results in', 'Every sample has a result.'],
     ],
   },
   '/analytics': {
@@ -301,7 +298,7 @@ const HELP: Record<string, Help> = {
       'Registrations: verify a new owner first, then the farm. Return it with a reason if something must be corrected.',
       'Head count updates: only unusually large changes wait here. Accept, or cancel with a reason.',
       'Disease reports: validate (a disease case is opened), ask the owner a question, or reject with a reason.',
-      'Vaccination records and service requests sent by owners are in their own tabs.',
+      'Vaccination records sent by owners are in their own tab. Service requests are in Veterinary Field Services → Service Requests.',
       'Owner logins: give a login to an owner already in the masterlist, or reset a forgotten password.',
     ],
     terms: [
@@ -367,18 +364,41 @@ const HELP: Record<string, Help> = {
     ],
   },
   '/services': {
-    title: 'Deworming & Veterinary Services',
-    purpose: 'Deworming, check-ups, vaccinations and other field services, and the farm visits.',
+    title: 'Activity Log',
+    purpose: 'Every deworming, check-up, vaccination and other field service given. Works without internet.',
     steps: [
       'Select "Record Service": choose the service (Deworming is first), the farm and species, and the number of heads.',
-      'Select "Record Farm Visit" to record a visit with its head count and services in one form.',
-      'Service Records: filter by service, species, barangay or dates; select "Print List" for a paper copy.',
+      'No signal in the field? Keep recording. Entries are saved on this phone, listed as "Waiting to Sync", and sent automatically when the internet returns (or select "Sync Now").',
+      'Filter by service, species, barangay or dates; select "Print List" for a paper copy.',
       'Upcoming Schedule: the next deworming or vaccination that is due.',
+    ],
+    terms: [
+      ['Waiting to Sync', 'Saved on this device; it is sent when the connection returns.'],
+      [
+        'Not Accepted',
+        'The server refused the entry (the reason is shown). Record it again, then discard it.',
+      ],
+    ],
+  },
+  '/field-visits': {
+    title: 'Field Visits',
+    purpose: 'Visits of the office to farms, the purpose, what was found, and the services given.',
+    steps: [
+      'Select "Record Field Visit" to record a visit with its head count and services in one form.',
+      'Filter by barangay, purpose or dates. Works offline like the Activity Log.',
+    ],
+  },
+  '/service-requests': {
+    title: 'Service Requests',
+    purpose: 'Services that livestock owners asked for in the owner app.',
+    steps: [
+      'Open a request, then schedule it (with a date), mark it done, or decline it with a reason.',
+      'The owner sees your answer in the owner app.',
     ],
   },
   '/monthly-report': {
     title: 'Monthly Report',
-    purpose: 'The month’s population, disease reports, deworming, check-ups and farm visits.',
+    purpose: 'The month’s population, disease reports, deworming, check-ups and field visits.',
     steps: [
       'Choose the month (and a barangay if needed). The graphs update by themselves.',
       'Select "Print Monthly Report" for the printed report with the letterhead and signatures.',

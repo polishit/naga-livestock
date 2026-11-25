@@ -27,15 +27,15 @@ export function QuickNew() {
   const items: { icon: LucideIcon; label: string; hint: string; run: () => void }[] = [
     {
       icon: ClipboardCheck,
-      label: 'Record a Farm Visit',
+      label: 'Record a Field Visit',
       hint: 'Head count, deworming and findings in one form',
-      run: () => navigate('/services?tab=visits&visit=1'),
+      run: () => navigate('/field-visits?visit=1'),
     },
     {
       icon: Syringe,
       label: 'Record Deworming or a Service',
       hint: 'Deworming, check-up, vaccination or treatment',
-      run: () => navigate('/services?tab=records&new=1'),
+      run: () => navigate('/services?new=1'),
     },
     {
       icon: FileWarning,
@@ -58,7 +58,7 @@ export function QuickNew() {
     {
       icon: CircleAlert,
       label: 'Report a Stray Animal',
-      hint: 'Found wandering, or a violation',
+      hint: 'An animal found wandering',
       run: () => navigate('/strays?new=1'),
     },
   ];

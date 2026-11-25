@@ -82,7 +82,7 @@ export function SpeciesCard({
   );
 }
 
-/** Vertical timeline used for farm visits, services and case progress. */
+/** Vertical timeline used for field visits, services and case progress. */
 export function ActivityTimeline({
   items,
   empty,

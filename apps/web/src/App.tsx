@@ -29,10 +29,13 @@ const CaseDetailPage = lazy(() => import('@/pages/CasesPages').then((m) => ({ de
 const InvestigationPage = lazy(() =>
   import('@/pages/CasesPages').then((m) => ({ default: m.InvestigationPage })),
 );
-const ResponseActivitiesPage = lazy(() =>
-  import('@/pages/CasesPages').then((m) => ({ default: m.ResponseActivitiesPage })),
-);
 const ServicesPage = lazy(() => import('@/pages/ServicesPage'));
+const FieldVisitsPage = lazy(() =>
+  import('@/pages/ServicesPage').then((m) => ({ default: m.FieldVisitsPage })),
+);
+const ServiceRequestsPage = lazy(() =>
+  import('@/pages/ReviewPages').then((m) => ({ default: m.ServiceRequestsPage })),
+);
 const LabSubmissionsPage = lazy(() =>
   import('@/pages/LabSubmissionsPages').then((m) => ({ default: m.LabSubmissionsPage })),
 );
@@ -140,9 +143,10 @@ export default function App() {
             }
           />
           <Route path="cases/:id" element={<CaseDetailPage />} />
-          <Route path="case-tracking" element={<Navigate to="/cases?view=board" replace />} />
+          <Route path="case-tracking" element={<Navigate to="/cases" replace />} />
           <Route path="investigation" element={<InvestigationPage />} />
-          <Route path="response" element={<ResponseActivitiesPage />} />
+          {/* Response Activities was removed (panel revision); old links open the disease reports. */}
+          <Route path="response" element={<Navigate to="/cases" replace />} />
           <Route path="lab-submissions" element={<LabSubmissionsPage />} />
           <Route
             path="lab-submissions/new"
@@ -163,6 +167,8 @@ export default function App() {
           <Route path="lab-submissions/:id" element={<LabSubmissionDetailPage />} />
           <Route path="search" element={<Navigate to="/population" replace />} />
           <Route path="services" element={<ServicesPage />} />
+          <Route path="field-visits" element={<FieldVisitsPage />} />
+          <Route path="service-requests" element={<ServiceRequestsPage />} />
           <Route path="vaccinations" element={<Navigate to="/services" replace />} />
           <Route path="monthly-report" element={<MonthlyReportPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />

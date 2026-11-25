@@ -499,8 +499,8 @@ export async function accomplishmentReport(
       `${t.given.toLocaleString()} of ${t.target.toLocaleString()} (${t.pct}%)`,
     );
 
-  add('Stray livestock & violations', 'Stray incidents reported', c.strays);
-  add('Stray livestock & violations', 'Incidents closed', c.closedStrays);
+  add('Stray livestock', 'Stray incidents reported', c.strays);
+  add('Stray livestock', 'Incidents closed', c.closedStrays);
 
   const scope = [p.barangay, p.species].filter(Boolean).join(' · ');
   return {

@@ -77,25 +77,8 @@ test('report a disease incident and move it through the surveillance stages', as
   await expectToast(page, 'Sample updated. The case is now: Positive.');
   await expect(samples).toContainText('Done');
 
-  // 4. Response: positive, so the response steps for the disease are listed (the first one suggested).
-  const response = step(4, 'Response');
-  await expect(response).toContainText(/Do this now/i);
-  await expect(response.getByRole('button', { name: 'Log: Inform the owner' })).toBeVisible();
-  await response
-    .getByRole('listitem')
-    .filter({ hasText: 'Quarantine the farm' })
-    .getByRole('button', { name: 'Log' })
-    .click();
-  await expect(dialog(page).getByLabel('Activity type')).toHaveValue('QUARANTINE');
-  await dialog(page).getByLabel('Personnel involved').fill('City Vet Team B');
-  await dialog(page).getByLabel('Remarks').fill('Farm placed under quarantine.');
-  await dialog(page).getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Response activity logged.');
-  await expect(response).toContainText(/In force/i);
-
-  // 6. Closing waits for the quarantine to be lifted and the head count to be updated.
-  const close = step(6, 'Close the case');
-  await expect(close).toContainText('still planned, ongoing or in force');
+  // 5. Closing waits for the head count to be updated (Response Activities was removed).
+  const close = step(5, 'Close the case');
   await expect(close).toContainText("not yet taken off the farm's head count");
   await expect(close.getByRole('button', { name: 'Close case' })).toBeDisabled();
 
@@ -142,7 +125,8 @@ test('record deworming and a group vaccination; see them in records and coverage
   // The old Vaccinations link opens Deworming & Veterinary Services.
   await page.goto('/vaccinations');
   await expect(page).toHaveURL(/\/services/);
-  await page.getByRole('tab', { name: 'Service Records' }).click();
+  // The Activity Log (formerly Service Records) is the page's first tab.
+  await expect(page.getByRole('tab', { name: 'Activity Log' })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: 'Record Service' }).click();
   let d = dialog(page);
   // Deworming is the default service and needs no product.
@@ -173,12 +157,15 @@ test('record deworming and a group vaccination; see them in records and coverage
   await expect(page.getByText('≈ 12 of 87 head')).toBeVisible();
 });
 
-test('incident board view and the investigation / response work lists', async ({ page }) => {
-  // The old Case Tracking page opens the board view of Incident Reports.
+test('disease reports have one list with a Status filter, and the investigation work list', async ({
+  page,
+}) => {
+  // The old Case Tracking page and the removed board view open the one Disease Reports list.
   await page.goto('/case-tracking');
-  await expect(page).toHaveURL(/\/cases\?view=board/);
-  await expect(page.getByRole('button', { name: /CASE-0006/i })).toBeVisible();
-  await page.getByRole('button', { name: 'Table' }).click();
+  await expect(page).toHaveURL(/\/cases$/);
+  await expect(page.getByRole('button', { name: 'Board' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Quick views' })).toHaveCount(0);
+  await page.getByLabel('Status').selectOption('all');
   await expect(page.getByRole('cell', { name: 'CASE-0001' })).toBeVisible();
 
   await page.goto('/investigation');
@@ -193,9 +180,9 @@ test('incident board view and the investigation / response work lists', async ({
   await expect(page.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('listitem', { name: 'Step 2: Site visit' })).toBeInViewport();
 
+  // Response Activities was removed: the old address opens the disease reports.
   await page.goto('/response');
-  await expect(page.getByText('Measures on open cases')).toBeVisible();
-  await shot(page, 'response-worklist');
+  await expect(page).toHaveURL(/\/cases$/);
 });
 
 test('back button returns from a farm to the farm list', async ({ page }) => {
@@ -224,7 +211,7 @@ test('report a linked incident from radius analysis, then close and reopen the c
   await expect(v.getByLabel('Related disease case')).toHaveValue('1');
   await v.getByLabel('Findings').selectOption('SICK_ANIMALS');
   await v.getByRole('button', { name: 'Save visit' }).click();
-  await expectToast(page, /Farm visit VIS-\d+ recorded/);
+  await expectToast(page, /Field visit VIS-\d+ recorded/);
   await expect(page.getByRole('cell', { name: /Sick animals found/i })).toBeVisible();
   await page.getByRole('button', { name: 'Report', exact: true }).first().click();
   await expect(page).toHaveURL(/\/cases\/new\?farm=\d+&from=1/);

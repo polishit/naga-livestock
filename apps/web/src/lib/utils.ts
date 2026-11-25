@@ -36,12 +36,12 @@ export const populationLink = (p: LinkParams) => `/population${linkQuery({ tab: 
 /** Link to the service records, optionally for one month. */
 export const servicesLink = (p: LinkParams & { month?: string | null }) => {
   const { month, ...rest } = p;
-  return `/services${linkQuery({ tab: 'records', ...rest, ...(month ? monthDays(month) : {}) })}`;
+  return `/services${linkQuery({ ...rest, ...(month ? monthDays(month) : {}) })}`;
 };
-/** Link to the farm visits, optionally for one month. */
+/** Link to the field visits, optionally for one month. */
 export const visitsLink = (p: LinkParams & { month?: string | null }) => {
   const { month, ...rest } = p;
-  return `/services${linkQuery({ tab: 'visits', ...rest, ...(month ? monthDays(month) : {}) })}`;
+  return `/field-visits${linkQuery({ ...rest, ...(month ? monthDays(month) : {}) })}`;
 };
 
 export function fileUrl(key: string | null | undefined) {

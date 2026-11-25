@@ -5,7 +5,7 @@ test('mobile: navigation drawer, card lists and a full-screen form', async ({ pa
   await login(page);
   // Phone bottom bar: tap a module, then pick a page from its list.
   await page.getByRole('navigation', { name: 'Modules' }).getByRole('button', { name: 'Registry' }).click();
-  await expect(page.getByText('Owners from the DA list and farm visits')).toBeVisible();
+  await expect(page.getByText('Owners from the DA list and field visits')).toBeVisible();
   await page.getByRole('link', { name: /Livestock Owners/i }).click();
   await expect(page.getByRole('heading', { name: 'Livestock Owners' })).toBeVisible();
   await expect(page.getByText('Juan Dela Cruz').first()).toBeVisible();

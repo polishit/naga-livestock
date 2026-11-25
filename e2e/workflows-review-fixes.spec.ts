@@ -1,11 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { dialog, expectToast, login } from './helpers';
+import { dialog, login } from './helpers';
 
 test.beforeEach(async ({ page }) => {
   await login(page);
 });
-
-const today = () => new Date().toLocaleDateString('en-CA');
 
 test('population: "See farms raising" can be undone with Back; farms with 0 head are not listed', async ({
   page,
@@ -34,13 +32,12 @@ test('population: "See farms raising" can be undone with Back; farms with 0 head
   await expect(page.getByLabel('Species').first()).toHaveValue('');
 });
 
-test('disease reports: quick views on top, then the list; step to the next case', async ({ page }) => {
+test('disease reports: one Status filter above the list; step to the next case', async ({ page }) => {
   await page.goto('/cases');
-  const views = page.getByRole('group', { name: 'Quick views' });
-  await expect(views.getByRole('button', { name: /Open cases/i })).toHaveAttribute('aria-pressed', 'true');
-  // The graphs are folded away below the list.
-  await expect(page.getByRole('button', { name: 'Show trends and graphs' })).toBeVisible();
-  await views.getByRole('button', { name: /All cases/i }).click();
+  // No summary boxes or graphs on the list (panel revision): only the Status filter and search.
+  await expect(page.getByRole('group', { name: 'Quick views' })).toHaveCount(0);
+  await expect(page.getByLabel('Status')).toHaveValue('');
+  await page.getByLabel('Status').selectOption('all');
   await expect(page).toHaveURL(/state=all/);
   const rows = page.locator('tbody tr');
   const n = await rows.count();
@@ -56,37 +53,6 @@ test('disease reports: quick views on top, then the list; step to the next case'
   await expect(nav.getByText(`Case 2 of ${n}`)).toBeVisible();
   await nav.getByRole('link', { name: /Back to all cases/i }).click();
   await expect(page).toHaveURL(/\/cases\?state=all/);
-});
-
-test('a confirmed case of another disease has response steps too, each measure shown once', async ({
-  page,
-}) => {
-  const c = await page.request.post('/api/cases', {
-    data: { ownerId: 1, farmId: 1, species: 'Pig', disease: 'Hog Cholera', affected: 2, deaths: 0 },
-  });
-  const id = (await c.json()).id;
-  await page.request.post(`/api/cases/${id}/labs`, {
-    data: {
-      sampleId: `HC-${Date.now()}`,
-      collectedAt: today(),
-      sentAt: today(),
-      result: 'POSITIVE',
-      resultDate: today(),
-    },
-  });
-  await page.goto(`/cases/${id}?tab=response`);
-  const steps = page.locator('.card').filter({ hasText: 'Response steps' });
-  await expect(steps.getByText('0 of 5 completed')).toBeVisible();
-  const step = steps.getByRole('listitem').filter({ hasText: 'Quarantine the farm' });
-  await step.getByRole('button', { name: 'Log' }).click();
-  const d = dialog(page);
-  await expect(d.getByLabel('Activity type')).toHaveValue('QUARANTINE');
-  await d.getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Response activity logged.');
-  await expect(step.getByRole('button', { name: /Update|Edit/i })).toBeVisible();
-  // No second list repeating the same measure.
-  await expect(page.getByText('Other measures')).toHaveCount(0);
-  await expect(page.getByText('Measures logged')).toHaveCount(0);
 });
 
 test('the service form picks the farm from one list (no separate search box)', async ({ page }) => {

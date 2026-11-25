@@ -9,7 +9,6 @@ import {
   MIN_DOB,
   SPECIES,
   STRAY_STATUSES,
-  STRAY_VIOLATION_TYPES,
   animalCreateSchema,
   animalMoveSchema,
   animalUpdateSchema,
@@ -406,7 +405,6 @@ export function OwnerStrayHistory({
     >
       <b className="font-semibold">{repeat ? 'Repeat offender: ' : 'Earlier incident: '}</b>
       {data.incidents} earlier stray incident{data.incidents === 1 ? '' : 's'}
-      {data.violations ? `, ${data.violations} violation(s) recorded` : ''}
       {data.last
         ? ` — last ${data.last.code} on ${fmtDate(data.last.discoveredAt)}`
         : ''}.{data.open ? ` ${data.open} still open.` : ''}
@@ -693,7 +691,7 @@ export interface StrayRecord {
   voidReason?: string | null;
 }
 
-/** Incident details and violation. Read-only users can view it. */
+/** Incident details. Read-only users can view it. */
 export function StrayUpdateDialog({
   open,
   onOpenChange,
@@ -705,8 +703,6 @@ export function StrayUpdateDialog({
   const form = useZodForm(strayUpdateSchema, {});
   useResetOnOpen(open, form, {
     status: stray?.status ?? 'REPORTED',
-    violations: String(stray?.violations ?? 0),
-    violationType: stray?.violationType ?? '',
     ownerId: stray?.ownerId ? String(stray.ownerId) : '',
     remarks: stray?.remarks ?? '',
   } as any);
@@ -791,14 +787,6 @@ export function StrayUpdateDialog({
               ))}
             </Select>
           </Field>
-          <Field label="Violation Type" error={err(e, 'violationType')}>
-            <Select {...form.register('violationType')}>
-              <option value="">Not recorded</option>
-              {STRAY_VIOLATION_TYPES.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </Select>
-          </Field>
           <Field label="Owner" error={err(e, 'ownerId')}>
             <Select {...form.register('ownerId')}>
               <option value="">Unknown owner</option>
@@ -808,9 +796,6 @@ export function StrayUpdateDialog({
                 </option>
               ))}
             </Select>
-          </Field>
-          <Field label="Number of Violations" error={err(e, 'violations')}>
-            <Input type="number" min={0} {...form.register('violations')} />
           </Field>
           <div className="sm:col-span-2 empty:hidden">
             <OwnerStrayHistory ownerId={form.watch('ownerId')} exceptId={stray.id} />

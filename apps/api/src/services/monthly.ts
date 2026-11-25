@@ -28,7 +28,7 @@ const countBy = <T>(xs: T[], key: (x: T) => string) => {
 
 /**
  * Monthly summary for the office: livestock population (current masterlist), disease reports,
- * deworming, check-ups and other services, and farm visits for one month, plus a 6-month trend.
+ * deworming, check-ups and other services, and field visits for one month, plus a 6-month trend.
  */
 export async function monthlySummary(month = isoMonth(), barangay?: string) {
   const range = monthRange(month);

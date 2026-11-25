@@ -70,7 +70,7 @@ export interface OwnerRecord {
   source?: string | null;
 }
 
-/** Where the office got the record: the CVO builds the masterlist from DA lists and farm visits. */
+/** Where the office got the record: the CVO builds the masterlist from DA lists and field visits. */
 // forwardRef so the form can show the saved value (react-hook-form passes a ref through register).
 const SourceSelect = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
   function SourceSelect(props, ref) {
@@ -980,7 +980,7 @@ export function GroupDialog({
         <Field
           label="Month Counted"
           error={err(e, 'reportingMonth')}
-          hint="Month the head count was taken (farm visit or DA list)."
+          hint="Month the head count was taken (field visit or DA list)."
         >
           <Input
             type="month"

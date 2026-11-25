@@ -379,7 +379,6 @@ export function ServiceEditDialog({
     success: 'Record updated.',
     label: () => `Edit ${v?.code}`,
     form,
-    offline: false,
     onDone: () => onOpenChange(false),
   });
   const e = form.formState.errors;
@@ -482,7 +481,7 @@ export function ServiceEditDialog({
   );
 }
 
-/* ---------------- farm visits ---------------- */
+/* ---------------- field visits ---------------- */
 
 export interface VisitRecord {
   id: number;
@@ -522,7 +521,7 @@ interface ServiceRow {
 }
 
 /**
- * Record a farm visit: the office's main field activity. In one form the staff note the purpose and
+ * Record a field visit: the office's main field activity. In one form the staff note the purpose and
  * findings, update the head count and record deworming or other
  * services given during the visit. Editing a visit changes the visit details only.
  */
@@ -644,7 +643,7 @@ export function FarmVisitDialog({
           const n = Number(r?.count);
           if (r?.count === '' || isNaN(n) || n < 0) errs[`count-${g.id}`] = 'Enter the head count';
           else if (n < g.tagged) errs[`count-${g.id}`] = `At least ${g.tagged} (tagged animals)`;
-          return { groupId: g.id, count: n, reason: `Farm visit ${v.date}` };
+          return { groupId: g.id, count: n, reason: `Field visit ${v.date}` };
         })
       : [];
     const serviceEntries = giveServices
@@ -666,7 +665,7 @@ export function FarmVisitDialog({
               vaccine: r.product.trim() || null,
               date: v.date,
               administeredBy: v.visitedBy || null,
-              remarks: 'Given during farm visit',
+              remarks: 'Given during field visit',
             };
           })
       : [];
@@ -681,18 +680,18 @@ export function FarmVisitDialog({
     setBusy(true);
     try {
       if (editing) {
-        await mutate('PATCH', `/api/farm-visits/${visit!.id}`, base, {
-          label: `Edit farm visit ${visit!.code}`,
-          offline: false,
+        const r = await mutate('PATCH', `/api/farm-visits/${visit!.id}`, base, {
+          label: `Edit field visit ${visit!.code}`,
         });
-        toast.success('Farm visit updated.');
+        if (isQueued(r)) toast.info('Saved offline — it will sync automatically when you are back online.');
+        else toast.success('Field visit updated.');
       } else {
         const res = await mutate<{ code: string }>(
           'POST',
           '/api/farm-visits',
           { ...base, farmId: farm.id },
           {
-            label: `Farm visit — ${farm.name}`,
+            label: `Field visit — ${farm.name}`,
           },
         );
         const queued = isQueued(res);
@@ -701,7 +700,7 @@ export function FarmVisitDialog({
             'POST',
             '/api/population/updates',
             { farmId: farm.id, month: v.date.slice(0, 7), entries: countEntries },
-            { label: `Head count from farm visit — ${farm.name}` },
+            { label: `Head count from field visit — ${farm.name}` },
           );
         for (const s of serviceEntries)
           await mutate('POST', '/api/vaccinations', s, {
@@ -715,7 +714,7 @@ export function FarmVisitDialog({
         if (queued) toast.info('Saved offline — it will sync automatically when you are back online.');
         else
           toast.success(
-            `Farm visit ${(res as { code: string }).code} recorded${extra.length ? ` (${extra.join(', ')})` : ''}.`,
+            `Field visit ${(res as { code: string }).code} recorded${extra.length ? ` (${extra.join(', ')})` : ''}.`,
           );
       }
       qc.invalidateQueries();
@@ -728,7 +727,7 @@ export function FarmVisitDialog({
         for (const [k, msgs] of Object.entries(e.fieldErrors)) fe[k] = msgs[0];
         setErrors(fe);
       }
-      toast.error(e instanceof ApiError ? e.message : 'Could not save the farm visit.');
+      toast.error(e instanceof ApiError ? e.message : 'Could not save the field visit.');
     } finally {
       setBusy(false);
     }
@@ -746,7 +745,7 @@ export function FarmVisitDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? `Edit ${visit!.code}` : `Record Farm Visit — ${farm.name}`}
+      title={editing ? `Edit ${visit!.code}` : `Record Field Visit — ${farm.name}`}
       size="lg"
       footer={
         <>
@@ -970,7 +969,7 @@ interface FarmForVisit {
 }
 
 /**
- * "Record Farm Visit" from a list page: choose the farm first, then the visit form opens with that
+ * "Record Field Visit" from a list page: choose the farm first, then the visit form opens with that
  * farm's livestock. `farmId` skips the choice (e.g. a farm picked on the map).
  */
 export function FarmVisitLauncher({
@@ -1011,7 +1010,7 @@ export function FarmVisitLauncher({
     <Dialog
       open={open && !farmId}
       onOpenChange={onOpenChange}
-      title="Record Farm Visit"
+      title="Record Field Visit"
       size="sm"
       guardChanges={false}
       footer={

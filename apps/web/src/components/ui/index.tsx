@@ -94,31 +94,161 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 );
 Textarea.displayName = 'Textarea';
 
+/**
+ * Colour code for status and result values, used by every dropdown so Positive / Negative and the
+ * stages of a record can be told apart at a glance (same colours as the badges).
+ */
+export const VALUE_TONES: Record<string, Tone> = {
+  POSITIVE: 'red',
+  NEGATIVE: 'green',
+  PENDING: 'amber',
+  INCONCLUSIVE: 'violet',
+  SUSPECTED: 'orange',
+  SAMPLE_COLLECTED: 'orange',
+  SENT_TO_LAB: 'blue',
+  REPORTED: 'blue',
+  REQUESTED: 'amber',
+  SCHEDULED: 'blue',
+  ONGOING: 'blue',
+  DONE: 'green',
+  COMPLETED: 'green',
+  VERIFIED: 'green',
+  APPROVED: 'green',
+  RETURNED: 'amber',
+  DECLINED: 'red',
+  REJECTED: 'red',
+  CANCELLED: 'slate',
+  CLOSED: 'slate',
+  VOIDED: 'slate',
+  SICK_ANIMALS: 'red',
+  NO_FINDINGS: 'green',
+};
+const selectTone: Record<Tone, string> = {
+  red: 'border-red-300 bg-red-50 text-red-800',
+  redSoft: 'border-red-300 bg-red-50 text-red-800',
+  green: 'border-emerald-300 bg-emerald-50 text-emerald-800',
+  amber: 'border-amber-300 bg-amber-50 text-amber-800',
+  orange: 'border-orange-300 bg-orange-50 text-orange-800',
+  blue: 'border-sky-300 bg-sky-50 text-sky-800',
+  violet: 'border-violet-300 bg-violet-50 text-violet-800',
+  slate: 'border-slate-300 bg-slate-100 text-slate-700',
+};
+const dotTone: Record<Tone, string> = {
+  red: 'bg-red-500',
+  redSoft: 'bg-red-500',
+  green: 'bg-emerald-500',
+  amber: 'bg-amber-500',
+  orange: 'bg-orange-500',
+  blue: 'bg-sky-500',
+  violet: 'bg-violet-500',
+  slate: 'bg-slate-400',
+};
+const optionStyle: Record<Tone, { color: string; backgroundColor: string }> = {
+  red: { color: '#991b1b', backgroundColor: '#fef2f2' },
+  redSoft: { color: '#991b1b', backgroundColor: '#fef2f2' },
+  green: { color: '#065f46', backgroundColor: '#ecfdf5' },
+  amber: { color: '#92400e', backgroundColor: '#fffbeb' },
+  orange: { color: '#9a3412', backgroundColor: '#fff7ed' },
+  blue: { color: '#075985', backgroundColor: '#f0f9ff' },
+  violet: { color: '#5b21b6', backgroundColor: '#f5f3ff' },
+  slate: { color: '#334155', backgroundColor: '#f1f5f9' },
+};
+export const toneOfValue = (v: unknown): Tone | undefined =>
+  typeof v === 'string' && v ? VALUE_TONES[v] : undefined;
+
+/** Adds the colour of each status / result option (native dropdown lists show it on most devices). */
+export function toneOptions(children: ReactNode, tones: Record<string, Tone> = VALUE_TONES): ReactNode {
+  return Children.map(children, (c) => {
+    if (!isValidElement(c) || c.type !== 'option') return c;
+    const v = (c.props as { value?: unknown }).value;
+    const t = typeof v === 'string' ? tones[v] : undefined;
+    return t ? cloneElement(c as React.ReactElement<{ style?: object }>, { style: optionStyle[t] }) : c;
+  });
+}
+
+/** A coloured dot and tinted box for the chosen status / result. */
+export function useToneState(value: unknown, defaultValue: unknown, tones: Record<string, Tone>) {
+  const [current, setCurrent] = useState<string>(String(value ?? defaultValue ?? ''));
+  useEffect(() => {
+    if (value !== undefined) setCurrent(String(value ?? ''));
+  }, [value]);
+  const tone = current ? tones[current] : undefined;
+  return { tone, setCurrent };
+}
+
 export const Select = forwardRef<
   HTMLSelectElement,
-  SelectHTMLAttributes<HTMLSelectElement> & { wrapperClassName?: string }
->(({ className, wrapperClassName, children, ...props }, ref) => (
-  <div className={cn('relative', wrapperClassName)}>
-    <select ref={ref} className={cn(fieldBase, 'h-10 appearance-none pr-9', className)} {...props}>
-      {children}
-    </select>
-    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
-  </div>
-));
+  SelectHTMLAttributes<HTMLSelectElement> & { wrapperClassName?: string; tones?: Record<string, Tone> }
+>(({ className, wrapperClassName, children, tones = VALUE_TONES, onChange, ...props }, ref) => {
+  const { tone, setCurrent } = useToneState(props.value, props.defaultValue, tones);
+  // Forms (react-hook-form) set the value without a change event: read it back from the element.
+  const setRef = (el: HTMLSelectElement | null) => {
+    if (typeof ref === 'function') ref(el);
+    else if (ref) ref.current = el;
+    if (el && props.value === undefined) queueMicrotask(() => setCurrent(el.value));
+  };
+  return (
+    <div className={cn('relative', wrapperClassName)}>
+      {tone && (
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute left-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full',
+            dotTone[tone],
+          )}
+        />
+      )}
+      <select
+        ref={setRef}
+        className={cn(
+          fieldBase,
+          'h-10 appearance-none pr-9',
+          tone && cn('pl-7 font-medium', selectTone[tone]),
+          className,
+        )}
+        onChange={(e) => {
+          setCurrent(e.target.value);
+          onChange?.(e);
+        }}
+        {...props}
+      >
+        {toneOptions(children, tones)}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
+    </div>
+  );
+});
 Select.displayName = 'Select';
+
+/** A label ending in " *" (or a Field marked required) shows a red asterisk: the field must be filled in. */
+export function RequiredMark() {
+  return (
+    <>
+      <span aria-hidden className="req-mark ml-0.5 font-semibold text-red-600">
+        *
+      </span>
+      <span className="sr-only"> (required)</span>
+    </>
+  );
+}
 
 export function Label({
   children,
   htmlFor,
   className,
+  required,
 }: {
   children: ReactNode;
   htmlFor?: string;
   className?: string;
+  required?: boolean;
 }) {
+  const marked = typeof children === 'string' && /\s\*$/.test(children);
+  const text = marked ? (children as string).replace(/\s*\*$/, '') : children;
   return (
     <label htmlFor={htmlFor} className={cn('mb-1.5 block text-[14px] font-medium text-slate-700', className)}>
-      {children}
+      {text}
+      {(marked || required) && <RequiredMark />}
     </label>
   );
 }
@@ -133,6 +263,7 @@ export function Field({
   children,
   className,
   htmlFor,
+  required,
 }: {
   label?: ReactNode;
   error?: string;
@@ -140,6 +271,8 @@ export function Field({
   children: ReactNode;
   className?: string;
   htmlFor?: string;
+  /** Shows the red required marker (labels ending in " *" get it automatically). */
+  required?: boolean;
 }) {
   const autoId = useId();
   // Associate the label with its control automatically (accessibility + testability): the only
@@ -162,7 +295,11 @@ export function Field({
       : children;
   return (
     <div className={className}>
-      {label && <Label htmlFor={controlId}>{label}</Label>}
+      {label && (
+        <Label htmlFor={controlId} required={required}>
+          {label}
+        </Label>
+      )}
       {control}
       {error ? (
         <p className="mt-1 text-[13px] text-red-600" role="alert">
@@ -255,9 +392,10 @@ export function Dialog({
   guardChanges?: boolean;
 }) {
   const width = {
-    sm: 'sm:max-w-[460px]',
-    md: 'sm:max-w-[576px]',
-    lg: 'sm:max-w-[1024px]',
+    // One width scale for every form (panel revision: standard form sizes).
+    sm: 'sm:max-w-[480px]',
+    md: 'sm:max-w-[640px]',
+    lg: 'sm:max-w-[960px]',
     xl: 'sm:max-w-[1180px]',
   }[size];
   // Unsaved-changes guard: typing in any form field marks the dialog dirty. Closing it then (tapping
@@ -288,7 +426,7 @@ export function Dialog({
           onInput={markDirty}
           onChange={markDirty}
           className={cn(
-            'fixed z-[1001] flex max-h-[100dvh] w-full flex-col bg-white shadow-xl outline-none',
+            'dialog-root fixed z-[1001] flex max-h-[100dvh] w-full flex-col bg-white shadow-xl outline-none',
             'inset-x-0 bottom-0 rounded-t-xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-h-[92vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl',
             'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=open]:zoom-in-95',
             width,
@@ -306,7 +444,7 @@ export function Dialog({
               <X className="h-5 w-5" />
             </DialogPrimitive.Close>
           </div>
-          <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+          <div className="app-scroll flex-1 overflow-y-auto px-5 py-5">{children}</div>
           {footer && (
             <div
               className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-white px-5 py-3.5 sm:py-4 [&>button]:flex-1 sm:[&>button]:flex-none"
@@ -327,6 +465,10 @@ export function Dialog({
                 }
               }}
             >
+              {/* Shown only when the form has required fields (CSS :has). */}
+              <p className="req-note mr-auto hidden self-center text-[13px] text-slate-500">
+                <span className="font-semibold text-red-600">*</span> Required
+              </p>
               {footer}
             </div>
           )}

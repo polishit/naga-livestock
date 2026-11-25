@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FieldValues, UseFormReturn } from 'react-hook-form';
 import { toast } from 'sonner';
 import { ApiError, api, isQueued, mutate, reverseGeocode, type MutateOptions } from './api';
-import { pendingCount } from './offline';
+import { db, pendingCount, type OutboxItem } from './offline';
 
 /** GET helper keyed by URL. */
 export function useApi<T>(url: string | null, opts?: Omit<UseQueryOptions<T>, 'queryKey' | 'queryFn'>) {
@@ -147,6 +147,36 @@ export function useOnline() {
     };
   }, []);
   return online;
+}
+
+/**
+ * Writes saved on this device while offline, waiting to be sent (newest first). `match` picks the
+ * ones of one page by their API address, e.g. ['/api/vaccinations', '/api/farm-visits'].
+ */
+export function useOutbox(match?: string[]) {
+  const [items, setItems] = useState<OutboxItem[]>([]);
+  const key = (match ?? []).join('|');
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      db.outbox
+        .orderBy('createdAt')
+        .reverse()
+        .toArray()
+        .then((all) => {
+          if (!alive) return;
+          const m = key ? key.split('|') : [];
+          setItems(m.length ? all.filter((x) => m.some((u) => x.url.startsWith(u))) : all);
+        })
+        .catch(() => alive && setItems([]));
+    void load();
+    window.addEventListener('outbox-changed', load);
+    return () => {
+      alive = false;
+      window.removeEventListener('outbox-changed', load);
+    };
+  }, [key]);
+  return items;
 }
 
 export function usePendingCount() {

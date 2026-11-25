@@ -611,7 +611,7 @@ const FLOW: { step: string; text: string; to: string }[] = [
   { step: 'Monitor', text: 'Update each farm’s head count every month', to: '/population' },
   { step: 'Report', text: 'Report a sick or dead animal as a disease case', to: '/cases/new' },
   { step: 'Investigate', text: 'Record the site visit and send samples to the lab', to: '/investigation' },
-  { step: 'Respond', text: 'Log quarantine, disinfection or culling until it is contained', to: '/response' },
+  { step: 'Contain', text: 'Watch the monitoring zone and visit the farms around the case', to: '/zones' },
   { step: 'Report up', text: 'Print the monthly accomplishment report', to: '/reports' },
 ];
 

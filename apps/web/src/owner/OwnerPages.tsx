@@ -1,6 +1,7 @@
 import {
-  BadgeCheck,
   Bell,
+  Building2,
+  Phone,
   CalendarDays,
   FileText,
   KeyRound,
@@ -19,7 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useWatch } from 'react-hook-form';
-import { NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   BARANGAYS,
   ID_TYPES,
@@ -589,11 +590,17 @@ function ReportScreen() {
  * ===================================================================================== */
 
 /** Messages with the City Veterinary Office: the conversation and the owner's transactions. */
+/**
+ * Messages with the office, organised in two parts (panel revision): the chat itself, and the updates
+ * on what the owner sent (registrations, reports, requests) in their own list, beside the chat on a
+ * computer and in a second tab on a phone.
+ */
 export function MessagesScreen() {
   const home = useHome();
   const { data, isLoading, error, refetch } = useApi<{ items: ThreadItem[] }>('/api/my/messages', {
     refetchInterval: 30_000,
   });
+  const [view, setView] = useState<'chat' | 'updates'>('chat');
   const qc = useQueryClient();
   // Opening the thread marks it read: refresh the badge.
   useEffect(() => {
@@ -601,34 +608,124 @@ export function MessagesScreen() {
   }, [data, qc]);
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
-  return (
-    <Screen
-      title="Messages"
-      sub="Your conversation with the City Veterinary Office and updates on what you sent"
-    >
-      <Panel className="flex h-[calc(100dvh-250px)] min-h-[420px] flex-col p-2 md:h-[calc(100dvh-210px)]">
-        <MessageThread
-          big
-          me="owner"
-          items={data.items}
-          onSend={async (text, files) => {
-            try {
-              const photoKeys = files.length ? await uploadAll(files, 'messages') : [];
-              await api.post('/api/my/messages', { text, photoKeys });
-              await refetch();
-              return true;
-            } catch (x) {
-              toast.error(x instanceof Error ? x.message : 'Could not send. Try again.');
-              return false;
-            }
-          }}
-        />
-      </Panel>
-      {home.data?.office.contact && (
-        <p className="text-[13px] text-slate-500">
-          The office replies during office hours. For an emergency, call {home.data.office.contact}.
+  const chat = data.items.filter((i) => i.kind === 'message');
+  const updates = data.items
+    .filter((i): i is Extract<ThreadItem, { kind: 'event' }> => i.kind === 'event')
+    .slice()
+    .reverse();
+  const office = home.data?.office;
+  const updatesList = (
+    <div className="space-y-2">
+      {updates.length === 0 && (
+        <p className="py-6 text-center text-[15px] text-slate-500">
+          Nothing yet. What you send the office (registrations, reports, requests) and its answers show here.
         </p>
       )}
+      {updates.map((u) => (
+        <div
+          key={u.key}
+          className={cn(
+            'rounded-xl border bg-white p-3',
+            u.side === 'office' ? 'border-l-4 border-l-brand-strong border-slate-200' : 'border-slate-200',
+          )}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <b className="text-[15px] leading-snug text-slate-900">{u.title}</b>
+            <span className="shrink-0 text-[12px] text-slate-500">{fmtDate(u.at)}</span>
+          </div>
+          {u.body && <p className="mt-0.5 text-[14px] text-slate-600">{u.body}</p>}
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span className="text-[12px] font-medium text-slate-500">
+              {u.side === 'office' ? 'From the office' : 'You sent'}
+            </span>
+            {u.link && (
+              <NavLink to={u.link} className="text-[13px] font-medium text-brand-dark underline">
+                Open
+              </NavLink>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <Screen title="Messages" wide sub="Chat with the City Veterinary Office, and updates on what you sent">
+      {/* Phones: one part at a time */}
+      <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 lg:hidden" role="tablist">
+        {(['chat', 'updates'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            onClick={() => setView(v)}
+            className={cn(
+              'h-11 rounded-lg text-[15px] font-medium',
+              view === v ? 'bg-white text-brand-dark shadow-sm' : 'text-slate-600',
+            )}
+          >
+            {v === 'chat' ? 'Chat' : `Updates${updates.length ? ` (${updates.length})` : ''}`}
+          </button>
+        ))}
+      </div>
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6">
+        <section
+          aria-label="Chat with the office"
+          className={cn(
+            'flex h-[calc(100dvh-290px)] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100dvh-200px)]',
+            view !== 'chat' && 'max-lg:hidden',
+          )}
+        >
+          <header className="flex items-center gap-3 border-b border-slate-200 bg-brand-dark px-4 py-3 text-white">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <Building2 className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1 leading-tight">
+              <b className="block truncate text-[16px]">{office?.name ?? 'City Veterinary Office'}</b>
+              <span className="block truncate text-[13px] text-white/80">Replies during office hours</span>
+            </span>
+            {office?.contact && (
+              <a
+                href={`tel:${office.contact.replace(/[^\d+]/g, '')}`}
+                aria-label={`Call the office, ${office.contact}`}
+                className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/15"
+              >
+                <Phone className="h-5 w-5" />
+              </a>
+            )}
+          </header>
+          <div className="flex min-h-0 flex-1 flex-col bg-slate-50 px-2">
+            <MessageThread
+              big
+              me="owner"
+              items={chat}
+              onSend={async (text, files) => {
+                try {
+                  const photoKeys = files.length ? await uploadAll(files, 'messages') : [];
+                  await api.post('/api/my/messages', { text, photoKeys });
+                  await refetch();
+                  return true;
+                } catch (x) {
+                  toast.error(x instanceof Error ? x.message : 'Could not send. Try again.');
+                  return false;
+                }
+              }}
+            />
+          </div>
+        </section>
+        <aside
+          aria-label="Updates on what you sent"
+          className={cn('space-y-3', view !== 'updates' && 'max-lg:hidden')}
+        >
+          <SectionTitle className="mb-0 hidden lg:block">Updates on What You Sent</SectionTitle>
+          {updatesList}
+          {office?.contact && (
+            <p className="text-[13px] text-slate-500">
+              For an emergency (sick or dying animals), call {office.contact}.
+            </p>
+          )}
+        </aside>
+      </div>
     </Screen>
   );
 }
@@ -1129,7 +1226,8 @@ export function MoreRoutes() {
       <Route path="profile" element={<ProfileScreen />} />
       <Route path="summary" element={<SummaryScreen />} />
       <Route path="settings" element={<SettingsScreen />} />
-      <Route path="verification" element={<VerificationScreen />} />
+      {/* My Verification was removed (panel revision): the status and the ID are on My Profile. */}
+      <Route path="verification" element={<Navigate to="/app/more/profile" replace />} />
     </Routes>
   );
 }
@@ -1148,12 +1246,6 @@ function MoreMenuScreen() {
       <div className="space-y-2">
         {/* On a phone there is no side menu, so these pages are reached from here. */}
         <div className="space-y-2 md:hidden">
-          <RowLink
-            to="/app/more/verification"
-            icon={<BadgeCheck className="h-5 w-5" />}
-            title="My Verification"
-            sub="Status of your registration and your ID"
-          />
           <RowLink
             to="/app/vaccination"
             icon={<Syringe className="h-5 w-5" />}
@@ -1225,7 +1317,7 @@ function ProfileScreen() {
         <Panel tone="amber">
           <b>The office asks you to correct this:</b> {o.returnReason}
           <p className="mt-1 text-[14px]">
-            Save your corrections here, then open <b>My Verification</b> to send your registration again.
+            Save your corrections here, then send your registration again in <b>My ID</b> below.
           </p>
         </Panel>
       )}
@@ -1233,8 +1325,9 @@ function ProfileScreen() {
         noValidate
         className="space-y-4"
         onSubmit={form.handleSubmit(async (v) => {
-          if (await run(form, () => api.patch('/api/my/profile', v), 'Saved.'))
-            navigate(o.status === 'PENDING' ? '/app/more/verification' : '/app/more');
+          // A pending owner stays here: the ID and "Send for Review" are just below.
+          if ((await run(form, () => api.patch('/api/my/profile', v), 'Saved.')) && o.status !== 'PENDING')
+            navigate('/app/more');
         })}
       >
         <Panel className="space-y-4">
@@ -1272,6 +1365,7 @@ function ProfileScreen() {
           Save
         </Button>
       </form>
+      <MyIdSection />
     </Screen>
   );
 }
@@ -1457,7 +1551,8 @@ function SettingsScreen() {
 
 const maskId = (n: string | null) => (n ? `${'•'.repeat(Math.max(0, n.length - 4))}${n.slice(-4)}` : '');
 
-function VerificationScreen() {
+/** Registration status and the owner's ID, shown on My Profile (was the "My Verification" page). */
+function MyIdSection() {
   const home = useHome();
   const navigate = useNavigate();
   const { busy, run } = useSubmit();
@@ -1506,7 +1601,7 @@ function VerificationScreen() {
   };
 
   return (
-    <Screen title="My Verification" back="/app/more">
+    <div id="my-id" className="space-y-4">
       <Panel tone={verified ? 'green' : returned ? 'amber' : 'blue'}>
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -1530,31 +1625,6 @@ function VerificationScreen() {
             <VerificationSteps owner={o} />
           </div>
         )}
-      </Panel>
-
-      <Panel>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <SectionTitle className="mb-0">My Profile</SectionTitle>
-          {!verified && (
-            <NavLink to="/app/more/profile" className="text-[14px] font-medium text-brand-dark underline">
-              Edit
-            </NavLink>
-          )}
-        </div>
-        <dl className="grid gap-x-4 gap-y-2 text-[15px] sm:grid-cols-2">
-          <div>
-            <dt className="text-[13px] text-slate-500">Full Name</dt>
-            <dd>{o.fullName}</dd>
-          </div>
-          <div>
-            <dt className="text-[13px] text-slate-500">Mobile Number</dt>
-            <dd>{o.contact ?? '—'}</dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-[13px] text-slate-500">Address</dt>
-            <dd>{[o.street, o.zone, o.barangay, 'Naga City'].filter(Boolean).join(', ')}</dd>
-          </div>
-        </dl>
       </Panel>
 
       {verified ? (
@@ -1646,6 +1716,6 @@ function VerificationScreen() {
           </div>
         </Panel>
       )}
-    </Screen>
+    </div>
   );
 }

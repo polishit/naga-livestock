@@ -28,6 +28,7 @@ import { DataTable } from '@/components/DataTable';
 import { useLetterhead } from '@/components/ExportButtons';
 import { DocumentLinks } from '@/components/forms';
 import { MapView } from '@/components/MapView';
+import { openMessages } from '@/components/MessagesFab';
 import { MoreMenu } from '@/components/MoreMenu';
 import { ErrorBox, FilterSelect, KV, Loading, MiniStat, PageHeader } from '@/components/page';
 import { ActiveBadge, CaseStatusBadge, SpeciesChip, StrayStatusBadge } from '@/components/status';
@@ -139,7 +140,7 @@ export function OwnersPage() {
     <div>
       <PageHeader
         title="Livestock Owners"
-        subtitle={`Owner masterlist · ${activeCount} livestock owner${activeCount === 1 ? '' : 's'} (from DA lists and farm visits)`}
+        subtitle={`Owner masterlist · ${activeCount} livestock owner${activeCount === 1 ? '' : 's'} (from DA lists and field visits)`}
         actions={
           <>
             <Button variant="outline" onClick={print} disabled={!data?.length}>
@@ -330,10 +331,8 @@ export function OwnerDetailPage() {
         }
         actions={
           <>
-            <Button variant="outline" asChild>
-              <Link to={`/messages?owner=${o.id}`}>
-                <MessageSquare /> Message
-              </Link>
+            <Button variant="outline" onClick={() => openMessages(o.id)}>
+              <MessageSquare /> Message
             </Button>
             {!archived && (
               <Button
@@ -667,7 +666,7 @@ export function OwnerDetailPage() {
               />
             </Card>
             <Card>
-              <CardHeader title="Stray & Violation Incidents" />
+              <CardHeader title="Stray Incidents" />
               <DataTable
                 rows={data.strays}
                 rowKey={(r) => r.id}
@@ -679,7 +678,6 @@ export function OwnerDetailPage() {
                   { key: 'species', header: 'Species' },
                   { key: 'barangay', header: 'Barangay' },
                   { key: 'status', header: 'Status', cell: (r) => <StrayStatusBadge status={r.status} /> },
-                  { key: 'violations', header: 'Violations' },
                 ]}
                 empty="No stray incidents."
               />

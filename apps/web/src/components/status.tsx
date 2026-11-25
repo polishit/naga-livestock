@@ -20,7 +20,7 @@ export function CaseStatusBadge({ status }: { status: CaseStatus }) {
     SAMPLE_COLLECTED: 'orange',
     SENT_TO_LAB: 'amber',
     POSITIVE: 'red',
-    NEGATIVE: 'slate',
+    NEGATIVE: 'green',
   };
   return <Badge tone={tone[status]}>{CASE_STATUS_LABELS[status]}</Badge>;
 }
@@ -66,7 +66,7 @@ export function LabResultBadge({ result }: { result: string }) {
     result === 'POSITIVE'
       ? 'red'
       : result === 'NEGATIVE'
-        ? 'slate'
+        ? 'green'
         : result === 'PENDING'
           ? 'amber'
           : 'violet';

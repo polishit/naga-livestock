@@ -1,17 +1,17 @@
 import { expect, test } from '@playwright/test';
 import { dialog, expectToast, login } from './helpers';
 
-/** The City Veterinary Office's field workflow: farm visits, deworming, one map and the monthly report. */
+/** The City Veterinary Office's field workflow: field visits, deworming, one map and the monthly report. */
 test.describe.configure({ mode: 'serial' });
 
 test.beforeEach(async ({ page }) => {
   await login(page);
 });
 
-test('record a farm visit with head count and deworming in one form', async ({ page }) => {
+test('record a field visit with head count and deworming in one form', async ({ page }) => {
   await page.goto('/farms/13');
   await expect(page.getByText('Not visited yet')).toBeVisible();
-  await page.getByRole('button', { name: 'Record Farm Visit' }).first().click();
+  await page.getByRole('button', { name: 'Record Field Visit' }).first().click();
   const d = dialog(page);
   await d.getByLabel('Purpose').selectOption('DEWORMING');
   // Deworming is suggested for the goats and sheep on the farm.
@@ -25,10 +25,10 @@ test('record a farm visit with head count and deworming in one form', async ({ p
   await expect(d.getByLabel('Classify', { exact: true })).toHaveCount(0);
   await d.getByLabel('Goat head count').fill('15');
   await d.getByRole('button', { name: 'Save visit' }).click();
-  await expectToast(page, /Farm visit VIS-\d+ recorded \(head count updated, 2 service records added\)/);
+  await expectToast(page, /Field visit VIS-\d+ recorded \(head count updated, 2 service records added\)/);
 
   // Visits and services are listed at the bottom of the farm overview.
-  await expect(page.getByText('Farm Visit · Deworming')).toBeVisible();
+  await expect(page.getByText('Field Visit · Deworming')).toBeVisible();
   await expect(page.getByText(/Deworming · Goat · 15 head/)).toBeVisible();
   await page.getByRole('tab', { name: /Livestock/i }).click();
   const goats = page.locator('.card').filter({ hasText: 'GRP-0029' });
@@ -60,13 +60,15 @@ test('one map with filters and layers leads to the farms to monitor', async ({ p
   await expect(page.getByRole('heading', { name: 'Farms to Monitor' })).toBeVisible();
 });
 
-test('deworming records are filtered by service and the farm visits are listed', async ({ page }) => {
+test('deworming records are filtered by service and the field visits are listed', async ({ page }) => {
   await page.goto('/services?tab=records');
   await page.getByLabel('Service', { exact: true }).selectOption('DEWORMING');
   // Plain headers: no click-to-sort on this page.
   await expect(page.getByRole('columnheader', { name: 'Date' }).getByRole('button')).toHaveCount(0);
   await expect(page.getByRole('cell', { name: 'Albendazole' }).first()).toBeVisible();
-  await page.getByRole('tab', { name: 'Farm Visits' }).click();
+  // Field Visits (formerly Farm Visits) is its own page in Veterinary Field Services.
+  await page.goto('/services?tab=visits');
+  await expect(page).toHaveURL(/\/field-visits/);
   await expect(page.getByRole('link', { name: 'Pacol Goat Farm' })).toBeVisible();
 });
 
@@ -85,13 +87,13 @@ test('monthly report shows the month with graphs and prints the standard report'
   await win.evaluate(() => (window.print = () => {}));
   await expect(win.getByText('MONTHLY LIVESTOCK MONITORING REPORT')).toBeVisible();
   await expect(win.getByRole('heading', { name: 'III. Deworming' })).toBeVisible();
-  await expect(win.getByRole('heading', { name: 'V. Farm Visits' })).toBeVisible();
+  await expect(win.getByRole('heading', { name: 'V. Field Visits' })).toBeVisible();
   await win.close();
 });
 
 test('dashboard boxes open their records; no shortcut buttons at the top', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Record Farm Visit' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Record Field Visit' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Report Incident' })).toHaveCount(0);
   await page.getByRole('link', { name: /^Confirmed Positive/ }).click();
   await expect(page).toHaveURL(/\/cases\?status=POSITIVE/);
@@ -115,14 +117,14 @@ test('the registry menu holds owners, farms, population, ear tags, ownership and
     'Population Monitoring',
     'Animal ID / Ear Tags',
     'Ownership Records',
-    'Stray & Violations',
+    'Stray Livestock',
   ])
     await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
 });
 
 test('upcoming deworming and vaccination schedule is a calendar', async ({ page }) => {
   await page.goto('/services?tab=upcoming');
-  await expect(page.getByRole('button', { name: 'Record Farm Visit' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Record Field Visit' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Previous month' })).toBeVisible();
   await expect(page.getByText(/scheduled in/)).toBeVisible();
   await page.getByRole('button', { name: 'Next month' }).click();

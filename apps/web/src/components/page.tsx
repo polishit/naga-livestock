@@ -1,8 +1,8 @@
-import { ArrowLeft, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn, toTitle } from '@/lib/utils';
-import { Spinner } from './ui';
+import { Spinner, VALUE_TONES, toneOptions, type Tone } from './ui';
 
 /**
  * Page title row. Inner pages (e.g. /farms/12, /cases/new) automatically get a Back button that returns to
@@ -207,6 +207,49 @@ export function Timeline({
   );
 }
 
+/**
+ * The one filtering section of a list page: search and every filter in a single labelled row, with
+ * "Clear Filters" when any is set. Used on its own or as the toolbar of a DataTable.
+ */
+export function FilterBar({
+  children,
+  onClear,
+  active,
+  className,
+  bare,
+}: {
+  children: ReactNode;
+  /** Resets every filter of the page. */
+  onClear?: () => void;
+  /** Whether any filter is set (shows the Clear button). */
+  active?: boolean;
+  className?: string;
+  /** No card around it (inside a table card). */
+  bare?: boolean;
+}) {
+  return (
+    <div
+      role="search"
+      aria-label="Filters"
+      className={cn('flex flex-wrap items-center gap-2', !bare && 'card mb-4 px-3 py-3', className)}
+    >
+      <span className="inline-flex items-center gap-1.5 pr-1 text-[13px] font-semibold uppercase tracking-wide text-slate-500">
+        <SlidersHorizontal className="h-4 w-4" /> Filter
+      </span>
+      {children}
+      {onClear && active && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="ml-auto inline-flex h-10 items-center gap-1 rounded-lg px-3 text-[14px] font-medium text-slate-600 hover:bg-slate-100"
+        >
+          <X className="h-4 w-4" /> Clear Filters
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function FilterSelect({
   value,
   onChange,
@@ -214,6 +257,7 @@ export function FilterSelect({
   all,
   className,
   label,
+  tones = VALUE_TONES,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -221,26 +265,46 @@ export function FilterSelect({
   all?: string;
   className?: string;
   label: string;
+  /** Colour of each status / result value (defaults to the system-wide colour code). */
+  tones?: Record<string, Tone>;
 }) {
+  const tone = value ? tones[value] : undefined;
   return (
     <div className={cn('relative', className)}>
+      {tone && (
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute left-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full',
+            FILTER_DOT[tone],
+          )}
+        />
+      )}
       <select
         aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-9 text-[15px] text-slate-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+        className={cn(
+          'h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-9 text-[15px] text-slate-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30',
+          tone && cn('pl-7 font-medium', FILTER_TONE[tone]),
+          // A filter that is set stands out from the ones left at "All".
+          !tone && value && 'border-brand bg-brand-light/40',
+        )}
       >
         {all && <option value="">{all}</option>}
-        {options.map((o) =>
-          typeof o === 'string' ? (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ) : (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
+        {toneOptions(
+          options.map((o) =>
+            typeof o === 'string' ? (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ) : (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ),
           ),
+          tones,
         )}
       </select>
       <svg
@@ -255,3 +319,24 @@ export function FilterSelect({
     </div>
   );
 }
+
+const FILTER_TONE: Record<Tone, string> = {
+  red: 'border-red-300 bg-red-50 text-red-800',
+  redSoft: 'border-red-300 bg-red-50 text-red-800',
+  green: 'border-emerald-300 bg-emerald-50 text-emerald-800',
+  amber: 'border-amber-300 bg-amber-50 text-amber-800',
+  orange: 'border-orange-300 bg-orange-50 text-orange-800',
+  blue: 'border-sky-300 bg-sky-50 text-sky-800',
+  violet: 'border-violet-300 bg-violet-50 text-violet-800',
+  slate: 'border-slate-300 bg-slate-100 text-slate-700',
+};
+const FILTER_DOT: Record<Tone, string> = {
+  red: 'bg-red-500',
+  redSoft: 'bg-red-500',
+  green: 'bg-emerald-500',
+  amber: 'bg-amber-500',
+  orange: 'bg-orange-500',
+  blue: 'bg-sky-500',
+  violet: 'bg-violet-500',
+  slate: 'bg-slate-400',
+};

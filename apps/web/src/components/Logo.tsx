@@ -1,35 +1,30 @@
-/** Brand mark: chicken, cow and pig heads in white line art. */
-export function LogoGlyph({ className = 'h-6 w-6' }: { className?: string }) {
+/**
+ * The system's own mark: a map pin (GIS monitoring) holding a cow's head (livestock) with a health
+ * cross (the City Veterinary Office). Forest green and gold; the same drawing is the favicon and the
+ * app icons in /public.
+ */
+export function LogoGlyph({ className = 'h-6 w-6', tile = false }: { className?: string; tile?: boolean }) {
   return (
-    <svg
-      viewBox="0 0 48 48"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      {/* chicken */}
-      <path d="M8 13c0-2 1.6-3 3-2.4.6-1.6 2.8-1.6 3.4 0 1.6-.4 2.6 1.2 1.8 2.6" />
-      <path d="M8.5 13.5c-1.6 1.6-1.6 5 0 7 1.4 1.8 4.4 2.2 6.4.6 1.6-1.2 2-3.4 1.4-5.2" />
-      <path d="M16.3 15.6l2 .9-2 .8" />
-      <circle cx="13" cy="15.6" r=".5" fill="currentColor" />
-      {/* cow */}
-      <path d="M22 12.5c-1.8-.4-3 .6-3.2 1.6 1 .6 2.2.6 3.2-.2" />
-      <path d="M38 12.5c1.8-.4 3 .6 3.2 1.6-1 .6-2.2.6-3.2-.2" />
-      <path d="M22.3 11.5c.6-2.2 3.6-3.4 7.7-3.4s7.1 1.2 7.7 3.4c.6 2.6-.4 4.6-1.6 6.2-1.2 1.6-3.6 2.8-6.1 2.8s-4.9-1.2-6.1-2.8c-1.2-1.6-2.2-3.6-1.6-6.2z" />
-      <ellipse cx="30" cy="17.4" rx="4" ry="2.3" />
-      <circle cx="26.4" cy="12.8" r=".5" fill="currentColor" />
-      <circle cx="33.6" cy="12.8" r=".5" fill="currentColor" />
-      {/* pig */}
-      <path d="M14.5 29.5l-1.8-3.2 3.6 1M33.5 29.5l1.8-3.2-3.6 1" />
-      <path d="M24 26.5c-6 0-10 3.4-10 8s4 8 10 8 10-3.4 10-8-4-8-10-8z" />
-      <ellipse cx="24" cy="36.5" rx="3.6" ry="2.4" />
-      <path d="M22.8 36.4v.2M25.2 36.4v.2" />
-      <circle cx="20" cy="32" r=".5" fill="currentColor" />
-      <circle cx="28" cy="32" r=".5" fill="currentColor" />
+    <svg viewBox="0 0 64 64" className={className} aria-hidden>
+      {tile && <rect width="64" height="64" rx="14" fill="#14532d" />}
+      <path
+        d="M32 6C20.4 6 11.5 14.7 11.5 26c0 14.6 17.3 29.6 19.4 31.4a1.7 1.7 0 0 0 2.2 0C35.2 55.6 52.5 40.6 52.5 26 52.5 14.7 43.6 6 32 6z"
+        fill="#f4c430"
+      />
+      <circle cx="32" cy="26.5" r="16" fill="#fffdf5" />
+      <g fill="#14532d">
+        <path d="M20.2 17.6c-2.6.2-4.4 1.8-4.6 3.8 2.2 1.1 4.6.8 6.4-.6z" />
+        <path d="M43.8 17.6c2.6.2 4.4 1.8 4.6 3.8-2.2 1.1-4.6.8-6.4-.6z" />
+        <path d="M23.8 15.6c-1.6-1.1-2.2-2.9-1.6-4.6 1.4.6 2.4 1.9 2.9 3.4z" />
+        <path d="M40.2 15.6c1.6-1.1 2.2-2.9 1.6-4.6-1.4.6-2.4 1.9-2.9 3.4z" />
+        <path d="M32 14.2c-5.6 0-9.6 2.4-9.6 6.6 0 2.6 1.2 5 2.4 7.4.8 1.6 1 3.2 1 4.6 0 3.2 2.8 5.4 6.2 5.4s6.2-2.2 6.2-5.4c0-1.4.2-3 1-4.6 1.2-2.4 2.4-4.8 2.4-7.4 0-4.2-4-6.6-9.6-6.6z" />
+      </g>
+      <ellipse cx="32" cy="33.2" rx="4.6" ry="3.2" fill="#f4c430" />
+      <circle cx="30.2" cy="33.3" r=".9" fill="#14532d" />
+      <circle cx="33.8" cy="33.3" r=".9" fill="#14532d" />
+      <circle cx="27.8" cy="22.4" r="1.25" fill="#fffdf5" />
+      <circle cx="36.2" cy="22.4" r="1.25" fill="#fffdf5" />
+      <path d="M30.6 16.4h2.8v1.9h1.9v2.8h-1.9V23h-2.8v-1.9h-1.9v-2.8h1.9z" fill="#f4c430" />
     </svg>
   );
 }
@@ -37,13 +32,11 @@ export function LogoGlyph({ className = 'h-6 w-6' }: { className?: string }) {
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white">
-        <LogoGlyph className="h-7 w-7" />
-      </div>
+      <LogoGlyph tile className="h-10 w-10 shrink-0" />
       {!compact && (
         <div className="leading-tight">
-          <div className="text-[15px] font-semibold text-white">Naga City Vet</div>
-          <div className="text-xs text-white/70">Livestock Monitoring</div>
+          <div className="text-[15px] font-bold tracking-tight text-sidebar-ink">Naga City Vet</div>
+          <div className="text-[12px] font-medium text-sidebar-muted">Livestock Monitoring System</div>
         </div>
       )}
     </div>

@@ -18,7 +18,7 @@
  *                            enter it with "Enter results")
  *   Services ............ 6 (one each: vaccination, deworming, check-up, treatment, insemination,
  *                            pregnancy diagnosis)
- *   Farm visits ......... 2 (a deworming visit and a disease-monitoring visit)
+ *   Field visits ......... 2 (a deworming visit and a disease-monitoring visit)
  *   Insurance (PCIC) .... 1 (subsidized through RSBSA, with the insured ear tag)
  *   Settings ............ office address/contact/email and this year's vaccination target
  *
@@ -204,7 +204,7 @@ async function main() {
       contact: '0917-555-1074',
       rsbsa: '05-17-24-100-014',
       source: 'FARM_VISIT',
-      remarks: 'Registered during a farm visit',
+      remarks: 'Registered during a field visit',
       registeredAt: registered,
     },
   });
@@ -685,7 +685,7 @@ async function main() {
       'The 9 remaining pigs were euthanized and buried on the farm. Owner gave written consent; DA documented.',
   });
 
-  /* ---------------- farm visits ---------------- */
+  /* ---------------- field visits ---------------- */
   const visit = async (
     n: number,
     v: { farmId: number; on: number; purpose: string; caseId?: number; by: string; remarks: string },
@@ -708,7 +708,7 @@ async function main() {
       'farm',
       v.farmId,
       'visit',
-      `Farm visit ${created.code}: ${v.purpose.toLowerCase()}`,
+      `Field visit ${created.code}: ${v.purpose.toLowerCase()}`,
       v.by,
       `${ago(v.on)}T15:00:00`,
     );
@@ -942,7 +942,7 @@ async function main() {
     on: RECENT,
     next: ahead(75),
     by: JOY,
-    remarks: 'Given during farm visit VIS-0001',
+    remarks: 'Given during field visit VIS-0001',
   });
   await service({
     type: 'TREATMENT',
@@ -953,7 +953,7 @@ async function main() {
     product: 'Oxytetracycline',
     on: RECENT,
     by: JOY,
-    remarks: 'Foot wound treated during farm visit VIS-0001',
+    remarks: 'Foot wound treated during field visit VIS-0001',
   });
   await service({
     type: 'INSEMINATION',
@@ -1219,7 +1219,7 @@ ${
 
   console.log(
     'Done: 4 owners, 4 farms, 7 groups, 2 animals, 1 ownership record, 1 stray, 2 disease cases ' +
-      '(ASF open, Newcastle closed), 1 lab submission, 6 services, 2 farm visits, 1 insurance application.',
+      '(ASF open, Newcastle closed), 1 lab submission, 6 services, 2 field visits, 1 insurance application.',
   );
   console.log('Sign in with admin@nagacityvet.gov.ph / Livestock@2026');
   console.log('Owner app: 09175551074 (Elena Ramos) or 09175551102 (Pedro Santos) / Owner@2026');

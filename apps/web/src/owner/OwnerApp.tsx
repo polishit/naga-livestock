@@ -2,7 +2,6 @@ import {
   ChevronRight,
   MessageSquare,
   AlertTriangle,
-  BadgeCheck,
   Bell,
   Check,
   CheckCircle2,
@@ -49,7 +48,7 @@ import { cn } from '@/lib/utils';
 import { LogoGlyph } from '@/components/Logo';
 import { AddressLookupHint, err, useZodForm } from '@/components/forms';
 import { ErrorBox, Loading } from '@/components/page';
-import { Badge, Button, Field, Input, Select, Textarea } from '@/components/ui';
+import { Badge, Button, Field, Input, RequiredMark, Select, Textarea } from '@/components/ui';
 import { DiseaseMapLegend } from '@/components/DiseaseMapLegend';
 import type { MapCase, MapFarm, MapZone } from '@/components/DiseaseMap';
 import { LocateButton, Panel, RowLink, Screen, SectionTitle, big, useSubmit, when } from './kit';
@@ -143,6 +142,7 @@ const TABS = [
   { to: '/app', label: 'Home', icon: Home, end: true },
   { to: '/app/farms', label: 'My Farms', icon: Tractor },
   { to: '/app/reports', label: 'Report', icon: Stethoscope },
+  { to: '/app/vaccination', label: 'Services', icon: Syringe },
   { to: '/app/messages', label: 'Messages', icon: MessageSquare },
   { to: '/app/more', label: 'More', icon: Menu },
 ];
@@ -154,7 +154,6 @@ const SIDE = [
   { to: '/app/messages', label: 'Messages', icon: MessageSquare },
   { to: '/app/map', label: 'Disease Map', icon: MapIcon },
   { to: '/app/vaccination', label: 'Vaccination and Services', icon: Syringe },
-  { to: '/app/more/verification', label: 'My Verification', icon: BadgeCheck },
   { to: '/app/more', label: 'Account and Settings', icon: Menu, end: true },
 ];
 
@@ -174,11 +173,9 @@ export function OwnerApp() {
   const locked = owner?.status === 'PENDING' && VERIFIED_ONLY.some((p) => pathname.startsWith(p));
   return (
     <div className="min-h-[100dvh] bg-slate-50 text-slate-900">
-      <header className="sticky top-0 z-30 bg-brand-dark text-white">
+      <header className="sticky top-0 z-30 border-b-[3px] border-sidebar-accent bg-sidebar-ink text-white">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 md:h-16 md:px-6">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15">
-            <LogoGlyph className="h-6 w-6" />
-          </span>
+          <LogoGlyph tile className="h-10 w-10 shrink-0 rounded-lg ring-1 ring-white/20" />
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-[16px] font-semibold md:text-[17px]">Naga City Livestock</div>
             <div className="truncate text-[12px] text-white/80 md:text-[13px]">
@@ -197,6 +194,7 @@ export function OwnerApp() {
           </NavLink>
           <NavLink
             to="/app/messages"
+            title="Messages"
             aria-label={unread ? `${unread} new in Messages` : 'Messages'}
             className="relative flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 active:bg-white/15"
           >
@@ -219,10 +217,11 @@ export function OwnerApp() {
                 end={t.end}
                 className={({ isActive }) =>
                   cn(
-                    'flex h-11 items-center gap-3 rounded-xl px-3 text-[15px]',
+                    // Same colours as the office's menu (one design for both sides).
+                    'relative flex h-11 items-center gap-3 rounded-xl px-3 text-[15px]',
                     isActive
-                      ? 'bg-brand-light font-semibold text-brand-dark'
-                      : 'text-slate-700 hover:bg-slate-100',
+                      ? 'bg-sidebar-activeBg font-semibold text-sidebar-active before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-full before:bg-sidebar-accent'
+                      : 'text-slate-700 hover:bg-sidebar-hover hover:text-sidebar-ink',
                   )
                 }
               >
@@ -278,7 +277,7 @@ export function OwnerApp() {
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden"
       >
-        <div className="mx-auto grid max-w-xl grid-cols-5">
+        <div className="mx-auto grid max-w-xl grid-cols-6">
           {TABS.map((t) => (
             <NavLink
               key={t.to}
@@ -286,15 +285,17 @@ export function OwnerApp() {
               end={t.end}
               className={({ isActive }) =>
                 cn(
-                  'relative flex h-16 flex-col items-center justify-center gap-0.5 text-[12px]',
-                  isActive ? 'font-semibold text-brand-dark' : 'text-slate-500',
+                  'relative flex h-16 flex-col items-center justify-center gap-0.5 text-[11.5px] leading-tight',
+                  isActive
+                    ? 'font-semibold text-sidebar-ink after:absolute after:inset-x-[30%] after:top-0 after:h-[3px] after:rounded-b after:bg-sidebar-accent'
+                    : 'text-slate-500',
                 )
               }
             >
               <t.icon className="h-6 w-6" />
               {t.label}
               {t.label === 'Messages' && unread > 0 && (
-                <span className="absolute right-[22%] top-1.5 min-w-[18px] rounded-full bg-red-600 px-1 text-center text-[11px] font-semibold leading-[18px] text-white">
+                <span className="absolute right-[14%] top-1.5 min-w-[18px] rounded-full bg-red-600 px-1 text-center text-[11px] font-semibold leading-[18px] text-white">
                   {unread > 99 ? '99+' : unread}
                 </span>
               )}
@@ -353,7 +354,7 @@ function LockedScreen({ data }: { data: OwnerHome }) {
         </div>
       </Panel>
       <Button asChild className={cn(big, 'w-full')}>
-        <NavLink to="/app/more/verification">See My Verification Status</NavLink>
+        <NavLink to="/app/more/profile">See My Profile and ID</NavLink>
       </Button>
     </Screen>
   );
@@ -366,9 +367,7 @@ function ClosedScreen({ data, onSignOut }: { data: OwnerHome; onSignOut: () => v
     <div className="min-h-[100dvh] bg-slate-50">
       <header className="bg-brand-dark text-white">
         <div className="mx-auto flex h-14 max-w-2xl items-center gap-3 px-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15">
-            <LogoGlyph className="h-6 w-6" />
-          </span>
+          <LogoGlyph tile className="h-10 w-10 shrink-0 rounded-lg ring-1 ring-white/20" />
           <div className="text-[16px] font-semibold">Naga City Livestock</div>
         </div>
       </header>
@@ -560,8 +559,8 @@ function HomeScreen() {
                     <VerificationSteps owner={owner} />
                   </div>
                   <Button asChild className={cn(big, 'mt-3 w-full sm:w-auto')}>
-                    <NavLink to="/app/more/verification">
-                      {owner.returnReason ? 'Correct and Send Again' : 'View My Verification'}
+                    <NavLink to="/app/more/profile">
+                      {owner.returnReason ? 'Correct and Send Again' : 'View My Profile and ID'}
                     </NavLink>
                   </Button>
                 </div>
@@ -655,19 +654,26 @@ function HomeScreen() {
               <>
                 <QuickTile
                   href={data.office.contact ? `tel:${data.office.contact.replace(/[^\d+]/g, '')}` : undefined}
-                  to="/app/more/verification"
+                  to="/app/more/profile"
                   icon={Phone}
                   label="Sick Animal? Call the Office"
                   tone="red"
                 />
-                <QuickTile to="/app/more/verification" icon={BadgeCheck} label="My Verification" />
+                <QuickTile to="/app/vaccination" icon={Syringe} label="Vaccination and Services" />
                 <QuickTile to="/app/farms/new" icon={Plus} label="Register a Farm" />
                 <QuickTile to="/app/map" icon={MapIcon} label="Disease Map" />
               </>
             )}
           </div>
-          <HomeMapCard />
+          {/* Phones: the map sits with the shortcuts. */}
+          <div className="lg:hidden">
+            <HomeMapCard />
+          </div>
         </div>
+      </div>
+      {/* Tablets and computers: the map across the full width, large enough to read (panel revision). */}
+      <div className="mt-6 hidden lg:block">
+        <HomeMapCard large />
       </div>
     </div>
   );
@@ -716,7 +722,7 @@ interface OwnerMapData {
 }
 const useOwnerMap = () => useApi<OwnerMapData>('/api/my/map', { refetchInterval: 120_000 });
 
-function HomeMapCard() {
+function HomeMapCard({ large }: { large?: boolean }) {
   const { data } = useOwnerMap();
   if (!data) return null;
   const n = data.cases.length;
@@ -733,8 +739,13 @@ function HomeMapCard() {
           ? 'No confirmed disease case is open in the city right now.'
           : `${n} confirmed case${n === 1 ? '' : 's'} open in the city.`}
       </p>
-      <Suspense fallback={<div className="h-56 rounded-xl bg-slate-100" />}>
-        <DiseaseMap cases={data.cases} zones={data.zones} farms={data.farms} className="h-56" />
+      <Suspense fallback={<div className={cn('rounded-xl bg-slate-100', large ? 'h-[520px]' : 'h-72')} />}>
+        <DiseaseMap
+          cases={data.cases}
+          zones={data.zones}
+          farms={data.farms}
+          className={large ? 'h-[min(560px,65vh)] min-h-[420px]' : 'h-72'}
+        />
       </Suspense>
       <DiseaseMapLegend farms={data.farms.length > 0} />
     </Panel>
@@ -940,7 +951,9 @@ function FarmForm() {
       )}
       <form noValidate onSubmit={submit} className="space-y-4">
         <Panel className="space-y-3">
-          <h2 className="text-[17px] font-semibold">Where Is the Farm? *</h2>
+          <h2 className="text-[17px] font-semibold">
+            Where Is the Farm? <RequiredMark />
+          </h2>
           <p className="text-[14px] text-slate-600">
             Stand at the farm and tap the button. The barangay and address are filled in for you. You can also
             tap the map to move the pin.
@@ -1027,13 +1040,15 @@ function FarmForm() {
         </Panel>
 
         <Panel className="space-y-3">
-          <h2 className="text-[17px] font-semibold">Livestock on the Farm *</h2>
+          <h2 className="text-[17px] font-semibold">
+            Livestock on the Farm <RequiredMark />
+          </h2>
           {lines.map((l, i) => (
             <div key={i} className="flex items-end gap-2">
-              <Field label={i === 0 ? 'Kind' : undefined} className="min-w-0 flex-1">
+              <Field label={i === 0 ? 'Species *' : undefined} className="min-w-0 flex-1">
                 <Select
                   className={big}
-                  aria-label={`Livestock ${i + 1}`}
+                  aria-label={`Species ${i + 1}`}
                   value={l.species}
                   onChange={(ev) => (
                     setLines(lines.map((x, j) => (j === i ? { ...x, species: ev.target.value } : x))),
@@ -1046,7 +1061,7 @@ function FarmForm() {
                   ))}
                 </Select>
               </Field>
-              <Field label={i === 0 ? 'Head' : undefined} className="w-24">
+              <Field label={i === 0 ? 'Head *' : undefined} className="w-24">
                 <Input
                   className={big}
                   aria-label={`Head count ${i + 1}`}
@@ -1086,7 +1101,7 @@ function FarmForm() {
               className="h-11"
               onClick={() => setLines([...lines, { species: '', count: '' }])}
             >
-              <Plus /> Add Another Kind
+              <Plus /> Add Another Species
             </Button>
           )}
         </Panel>

@@ -3,7 +3,7 @@
  * 8 owners (1 archived), 11 farms (1 archived; pig farms marked Backyard/Commercial), 6 tagged
  * animals (cattle/carabao with purpose and ownership certificate), 7 cases in every classification
  * (Reported, Suspected, Active, Negative, Closed; 1 voided), deworming, check-ups, vaccinations,
- * pregnancy diagnosis and insemination, farm visits (incl. monitoring around the ASF case), monthly
+ * pregnancy diagnosis and insemination, field visits (incl. monitoring around the ASF case), monthly
  * head counts, 5 stray reports (1 voided), 4 PCIC insurance applications,
  * 2 lab submission batches (one with results by email, one still pending) and vaccination targets.
  * All dates are counted back from the day you seed, so seed again the day before the demo.
@@ -766,7 +766,7 @@ const SERVICES: S[] = [
   ],
 ];
 
-/* ------------------------------ farm visits ------------------------------ */
+/* ------------------------------ field visits ------------------------------ */
 // days ago, farm, purpose, findings, monitored case (id), remarks
 type FV = [number, string, string, 'NO_SIGNS' | 'SICK_ANIMALS', number | null, string];
 const VISITS: FV[] = [
@@ -949,7 +949,7 @@ async function main() {
           rsbsa,
           remarks,
           street: `${10 * (i + 1)} Rizal St.`,
-          // The masterlist comes from the DA list and from farm visits (raisers do not self-register).
+          // The masterlist comes from the DA list and from field visits (raisers do not self-register).
           source: i < 4 ? 'DA_LIST' : 'FARM_VISIT',
           contact: `0917-555-${String(1000 + i * 37).padStart(4, '0')}`,
           registeredAt: DT('2026-05-04T09:00:00'),
@@ -1511,7 +1511,7 @@ async function main() {
   // SRV-0001's reminder is done: its dose 2 was given (SRV-0002).
   await prisma.vaccination.update({ where: { id: 1 }, data: { reminderDone: true } });
 
-  /* deworming and check-ups (goats and cattle first), given on farm visits */
+  /* deworming and check-ups (goats and cattle first), given on field visits */
   const firstService = VAX.length + 1;
   for (let i = 0; i < SERVICES.length; i++) {
     const [days, type, farmName, species, count, product, next, remarks] = SERVICES[i];
@@ -1530,12 +1530,12 @@ async function main() {
         nextDate: next ? D(next) : null,
         doseNumber: 1,
         administeredBy: i % 2 ? JOY : MARK,
-        remarks: remarks ?? 'Given during farm visit',
+        remarks: remarks ?? 'Given during field visit',
       },
     });
   }
 
-  /* farm visits: masterlist updates, deworming rounds, check-ups and monitoring around disease reports */
+  /* field visits: masterlist updates, deworming rounds, check-ups and monitoring around disease reports */
   for (let i = 0; i < VISITS.length; i++) {
     const [days, farmName, purpose, findings, caseNo, remarks] = VISITS[i];
     const farm = farmByName(farmName);
@@ -1558,7 +1558,7 @@ async function main() {
         entity: 'farm',
         entityId: farm.id,
         action: 'visit',
-        summary: `Farm visit ${v.code}: ${purpose.toLowerCase()}`,
+        summary: `Field visit ${v.code}: ${purpose.toLowerCase()}`,
         byName: v.visitedBy,
         createdAt: v.createdAt,
       },
@@ -1671,7 +1671,7 @@ async function main() {
         date: D(ago(4 + k * 6)),
         doseNumber: 1,
         administeredBy: k % 2 ? JOY : MARK,
-        remarks: 'Pregnancy diagnosis during farm visit',
+        remarks: 'Pregnancy diagnosis during field visit',
       },
     });
     await prisma.vaccination.create({
@@ -1783,7 +1783,7 @@ async function main() {
   });
 
   console.log(
-    `Done: ${owners.length + 1} owners, ${farms.length + 1} farms, ${groupNo} groups, ${animals.length} animals, ${CASES.length} cases, ${VAX.length + SERVICES.length} service records, ${VISITS.length} farm visits, ${strays.length} stray reports, 4 insurance applications, 2 lab submission batches.`,
+    `Done: ${owners.length + 1} owners, ${farms.length + 1} farms, ${groupNo} groups, ${animals.length} animals, ${CASES.length} cases, ${VAX.length + SERVICES.length} service records, ${VISITS.length} field visits, ${strays.length} stray reports, 4 insurance applications, 2 lab submission batches.`,
   );
   console.log('Sign in with admin@nagacityvet.gov.ph / Livestock@2026');
 }

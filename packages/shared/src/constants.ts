@@ -114,7 +114,7 @@ export const RECORD_SOURCES = ['DA_LIST', 'FARM_VISIT', 'BARANGAY', 'OTHER'] as 
 export type RecordSource = (typeof RECORD_SOURCES)[number];
 export const RECORD_SOURCE_LABELS: Record<RecordSource, string> = {
   DA_LIST: 'DA Masterlist',
-  FARM_VISIT: 'Farm Visit',
+  FARM_VISIT: 'Field Visit',
   BARANGAY: 'Barangay Referral',
   OTHER: 'Other',
 };
@@ -195,7 +195,7 @@ export const SERVICE_SPECIES_ORDER = [
   'Goose',
 ] as const;
 
-/** Farm visits: why the visit was made and what was found. */
+/** Field visits: why the visit was made and what was found. */
 export const VISIT_PURPOSES = ['ROUTINE', 'DEWORMING', 'CHECKUP', 'MONITORING', 'OTHER'] as const;
 export type VisitPurpose = (typeof VISIT_PURPOSES)[number];
 export const VISIT_PURPOSE_LABELS: Record<VisitPurpose, string> = {
@@ -579,11 +579,10 @@ export function caseCloseBlockers(
   const waiting = x.labs.filter((l) => !l.voided && l.result === 'PENDING').length;
   if (waiting)
     out.push(`${waiting} sample${waiting === 1 ? ' is' : 's are'} still waiting for a laboratory result.`);
-  const open = x.responses.filter((r) => measureOpen(r, today)).length;
-  if (open)
-    out.push(
-      `${open} response measure${open === 1 ? ' is' : 's are'} still planned, ongoing or in force. Mark ${open === 1 ? 'it' : 'them'} completed or enter the date lifted.`,
-    );
+  // Response measures no longer hold a case open: the Response Activities feature was removed
+  // (panel revision), so measures logged before cannot be updated from the system any more.
+  void x.responses;
+  void today;
   if (x.pendingPopulation > 0)
     out.push(
       `${x.pendingPopulation} animal(s) that died or were culled are not yet taken off the farm's head count.`,

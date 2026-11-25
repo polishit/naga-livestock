@@ -99,8 +99,8 @@ test('no Search tab: population monitoring has its own search', async ({ page })
 });
 
 test('pregnancy diagnosis is offered for cattle and counted with its result', async ({ page }) => {
+  // The Activity Log (formerly Service Records) opens first.
   await page.goto('/services');
-  await page.getByRole('tab', { name: 'Service Records' }).click();
   await page.getByRole('button', { name: 'Record Service' }).click();
   const d = dialog(page);
   await pickOption(d.getByLabel('Farm', { exact: true }), 'Carolina Cattle Range');

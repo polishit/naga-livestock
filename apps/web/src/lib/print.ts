@@ -139,7 +139,7 @@ export function printFarmProfile(d: FarmProfileData, lh: Letterhead, printedBy?:
       <div><span>Address</span>${h(f.address)}</div><div><span>Coordinates</span>${
         f.lat != null && f.lng != null ? `${f.lat.toFixed(6)}, ${f.lng.toFixed(6)}` : 'Not geotagged'
       }</div>
-      <div><span>Livestock raised</span>${h(f.livestockRaised ?? '')}</div><div><span>Last farm visit</span>${
+      <div><span>Livestock raised</span>${h(f.livestockRaised ?? '')}</div><div><span>Last field visit</span>${
         f.lastVisitAt ? h(fmtDate(f.lastVisitAt)) : 'No visit recorded'
       }</div>
       <div><span>Added to masterlist</span>${h(fmtDate(f.createdAt))}</div><div></div>
@@ -425,15 +425,15 @@ export function printMonthlyReport(m: MonthlyReportData, lh: Letterhead, prepare
       'No other services recorded.',
     )}
 
-    <h2>V. Farm Visits</h2>
-    <p class="lead">Farm visits conducted: <b>${num(m.visits.total)}</b> (${num(m.visits.farms)} farms) · Visits where sick animals were found: <b>${num(
+    <h2>V. Field Visits</h2>
+    <p class="lead">Field visits conducted: <b>${num(m.visits.total)}</b> (${num(m.visits.farms)} farms) · Visits where sick animals were found: <b>${num(
       m.visits.sickFound,
     )}</b></p>
     ${tableN(
       ['Purpose of Visit', 'No. of Visits'],
       [1],
       m.visits.byPurpose.filter((p) => p.count).map((p) => [p.label, num(p.count)]),
-      'No farm visits recorded this month.',
+      'No field visits recorded this month.',
     )}
 
     <h2>VI. Laboratory Samples</h2>
@@ -450,7 +450,7 @@ export function printMonthlyReport(m: MonthlyReportData, lh: Letterhead, prepare
         'Pregnancy Diagnosis',
         'Insemination',
         'Heads Checked',
-        'Farm Visits',
+        'Field Visits',
       ],
       [1, 2, 3, 4, 5, 6],
       m.trend.map((t) => [

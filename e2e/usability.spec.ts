@@ -119,7 +119,7 @@ test('print a farm profile and an owner ID card with QR codes', async ({ page, c
   await cardWin.close();
 });
 
-test('stray incident: violation recorded without a fine or penalty', async ({ page }) => {
+test('stray incident has no violation fields (removed), and no fine or penalty', async ({ page }) => {
   const s = await page.request.post('/api/strays', {
     data: { species: 'Goat', barangay: 'Pacol', location: 'National highway', ownerId: 5 },
   });
@@ -129,37 +129,13 @@ test('stray incident: violation recorded without a fine or penalty', async ({ pa
   await page.goto(`/strays?open=${id}`);
   const d = dialog(page);
   await expect(d.getByText(`${code} · Stray goat`)).toBeVisible();
-  await d.getByLabel('Violation type').selectOption('Animal on a public road or highway');
-  await d.getByLabel('Number of violations').fill('1');
+  await expect(d.getByLabel(/Violation/)).toHaveCount(0);
   await expect(d.getByText('Penalty')).toHaveCount(0);
   await expect(d.getByLabel(/Fine/)).toHaveCount(0);
-  await expect(d.getByLabel(/Official receipt/)).toHaveCount(0);
-  await shot(page, 'stray-violation');
+  await d.getByLabel('Remarks / Actions Taken').fill('Returned to the owner.');
   await d.getByRole('button', { name: 'Save changes' }).click();
   await expectToast(page, 'Incident updated.');
-  await expect(page.getByRole('columnheader', { name: /Fine/i })).toHaveCount(0);
-  const row = page.getByRole('row').filter({ hasText: code });
-  await expect(row.getByRole('cell', { name: '1', exact: true })).toBeVisible();
-});
-
-test('ASF case lists the response steps and logs a missing one', async ({ page }) => {
-  await page.goto('/cases/3?tab=response');
-  await expect(page.getByText('ASF response steps')).toBeVisible();
-  const step = page
-    .locator('.card')
-    .filter({ hasText: 'ASF response steps' })
-    .getByRole('listitem')
-    .filter({ hasText: 'Coordinate with barangay officials' });
-  await step.getByRole('button', { name: 'Log' }).click();
-  const d = dialog(page);
-  await expect(d.getByLabel('Activity type')).toHaveValue('BARANGAY_COORDINATION');
-  await d.getByLabel('Personnel').fill('Brgy. Captain and kagawads');
-  await d.getByRole('button', { name: 'Save' }).click();
-  await expectToast(page, 'Response activity logged.');
-  // The logged measure is shown once, under its step.
-  await expect(step.getByText('Completed')).toBeVisible();
-  await expect(step.getByText('Not yet logged')).toHaveCount(0);
-  await shot(page, 'asf-steps');
+  await expect(page.getByRole('columnheader', { name: /Violations|Fine/i })).toHaveCount(0);
 });
 
 test('farms have no pasture fields', async ({ page }) => {

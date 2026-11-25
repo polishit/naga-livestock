@@ -21,7 +21,16 @@ export default {
         muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
         accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
-        sidebar: { DEFAULT: '#1d4a2c', label: '#bfe3b8', active: '#1d4a2c' },
+        // Navigation: light panel with forest-green text and a gold accent (same palette as the logo).
+        sidebar: {
+          DEFAULT: '#ffffff',
+          ink: '#14532d',
+          muted: '#64748b',
+          hover: '#f1f7ee',
+          active: '#14532d',
+          activeBg: '#e3f1de',
+          accent: '#f4c430',
+        },
         // strong = buttons and active states (white text passes WCAG AA contrast)
         brand: { DEFAULT: '#7aad69', strong: '#3a7d2f', dark: '#166534', mid: '#16a34a', light: '#eef7ea' },
       },

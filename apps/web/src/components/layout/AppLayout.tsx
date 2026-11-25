@@ -32,6 +32,7 @@ import { dismissInstall, installDismissed, useInstall } from '@/lib/install';
 import { cn } from '@/lib/utils';
 import { Logo } from '../Logo';
 import { PageHelp } from '../PageHelp';
+import { MessagesFab } from '../MessagesFab';
 import { QuickNew } from '../QuickNew';
 import { Badge, Button, Dialog } from '../ui';
 import { NAV, crumbsFor, sectionFor, type NavSection } from './nav';
@@ -41,15 +42,27 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
   const navigate = useNavigate();
   const location = useLocation();
   const current = sectionFor(location.pathname)?.id;
-  const waiting =
-    useApi<{ total: number }>('/api/review/summary', { refetchInterval: 60_000 }).data?.total ?? 0;
-  const unreadMsgs =
-    useApi<{ unread: number }>('/api/messages/summary', { refetchInterval: 30_000 }).data?.unread ?? 0;
+  const counts = useApi<{ total: number; services: number }>('/api/review/summary', {
+    refetchInterval: 60_000,
+  }).data;
+  // Service requests have their own page (Veterinary Field Services); the rest wait in the Review Queue.
+  const requests = counts?.services ?? 0;
+  const waiting = (counts?.total ?? 0) - requests;
+  const navRef = useRef<HTMLElement>(null);
   // Only the module you are working in is open; the others fold away to keep the menu short.
   const [open, setOpen] = useState<Record<string, boolean>>(() => (current ? { [current]: true } : {}));
   useEffect(() => {
     if (current) setOpen((o) => (o[current] ? o : { ...o, [current]: true }));
   }, [current]);
+  // Keep the page you are on in view when the menu is longer than the screen.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      navRef.current
+        ?.querySelector('[aria-current="page"]')
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [location.pathname, open]);
 
   const link = (item: NavSection['items'][number], nested: boolean) => (
     <NavLink
@@ -60,25 +73,25 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
       title={collapsed ? item.label : item.hint}
       className={({ isActive }) =>
         cn(
-          'flex items-center gap-3 rounded-lg py-2 text-[15px] transition-colors',
+          'relative flex items-center gap-3 rounded-lg py-2 text-[15px] transition-colors',
           collapsed ? 'justify-center px-0' : nested ? 'pl-9 pr-2.5' : 'px-2.5',
           isActive
-            ? 'bg-white font-semibold text-sidebar-active shadow-sm'
-            : 'text-white/85 hover:bg-white/10 hover:text-white',
+            ? 'bg-sidebar-activeBg font-semibold text-sidebar-active before:absolute before:inset-y-1.5 before:left-0 before:w-1 before:rounded-full before:bg-sidebar-accent'
+            : 'text-slate-700 hover:bg-sidebar-hover hover:text-sidebar-ink',
         )
       }
     >
       <item.icon className={cn('shrink-0', nested ? 'h-4 w-4' : 'h-[18px] w-[18px]')} strokeWidth={1.9} />
       {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-      {item.to === '/messages' && !!unreadMsgs && (
+      {item.to === '/service-requests' && !!requests && (
         <span
-          aria-label={`${unreadMsgs} unread messages`}
+          aria-label={`${requests} service requests waiting`}
           className={cn(
             'rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white',
             collapsed && 'absolute ml-5 -mt-5',
           )}
         >
-          {unreadMsgs > 99 ? '99+' : unreadMsgs}
+          {requests > 99 ? '99+' : requests}
         </span>
       )}
       {/* How many items owners sent that still wait for the office */}
@@ -97,10 +110,10 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
   );
 
   return (
-    <div className="flex h-full flex-col bg-sidebar text-white">
+    <div className="flex h-full flex-col border-r border-slate-200 bg-sidebar text-slate-800">
       <div
         className={cn(
-          'flex h-16 shrink-0 items-center border-b border-white/10',
+          'flex h-16 shrink-0 items-center border-b border-slate-200',
           collapsed ? 'justify-center px-2' : 'px-4',
         )}
       >
@@ -108,7 +121,11 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
           <Logo compact={collapsed} />
         </Link>
       </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto px-2.5 py-3" aria-label="Main">
+      <nav
+        ref={navRef}
+        className="nav-scroll min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 py-3"
+        aria-label="Main"
+      >
         {NAV.map((section) => {
           const items = section.items.filter((i) => !i.hidden && (!i.adminOnly || isAdmin));
           if (!items.length) return null;
@@ -116,7 +133,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
           if (collapsed)
             return (
               <div key={section.id}>
-                <div className="mx-3 my-2 border-t border-white/10" />
+                <div className="mx-3 my-2 border-t border-slate-200" />
                 {items.map((i) => link(i, false))}
               </div>
             );
@@ -130,19 +147,27 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
                 aria-expanded={isOpen}
                 onClick={() => setOpen((o) => ({ ...o, [section.id]: !o[section.id] }))}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[14px] font-semibold transition-colors hover:bg-white/10',
-                  active ? 'text-white' : 'text-white/80',
+                  'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[14px] font-semibold transition-colors hover:bg-sidebar-hover',
+                  active ? 'text-sidebar-ink' : 'text-slate-600',
                 )}
               >
                 {Icon && <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />}
-                <span className="flex-1 truncate">{section.label}</span>
+                <span className="flex-1 leading-tight">{section.label}</span>
                 {/* Shown while the section is folded, so waiting items are never missed */}
-                {section.id === 'owners-app' && !isOpen && !!(waiting + unreadMsgs) && (
+                {section.id === 'services' && !isOpen && !!requests && (
                   <span
-                    aria-label={`${waiting} waiting for review, ${unreadMsgs} unread messages`}
+                    aria-label={`${requests} service requests waiting`}
                     className="rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white"
                   >
-                    {waiting + unreadMsgs > 99 ? '99+' : waiting + unreadMsgs}
+                    {requests > 99 ? '99+' : requests}
+                  </span>
+                )}
+                {section.id === 'owners-app' && !isOpen && !!waiting && (
+                  <span
+                    aria-label={`${waiting} waiting for review`}
+                    className="rounded-full bg-red-600 px-1.5 text-[12px] font-semibold leading-5 text-white"
+                  >
+                    {waiting > 99 ? '99+' : waiting}
                   </span>
                 )}
                 <ChevronDown
@@ -154,7 +179,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
           );
         })}
       </nav>
-      <div className="border-t border-white/10 p-2.5">
+      <div className="border-t border-slate-200 p-2.5">
         <button
           type="button"
           onClick={async () => {
@@ -162,7 +187,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
             navigate('/login');
           }}
           className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-[15px] text-white/85 hover:bg-white/10 hover:text-white',
+            'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-[15px] text-slate-700 hover:bg-red-50 hover:text-red-700',
             collapsed && 'justify-center',
           )}
         >
@@ -184,7 +209,8 @@ const PHONE_TABS = ['registry', 'gis', 'surveillance'];
 function BottomNav() {
   const location = useLocation();
   const { isAdmin } = useAuth();
-  const current = sectionFor(location.pathname)?.id;
+  const isHome = location.pathname === '/';
+  const current = isHome ? 'home' : sectionFor(location.pathname)?.id;
   const [sheet, setSheet] = useState<NavSection | null>(null);
   const waiting =
     useApi<{ total: number }>('/api/review/summary', { refetchInterval: 60_000 }).data?.total ?? 0;
@@ -524,7 +550,7 @@ function InstallBanner() {
       <div
         role="region"
         aria-label="Install the app"
-        className="fixed inset-x-3 z-[940] flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-lg lg:hidden"
+        className="fixed left-3 right-[84px] z-[940] flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-lg lg:hidden"
         style={{ bottom: 'calc(72px + env(safe-area-inset-bottom))' }}
       >
         <img src="/icons/icon-192.png" alt="" className="h-10 w-10 shrink-0 rounded-lg" />
@@ -678,7 +704,7 @@ export function AppLayout() {
             <button
               type="button"
               aria-label="Close menu"
-              className="absolute right-2 top-4 rounded p-1 text-white/90 hover:bg-white/10"
+              className="absolute right-2 top-4 rounded p-1 text-slate-600 hover:bg-slate-100"
               onClick={() => setMobileOpen(false)}
             >
               <X className="h-5 w-5" />
@@ -687,7 +713,7 @@ export function AppLayout() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-[900] flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 sm:px-5">
+        <header className="sticky top-0 z-[900] flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 border-t-[3px] border-t-sidebar-ink bg-white px-3 sm:px-5">
           <button
             type="button"
             onClick={toggle}
@@ -741,7 +767,7 @@ export function AppLayout() {
             </button>
           </div>
         )}
-        <main ref={mainRef} className="flex-1 overflow-y-auto">
+        <main ref={mainRef} className="app-scroll flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1400px] px-4 pb-28 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
             <Outlet />
           </div>
@@ -749,6 +775,7 @@ export function AppLayout() {
       </div>
       <BottomNav />
       <InstallBanner />
+      <MessagesFab />
     </div>
   );
 }

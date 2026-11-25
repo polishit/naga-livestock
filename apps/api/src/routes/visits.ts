@@ -15,7 +15,7 @@ import { assertNotFuture, dateOnly, today } from '../lib/dates';
 import { ah, badRequest, idParam, notFound, parse, qstr } from '../lib/http';
 import { serializeVisit } from './serializers';
 
-/** Farm visits: the office's main field activity (masterlist updates, deworming, check-ups, monitoring). */
+/** Field visits: the office's main field activity (masterlist updates, deworming, check-ups, monitoring). */
 export const visitsRouter = Router();
 
 const include = {
@@ -93,7 +93,7 @@ visitsRouter.post(
         'farm',
         farm.id,
         'visit',
-        `Farm visit ${saved.code}: ${VISIT_PURPOSE_LABELS[d.purpose as VisitPurpose]} — ${
+        `Field visit ${saved.code}: ${VISIT_PURPOSE_LABELS[d.purpose as VisitPurpose]} — ${
           VISIT_FINDING_LABELS[d.findings as VisitFinding]
         }`,
         req.user?.name,
@@ -112,7 +112,7 @@ visitsRouter.patch(
     const d = parse(farmVisitUpdateSchema, req.body);
     assertNotFuture({ date: d.date });
     const before = await prisma.farmVisit.findUnique({ where: { id } });
-    if (!before || before.voidedAt) throw notFound('Farm visit');
+    if (!before || before.voidedAt) throw notFound('Field visit');
     await checkLinks(before.farmId, d.caseId);
     const v = await prisma.farmVisit.update({
       where: { id },
@@ -126,7 +126,7 @@ visitsRouter.patch(
       },
       include,
     });
-    await logActivity('farm', v.farmId, 'visit-edited', `Farm visit ${v.code} edited`, req.user?.name);
+    await logActivity('farm', v.farmId, 'visit-edited', `Field visit ${v.code} edited`, req.user?.name);
     res.json(serializeVisit(v));
   }),
 );
@@ -142,7 +142,7 @@ visitsRouter.post(
     const id = idParam(req);
     const { reason } = parse(voidSchema, req.body);
     const v = await prisma.farmVisit.findUnique({ where: { id } });
-    if (!v) throw notFound('Farm visit');
+    if (!v) throw notFound('Field visit');
     if (v.voidedAt) throw badRequest('This visit is already voided');
     await prisma.farmVisit.update({
       where: { id },
@@ -152,7 +152,7 @@ visitsRouter.post(
       'farm',
       v.farmId,
       'visit-voided',
-      `Farm visit ${v.code} voided: ${reason}`,
+      `Field visit ${v.code} voided: ${reason}`,
       req.user?.name,
     );
     res.json({ ok: true });

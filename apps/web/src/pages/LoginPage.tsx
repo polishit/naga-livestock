@@ -1,3 +1,4 @@
+import { LogoGlyph } from '@/components/Logo';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -135,6 +136,13 @@ function LoginCard({
     <div
       className={`flex flex-col justify-center rounded-[20px] border border-white/70 bg-white/55 px-7 py-10 shadow-[0_8px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-[15%] ${className}`}
     >
+      <div className="mb-4 flex items-center gap-3">
+        <LogoGlyph tile className="h-12 w-12 shrink-0 rounded-xl shadow-sm" />
+        <div className="leading-tight">
+          <div className="text-[16px] font-bold tracking-tight text-sidebar-ink">Naga City Vet</div>
+          <div className="text-[13px] text-slate-600">City Veterinary Office · Naga City</div>
+        </div>
+      </div>
       <h1 className="text-[24px] font-semibold tracking-tight text-slate-900">Sign In</h1>
       <p className="mt-1 text-[15px] text-slate-600">Livestock Monitoring System with GIS Integration.</p>
       {note && !error && (

@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   CLINICAL_SIGN_LABELS,
@@ -521,6 +521,8 @@ export function ReviewPage() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') ?? 'registrations') as Tab;
   const counts = useReviewCounts();
+  // Service requests moved to Veterinary Field Services → Service Requests.
+  if (tab === 'services') return <Navigate to="/service-requests" replace />;
   const c = counts.data;
   const n = (x?: number) => (x ? ` (${x})` : '');
   return (
@@ -538,7 +540,6 @@ export function ReviewPage() {
           { id: 'population', label: `Head Count Updates${n(c?.population)}` },
           { id: 'reports', label: `Disease Reports${n(c?.reports)}` },
           { id: 'vaccinations', label: `Vaccination Records${n(c?.vaccinations)}` },
-          { id: 'services', label: `Service Requests${n(c?.services)}` },
           { id: 'accounts', label: 'Owner Logins' },
         ]}
       />
@@ -546,8 +547,25 @@ export function ReviewPage() {
       {tab === 'population' && <PopulationQueue />}
       {tab === 'reports' && <ReportsQueue />}
       {tab === 'vaccinations' && <VaccinationQueue />}
-      {tab === 'services' && <ServiceQueue />}
       {tab === 'accounts' && <OwnerAccounts />}
+    </div>
+  );
+}
+
+/**
+ * Service Requests (Veterinary Field Services): deworming, check-ups, vaccination and other services
+ * livestock owners ask for in the owner app. Schedule it, mark it done, or decline with a reason; the
+ * owner sees the answer in the owner app.
+ */
+export function ServiceRequestsPage() {
+  const c = useReviewCounts().data;
+  return (
+    <div>
+      <PageHeader
+        title="Service Requests"
+        subtitle={`Services asked for by livestock owners in the owner app${c?.services ? ` · ${c.services} waiting for an answer` : ''}. Open a request to schedule it, mark it done or decline it; the owner sees your reply.`}
+      />
+      <ServiceQueue />
     </div>
   );
 }

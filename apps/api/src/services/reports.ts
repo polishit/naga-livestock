@@ -109,9 +109,9 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
         for (const b2 of sv.bySpecies)
           add(sec, `  ${sv.label} — ${b2.species}`, b2.head, `${b2.farms} farm(s)`);
       }
-      add('V. Farm Visits', 'Farm visits conducted', m.visits.total, `${m.visits.farms} farm(s)`);
-      add('V. Farm Visits', 'Visits with sick animals found', m.visits.sickFound);
-      for (const v2 of m.visits.byPurpose) if (v2.count) add('V. Farm Visits', v2.label, v2.count);
+      add('V. Field Visits', 'Field visits conducted', m.visits.total, `${m.visits.farms} farm(s)`);
+      add('V. Field Visits', 'Visits with sick animals found', m.visits.sickFound);
+      for (const v2 of m.visits.byPurpose) if (v2.count) add('V. Field Visits', v2.label, v2.count);
       return {
         ...base,
         title: `${def.title} — ${m.label}`,
@@ -131,7 +131,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           { label: 'Total livestock', value: m.population.total },
           { label: 'Disease reports', value: m.diseases.reported },
           { label: 'Heads dewormed', value: m.services.find((x) => x.type === 'DEWORMING')?.head ?? 0 },
-          { label: 'Farm visits', value: m.visits.total },
+          { label: 'Field visits', value: m.visits.total },
         ],
         note: 'Population is the current masterlist count. Disease reports, services and visits cover the selected month.',
       };
@@ -820,7 +820,7 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           remarks: x.remarks ?? '—',
         })),
         summary: [
-          { label: 'Farm visits', value: rows.length },
+          { label: 'Field visits', value: rows.length },
           { label: 'Farms visited', value: new Set(rows.map((x) => x.farmId)).size },
           {
             label: 'Visits with sick animals',
@@ -1015,7 +1015,6 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           col('tag', 'Tag'),
           col('owner', 'Owner'),
           col('barangay', 'Barangay'),
-          col('violation', 'Violation'),
           col('status', 'Status'),
         ],
         rows: rows.map((x) => ({
@@ -1025,12 +1024,10 @@ export async function buildReport(id: string, p: ReportParams): Promise<ReportRe
           tag: x.earTag ?? '—',
           owner: x.owner?.fullName ?? 'Unknown',
           barangay: `${x.barangay} — ${x.location}`,
-          violation: `${x.violationType ?? '—'}${x.violations ? ` (${x.violations})` : ''}`,
           status: titleCase(x.status),
         })),
         summary: [
           { label: 'Incidents', value: rows.length },
-          { label: 'Violations', value: rows.reduce((a, x) => a + x.violations, 0) },
           { label: 'Closed', value: rows.filter((x) => x.status === 'CLOSED').length },
         ],
       };

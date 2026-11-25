@@ -76,6 +76,47 @@
   }
 }
 
+/* Navigation menu: thin scrollbar that only shows while the menu is hovered or scrolled, and the
+   scroll stays inside the menu (it does not drag the page with it). */
+.nav-scroll {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+}
+.nav-scroll:hover,
+.nav-scroll:focus-within {
+  scrollbar-color: #b8cfb0 transparent;
+}
+.nav-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.nav-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.nav-scroll:hover::-webkit-scrollbar-thumb,
+.nav-scroll:focus-within::-webkit-scrollbar-thumb {
+  background: #b8cfb0;
+}
+/* "* Required" note in a dialog footer, only when the form has a required field. */
+.dialog-root:has(.req-mark) .req-note {
+  display: block;
+}
+/* Page content: the same slim scrollbar everywhere. */
+.app-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.app-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.app-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid #f6f8f5;
+}
+
 /* Leaflet tweaks: soft background when tiles are unavailable (offline) */
 .leaflet-container {
   background: #f6f3ee;

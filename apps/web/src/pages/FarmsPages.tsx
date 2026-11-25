@@ -159,7 +159,7 @@ export function FarmsPage() {
                   className="w-[calc(50%-4px)] sm:w-36"
                 />
                 <FilterSelect
-                  label="Farm Visit"
+                  label="Field Visit"
                   value={visit}
                   onChange={setVisit}
                   options={[
@@ -353,14 +353,14 @@ export function FarmDetailPage() {
     }
   };
 
-  // Farm visits and services on one timeline, newest first.
+  // Field visits and services on one timeline, newest first.
   const activity = [
     ...data.visits.map((v) => ({
       key: `v${v.id}`,
       date: v.date,
       sort: `${v.date}-1-${String(v.id).padStart(8, '0')}`,
       tone: (v.findings === 'SICK_ANIMALS' ? 'red' : 'green') as 'red' | 'green',
-      title: <>Farm Visit · {v.purposeLabel}</>,
+      title: <>Field Visit · {v.purposeLabel}</>,
       tag: <Badge tone={v.findings === 'SICK_ANIMALS' ? 'red' : 'green'}>{v.findingsLabel}</Badge>,
       body: (
         <>
@@ -435,7 +435,7 @@ export function FarmDetailPage() {
                     setDlg('visit');
                   }}
                 >
-                  <ClipboardCheck /> Record Farm Visit
+                  <ClipboardCheck /> Record Field Visit
                 </Button>
                 <Button variant="outline" onClick={() => setDlg('service')}>
                   <Stethoscope /> Record Service
@@ -473,7 +473,7 @@ export function FarmDetailPage() {
         <MiniStat label="Total Livestock" value={`${f.total} head`} />
         <MiniStat label="Livestock Raised" value={<span className="text-[18px]">{f.livestockRaised}</span>} />
         <MiniStat
-          label="Last Farm Visit"
+          label="Last Field Visit"
           value={
             <span className="text-[18px]">{f.lastVisitAt ? fmtDate(f.lastVisitAt) : 'Not visited yet'}</span>
           }
@@ -581,7 +581,7 @@ export function FarmDetailPage() {
               </div>
             </Card>
             <Card className="lg:col-span-2">
-              <CardHeader title={`Farm Visits & Veterinary Services (${activity.length})`} />
+              <CardHeader title={`Field Visits & Veterinary Services (${activity.length})`} />
               <div className="flex flex-wrap gap-3 border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-brand-strong" /> Visit, no signs of disease
@@ -601,7 +601,7 @@ export function FarmDetailPage() {
               </div>
               <ActivityTimeline
                 items={showAll ? activity : activity.slice(0, VISITS_SHOWN)}
-                empty="No farm visits or services recorded yet. Select “Record Farm Visit” after each visit."
+                empty="No field visits or services recorded yet. Select “Record Field Visit” after each visit."
               />
               {activity.length > VISITS_SHOWN && (
                 <div className="border-t border-slate-100 px-4 py-2.5 text-center">

@@ -214,7 +214,7 @@ casesRouter.get(
     if (!c) throw notFound('Case');
     const radius = c.lat != null ? await radiusAnalysis(id) : null;
     const culled = culledHeads(c.responses);
-    // Visited: a site visit on the case, or a Farm Visit to its farm linked to it.
+    // Visited: a site visit on the case, or a Field Visit to its farm linked to it.
     const visited =
       c.investigations.some((i) => !i.voidedAt) || c.monitoringVisits.some((v) => v.farmId === c.farmId);
     // The owner side: the report it came from, its stage, and the monitoring zone around it.

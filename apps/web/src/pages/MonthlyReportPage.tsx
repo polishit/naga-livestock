@@ -48,7 +48,7 @@ export default function MonthlyReportPage() {
     <div>
       <PageHeader
         title="Monthly Report"
-        subtitle="Livestock population, disease reports, deworming, check-ups and farm visits for one month."
+        subtitle="Livestock population, disease reports, deworming, check-ups and field visits for one month."
         actions={
           <>
             <Button disabled={!m} onClick={() => m && printMonthlyReport(m, lh, user?.name)}>
@@ -112,7 +112,7 @@ export default function MonthlyReportPage() {
               tone="blue"
             />
             <StatCard
-              label="Farm Visits"
+              label="Field Visits"
               value={m.visits.total}
               sub={`${m.visits.farms} farms${m.visits.sickFound ? ` · ${m.visits.sickFound} with sick animals` : ''}`}
               tone={m.visits.sickFound ? 'red' : 'green'}
@@ -126,7 +126,7 @@ export default function MonthlyReportPage() {
                 onSelect={(r) => navigate(casesLink({ month: r.month, barangay, state: 'all' }))}
               />
             </ChartCard>
-            <ChartCard title="Deworming, Check-Ups and Farm Visits" clickable>
+            <ChartCard title="Deworming, Check-Ups and Field Visits" clickable>
               <ServiceTrendBars
                 data={m.trend}
                 onSelect={(r) => navigate(servicesLink({ month: r.month, barangay }))}
@@ -251,7 +251,7 @@ export default function MonthlyReportPage() {
                 ))}
                 <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <div>
-                    <div className="text-[15px] font-medium text-slate-900">Farm visits</div>
+                    <div className="text-[15px] font-medium text-slate-900">Field visits</div>
                     <div className="text-[13px] text-slate-500">
                       {m.visits.byPurpose
                         .filter((p) => p.count)
@@ -271,7 +271,7 @@ export default function MonthlyReportPage() {
             Population is the current masterlist count; disease reports, services and visits cover {m.label}.
             The printed report follows the standard sections: I. Livestock Population, II. Disease
             Surveillance, III. Deworming, Pregnancy Diagnosis, Insemination and Check-up per species, IV.
-            Other Services, V. Farm Visits, VI. Laboratory Samples, VII. Six-Month Summary.
+            Other Services, V. Field Visits, VI. Laboratory Samples, VII. Six-Month Summary.
           </p>
         </div>
       )}

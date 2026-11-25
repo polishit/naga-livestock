@@ -54,12 +54,10 @@ function Shell({
 }) {
   return (
     <div className="min-h-[100dvh] bg-slate-50">
-      <header className="bg-brand-dark text-white">
+      <header className="border-b-[3px] border-sidebar-accent bg-sidebar-ink text-white">
         <div className={cn('mx-auto flex items-center gap-3 px-4 py-3 md:px-6 md:py-4', width)}>
           <BackButton to={back} tone="light" className="-ml-2 h-11 w-11" />
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/15">
-            <LogoGlyph className="h-7 w-7" />
-          </span>
+          <LogoGlyph tile className="h-10 w-10 shrink-0 rounded-lg ring-1 ring-white/20" />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-[17px] font-semibold md:text-[19px]">{title}</div>
             {sub && <div className="truncate text-[13px] text-white/80 md:text-[14px]">{sub}</div>}
